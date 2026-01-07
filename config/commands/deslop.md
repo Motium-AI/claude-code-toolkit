@@ -35,7 +35,7 @@ Exit plan mode and generate the final report using the synthesized findings.
 
 ---
 
-Conduct an exhaustive sweep of the ENTIRE codebase to identify and remove AI-generated code slop. Use extended thinking to thoroughly analyze every finding.
+Conduct an exhaustive sweep of the ENTIRE codebase to identify and remove AI-generated code slop. Use ultrathink extended thinking to thoroughly analyze every finding.
 
 **Scope: Leave No Stone Unturned.**
 - Scan EVERY source file in the repository — do not sample or spot-check.

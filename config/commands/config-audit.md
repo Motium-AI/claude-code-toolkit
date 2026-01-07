@@ -2,6 +2,8 @@
 description: Audit environment variables for fallback patterns, missing values, and config-dependent runtime behavior
 ---
 
+Use ultrathink to thoroughly analyze configuration patterns and potential runtime issues.
+
 ## Purpose
 
 Static code analysis (like /QA) cannot catch config-dependent runtime behavior. This command specifically audits environment variable usage to find issues that only manifest with production configuration.

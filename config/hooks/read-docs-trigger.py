@@ -18,7 +18,9 @@ def main():
     if "read the docs" not in message:
         sys.exit(0)
 
-    reminder = """Before starting this task, you MUST:
+    reminder = """Use ultrathink to thoroughly understand the documentation.
+
+Before starting this task, you MUST:
 
 1. Read docs/index.md to understand the documentation structure
 2. Follow links to the most relevant docs for this specific request

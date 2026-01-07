@@ -227,7 +227,9 @@ def main():
     change_specific_tests = format_change_specific_tests(change_types)
 
     # First stop - block and give instructions
-    instructions = f"""Before stopping, complete these checks:
+    instructions = f"""Use ultrathink to verify all requirements are met.
+
+Before stopping, complete these checks:
 
 1. CLAUDE.md COMPLIANCE (if code written):
    - boring over clever, local over abstract

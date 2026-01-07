@@ -2,6 +2,8 @@
 description: Establish performance benchmarks and optimize Next.js + FastAPI apps
 ---
 
+Use ultrathink to thoroughly analyze performance bottlenecks and optimization opportunities.
+
 **Context:** Next.js 14 (App Router) frontend + FastAPI backend.
 Running locally via `pnpm dev` (port 3000) and `uvicorn` (port 8000).
 Auth: Cookie-based session (login as test user before benchmarks).

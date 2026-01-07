@@ -35,7 +35,7 @@ Exit plan mode and generate the final report using the synthesized findings.
 
 ---
 
-Conduct an exhaustive audit of ALL Markdown documentation files in this repository. Use extended thinking to thoroughly analyze every finding.
+Conduct an exhaustive audit of ALL Markdown documentation files in this repository. Use ultrathink extended thinking to thoroughly analyze every finding.
 
 **Scope: Leave No Stone Unturned.**
 - Scan EVERY .md file in the repository, not just /docs — check root-level files, nested READMEs in subdirectories, inline documentation in /examples, /scripts, etc.
