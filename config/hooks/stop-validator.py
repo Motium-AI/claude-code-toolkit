@@ -23,6 +23,18 @@ from pathlib import Path
 # Status file must be updated within this many seconds to be considered fresh
 STATUS_FILE_MAX_AGE_SECONDS = 300  # 5 minutes
 
+# Patterns that only apply to specific file types (reduces false positives)
+# If not listed here, pattern applies to all files
+PYTHON_ONLY_PATTERNS = {"orm_boundary", "database", "datetime_boundary", "serialization_boundary"}
+JS_TS_ONLY_PATTERNS = {"link", "websocket"}  # React/Next.js patterns
+
+# Files/directories to exclude from pattern matching (contain pattern strings as literals)
+EXCLUDED_PATHS = {
+    "hooks/",
+    ".claude/",
+    "node_modules/",
+    "__pycache__/",
+}
 
 # Change type patterns and their testing requirements
 CHANGE_PATTERNS: dict[str, dict] = {
@@ -271,10 +283,23 @@ def check_file_freshness(status_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def get_git_diff() -> str:
-    """Get combined staged and unstaged git diff."""
+def is_excluded_path(filepath: str) -> bool:
+    """Check if a file path should be excluded from pattern matching."""
+    for excluded in EXCLUDED_PATHS:
+        if excluded in filepath:
+            return True
+    return False
+
+
+def get_git_diff() -> dict[str, str]:
+    """
+    Get structured git diff with file awareness.
+
+    Returns:
+        dict mapping filename -> changed lines content (only +/- lines)
+    """
     try:
-        # Get both staged and unstaged changes
+        # Get list of changed files (staged + unstaged)
         staged = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
             capture_output=True,
@@ -288,38 +313,74 @@ def get_git_diff() -> str:
             timeout=5,
         )
 
-        # Also get the actual diff content for pattern matching
-        diff_content = subprocess.run(
-            ["git", "diff", "--cached"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        unstaged_content = subprocess.run(
-            ["git", "diff"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        staged_files = [f for f in staged.stdout.strip().split("\n") if f]
+        unstaged_files = [f for f in unstaged.stdout.strip().split("\n") if f]
+        all_files = set(staged_files + unstaged_files)
 
-        files = staged.stdout + "\n" + unstaged.stdout
-        content = diff_content.stdout + "\n" + unstaged_content.stdout
-        return files + "\n" + content
+        # Filter out excluded paths
+        filtered_files = [f for f in all_files if not is_excluded_path(f)]
+
+        # Get diff content for each file, extracting only changed lines
+        file_diffs: dict[str, str] = {}
+        for filename in filtered_files:
+            # Try staged first, then unstaged
+            diff = subprocess.run(
+                ["git", "diff", "--cached", "--", filename],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if not diff.stdout:
+                diff = subprocess.run(
+                    ["git", "diff", "--", filename],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+
+            # Extract only added/removed lines (skip diff headers and context)
+            changed_lines = []
+            for line in diff.stdout.split("\n"):
+                if line.startswith("+") and not line.startswith("+++"):
+                    changed_lines.append(line[1:])  # Remove + prefix
+                elif line.startswith("-") and not line.startswith("---"):
+                    changed_lines.append(line[1:])  # Remove - prefix
+
+            if changed_lines:
+                file_diffs[filename] = "\n".join(changed_lines)
+
+        return file_diffs
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        return ""
+        return {}
 
 
-def detect_change_types(diff: str) -> list[str]:
-    """Detect which types of changes were made based on diff content."""
-    detected = []
+def detect_change_types(file_diffs: dict[str, str]) -> list[str]:
+    """
+    Detect change types with file-extension awareness to reduce false positives.
 
-    for change_type, config in CHANGE_PATTERNS.items():
-        for pattern in config["patterns"]:
-            if re.search(pattern, diff, re.IGNORECASE):
-                detected.append(change_type)
-                break  # Only add each type once
+    Args:
+        file_diffs: dict mapping filename -> changed lines content
+    """
+    detected: set[str] = set()
 
-    return detected
+    for filename, content in file_diffs.items():
+        ext = Path(filename).suffix.lower()
+
+        for change_type, config in CHANGE_PATTERNS.items():
+            # Skip Python-only patterns for non-Python files
+            if change_type in PYTHON_ONLY_PATTERNS and ext != ".py":
+                continue
+
+            # Skip JS/TS-only patterns for non-JS/TS files
+            if change_type in JS_TS_ONLY_PATTERNS and ext not in {".js", ".jsx", ".ts", ".tsx"}:
+                continue
+
+            for pattern in config["patterns"]:
+                if re.search(pattern, content, re.IGNORECASE):
+                    detected.add(change_type)
+                    break  # Only add each type once per file
+
+    return list(detected)
 
 
 def format_change_specific_tests(change_types: list[str]) -> str:
@@ -385,8 +446,8 @@ Write the status file now, then try to stop again."""
 
     # Gather all context
     status_ok, status_msg = check_status_file(cwd, session_id)
-    diff = get_git_diff()
-    change_types = detect_change_types(diff)
+    file_diffs = get_git_diff()
+    change_types = detect_change_types(file_diffs)
     change_specific_tests = format_change_specific_tests(change_types)
 
     # Build status section (item 0) - only shown if status check failed
