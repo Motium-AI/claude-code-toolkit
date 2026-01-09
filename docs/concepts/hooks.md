@@ -4,11 +4,12 @@ Reference documentation for implementing global Claude Code hooks that inject co
 
 ## Overview
 
-Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers three patterns:
+Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers four patterns:
 
 1. **SessionStart (Context Injection)**: Force Claude to read project documentation before beginning work
-2. **Stop (Blocking Enforcement)**: Block Claude from stopping until compliance checks are addressed
-3. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
+2. **Stop (Blocking Enforcement)**: Block Claude from stopping until compliance checks are addressed AND status.md is updated
+3. **UserPromptSubmit (Status Updates)**: Instruct Claude to update .claude/status.md on every prompt for Mimesis UI monitoring
+4. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
 
 ## Architecture
 
@@ -282,6 +283,70 @@ After completing these checks, you may stop.
 ```
 
 When `stop_hook_active=true` (second stop attempt): Hook allows stop silently.
+
+### Status File Enforcement
+
+The Stop hook also verifies that `.claude/status.md` exists and was recently updated (within 5 minutes). This ensures Claude always writes status updates for the Mimesis monitoring UI before stopping.
+
+**Status check is NOT bypassed by `stop_hook_active`** - even on the second stop attempt, Claude must have an up-to-date status file.
+
+```
+First stop:  status missing → Block with status instructions
+Second stop: status present → Check compliance (stop_hook_active logic)
+```
+
+### UserPromptSubmit Hook (Status Updates)
+
+On every user prompt, Claude receives instructions to update `.claude/status.md`. This is advisory (exit 0) but combined with the blocking Stop hook, ensures status is always written.
+
+#### Status Working Script
+
+Location: `~/.claude/hooks/status-working.py`
+
+```python
+#!/usr/bin/env python3
+"""
+UserPromptSubmit hook - instructs Claude to update status.md for Mimesis UI monitoring.
+"""
+import json
+import sys
+from datetime import datetime, timezone
+
+
+def main():
+    try:
+        input_data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        sys.exit(0)
+
+    cwd = input_data.get("cwd", "")
+    if not cwd:
+        sys.exit(0)
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    instruction = f"""<system-reminder>
+Write your current status to {cwd}/.claude/status.md in this format:
+
+```markdown
+---
+status: working
+updated: {timestamp}
+task: <brief description of what you're working on>
+---
+
+## Summary
+<1-2 sentence summary of current activity>
+```
+</system-reminder>"""
+
+    print(instruction)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+```
 
 ### UserPromptSubmit Hook (On-Demand)
 

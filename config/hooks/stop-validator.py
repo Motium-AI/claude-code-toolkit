@@ -4,15 +4,22 @@ Global Stop Hook Validator
 
 Blocks Claude from stopping on first attempt and provides instructions.
 Detects change types from git diff and shows relevant testing requirements.
+Verifies status.md exists and is recent before allowing stop.
 
 Exit codes:
   0 - Allow stop
   2 - Block stop (stderr shown to Claude)
 """
 import json
+import os
 import re
 import subprocess
 import sys
+from datetime import datetime
+from pathlib import Path
+
+# Status file must be updated within this many seconds to be considered fresh
+STATUS_FILE_MAX_AGE_SECONDS = 300  # 5 minutes
 
 
 # Change type patterns and their testing requirements
@@ -212,6 +219,26 @@ CHANGE_PATTERNS: dict[str, dict] = {
 }
 
 
+def check_status_file(cwd: str) -> tuple[bool, str]:
+    """Check if status.md exists and is recent."""
+    if not cwd:
+        return True, ""  # No cwd, skip check
+
+    status_path = Path(cwd) / ".claude" / "status.md"
+
+    if not status_path.exists():
+        return False, f"Missing: {status_path}"
+
+    # Check if recently modified
+    mtime = status_path.stat().st_mtime
+    age = datetime.now().timestamp() - mtime
+
+    if age > STATUS_FILE_MAX_AGE_SECONDS:
+        return False, f"Stale: {status_path} (last modified {int(age)}s ago)"
+
+    return True, ""
+
+
 def get_git_diff() -> str:
     """Get combined staged and unstaged git diff."""
     try:
@@ -286,7 +313,34 @@ def main():
         # If we can't parse input, allow stop to prevent blocking
         sys.exit(0)
 
+    cwd = input_data.get("cwd", "")
     stop_hook_active = input_data.get("stop_hook_active", False)
+
+    # ALWAYS check status file - even on second attempt
+    status_ok, status_msg = check_status_file(cwd)
+
+    if not status_ok:
+        instructions = f"""BLOCKED: Status file not updated.
+
+{status_msg}
+
+You MUST update {cwd}/.claude/status.md before stopping.
+
+Write your completion status now using this format:
+```markdown
+---
+status: completed
+updated: <ISO timestamp>
+task: <what was accomplished>
+---
+
+## Summary
+<1-2 sentence summary of what was done>
+```
+
+After updating the status file, you may try to stop again."""
+        print(instructions, file=sys.stderr)
+        sys.exit(2)
 
     # Break the loop - if we already blocked once, allow stop
     if stop_hook_active:
