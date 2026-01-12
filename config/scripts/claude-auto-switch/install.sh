@@ -24,6 +24,35 @@ chmod +x "$TARGET_DIR/switch.py"
 
 echo "✅ Installed to: $TARGET_DIR"
 echo ""
+
+# Symlink settings.json to share MCP servers, hooks, env vars across accounts
+echo "🔗 Setting up settings symlinks for backup accounts..."
+for dir in ~/.claude-max-*; do
+    if [ -d "$dir" ] && [ ! -L "$dir/settings.json" ]; then
+        ln -sf ~/.claude/settings.json "$dir/settings.json"
+        echo "   Linked: $dir/settings.json -> ~/.claude/settings.json"
+    fi
+done
+echo ""
+
+# Symlink projects directory to enable session resume across accounts
+echo "🔗 Setting up projects symlinks for session sharing..."
+for dir in ~/.claude-max-*; do
+    if [ -d "$dir" ]; then
+        # Remove existing projects dir (if it's a directory, not a symlink)
+        if [ -d "$dir/projects" ] && [ ! -L "$dir/projects" ]; then
+            rm -rf "$dir/projects"
+            echo "   Removed: $dir/projects (was directory)"
+        fi
+        # Create symlink if not exists
+        if [ ! -L "$dir/projects" ]; then
+            ln -sf ~/.claude/projects "$dir/projects"
+            echo "   Linked: $dir/projects -> ~/.claude/projects"
+        fi
+    fi
+done
+echo ""
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "NEXT STEPS:"
@@ -38,15 +67,19 @@ echo ""
 echo "    CLAUDE_CONFIG_DIR=~/.claude-max-2 claude"
 echo "    # Complete login for account 2, then exit"
 echo ""
-echo "3️⃣  Add alias to your shell config (~/.zshrc or ~/.bashrc):"
+echo "3️⃣  Symlink settings (preserves MCP servers, hooks, env vars):"
+echo "    ln -sf ~/.claude/settings.json ~/.claude-max-1/settings.json"
+echo "    ln -sf ~/.claude/settings.json ~/.claude-max-2/settings.json"
+echo ""
+echo "4️⃣  Add alias to your shell config (~/.zshrc or ~/.bashrc):"
 echo ""
 echo "    # Add this line:"
 echo "    alias claude='python3 $TARGET_DIR/switch.py'"
 echo ""
-echo "4️⃣  Reload your shell:"
+echo "5️⃣  Reload your shell:"
 echo "    source ~/.zshrc  # or source ~/.bashrc"
 echo ""
-echo "5️⃣  (Optional) Edit config to customize account names:"
+echo "6️⃣  (Optional) Edit config to customize account names:"
 echo "    $EDITOR $TARGET_DIR/config.json"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

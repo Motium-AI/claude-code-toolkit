@@ -37,7 +37,26 @@ CLAUDE_CONFIG_DIR=~/.claude-max-2 claude
 # Complete login, then exit with Ctrl+C
 ```
 
-### 3. Add Shell Alias
+### 3. Symlink Settings and Sessions
+
+Share your MCP servers, hooks, env vars, and sessions across accounts:
+
+```bash
+# Share settings (MCP servers, hooks, env vars)
+ln -sf ~/.claude/settings.json ~/.claude-max-1/settings.json
+ln -sf ~/.claude/settings.json ~/.claude-max-2/settings.json
+
+# Share sessions (enables --resume across accounts)
+rm -rf ~/.claude-max-1/projects ~/.claude-max-2/projects
+ln -sf ~/.claude/projects ~/.claude-max-1/projects
+ln -sf ~/.claude/projects ~/.claude-max-2/projects
+```
+
+This ensures all accounts share:
+- MCP servers and settings
+- Session storage (allows resuming sessions on any account)
+
+### 4. Add Shell Alias
 
 Add to `~/.zshrc` or `~/.bashrc`:
 
@@ -67,19 +86,24 @@ claude  # Auto-switches when rate limited
 │  1. Start claude with Account 1                                  │
 │     └─→ CLAUDE_CONFIG_DIR=~/.claude-max-1                       │
 │                                                                  │
-│  2. Monitor stdout for rate limit patterns                       │
+│  2. Capture session ID from startup output                       │
+│     └─→ UUID pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx      │
+│                                                                  │
+│  3. Monitor stdout for rate limit patterns                       │
 │     └─→ "usage limit", "rate limit", "capacity exceeded"        │
 │                                                                  │
-│  3. On detection:                                                │
-│     ├─→ Save last 50 lines as context                           │
+│  4. On detection:                                                │
+│     ├─→ Save session ID to ~/.claude/.auto-switch-session       │
 │     ├─→ Terminate current session                               │
-│     └─→ Launch Account 2 with context injection                 │
+│     └─→ Launch Account 2 with --resume <session-id>             │
 │                                                                  │
-│  4. Continue conversation on Account 2                           │
-│     └─→ Context summary injected as initial prompt              │
+│  5. Continue conversation on Account 2                           │
+│     └─→ Same session, full context preserved                    │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Key**: Because accounts share the projects directory via symlink, `--resume` works across accounts with full session continuity.
 
 ## Configuration
 
@@ -141,32 +165,24 @@ You can add additional backup accounts:
 }
 ```
 
-## Context Preservation
+## Session Resume
 
-When switching accounts, the script:
+When switching accounts, the script uses Claude's native `--resume` flag:
 
-1. Captures the last ~50 lines of conversation
-2. Saves to `~/.claude/.auto-switch-context.md`
-3. Injects as initial prompt on the new account
+1. Captures session ID from startup output (UUID in first 50 lines)
+2. Saves to `~/.claude/.auto-switch-session` on rate limit
+3. Launches next account with `--resume <session-id>`
 
-### Limitations
+### Requirements
 
-- **Code blocks may be truncated** - Long code outputs might be cut off
-- **Very long conversations lose earlier context** - Only recent lines preserved
-- **New session ID** - The new account starts a fresh session
-- **No tool state** - File modifications, git state, etc. don't transfer
+- **Projects symlink**: All accounts must share `~/.claude/projects`
+- **Session ID capture**: Script must detect UUID in Claude's output
 
-### Disabling Context Preservation
+### Benefits
 
-If you prefer a clean start on each switch:
-
-```json
-{
-  "context_preservation": {
-    "enabled": false
-  }
-}
-```
+- **Full context preserved** - Entire conversation history maintained
+- **Same session ID** - Continues the exact same session
+- **Tool state preserved** - All context from previous account carries over
 
 ## Troubleshooting
 
@@ -209,6 +225,8 @@ If switches aren't happening when expected, Anthropic may have changed their mes
 ### Environment Variable
 
 The script uses `CLAUDE_CONFIG_DIR` - an undocumented but official environment variable that tells Claude Code where to store its configuration, credentials, and session data.
+
+**Important:** The wrapper only sets `CLAUDE_CONFIG_DIR` for non-default directories. Setting it explicitly to `~/.claude` (even though that's the default) can cause issues like MCP servers not being detected. The wrapper handles this automatically.
 
 ### PTY Handling
 

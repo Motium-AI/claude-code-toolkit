@@ -30,6 +30,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_FILE = SCRIPT_DIR / "config.json"
 CONTEXT_FILE = Path.home() / ".claude" / ".auto-switch-context.md"
+SESSION_FILE = Path.home() / ".claude" / ".auto-switch-session"
+
+# UUID pattern for session ID detection
+SESSION_ID_PATTERN = re.compile(r"([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", re.IGNORECASE)
 
 
 def load_config() -> dict:
@@ -78,6 +82,28 @@ def load_context() -> str | None:
     return None
 
 
+def save_session_id(session_id: str):
+    """Save session ID for resume on next account."""
+    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_FILE.write_text(session_id)
+    print(f"📎 Session ID saved: {session_id[:8]}...")
+
+
+def load_session_id() -> str | None:
+    """Load saved session ID if exists."""
+    if SESSION_FILE.exists():
+        session_id = SESSION_FILE.read_text().strip()
+        SESSION_FILE.unlink()  # One-time use
+        return session_id if session_id else None
+    return None
+
+
+def extract_session_id(line: str) -> str | None:
+    """Extract session ID from output line."""
+    match = SESSION_ID_PATTERN.search(line)
+    return match.group(1) if match else None
+
+
 def capture_conversation_buffer(output_lines: list[str], max_lines: int = 100) -> str:
     """Extract recent conversation for context preservation."""
     # Get last N lines, filter out system noise
@@ -100,38 +126,43 @@ def run_claude_interactive(
     account: dict,
     args: list[str],
     patterns: list[str],
-    inject_context: str | None = None,
-) -> tuple[int, list[str]]:
+    session_id_to_resume: str | None = None,
+) -> tuple[int, list[str], str | None]:
     """
     Run claude interactively with PTY for proper terminal handling.
-    Returns (exit_code, output_lines).
+    Returns (exit_code, output_lines, captured_session_id).
     exit_code -1 means rate limit detected.
     """
     config_dir = expand_path(account["config_dir"])
+    default_config_dir = Path.home() / ".claude"
 
     if not config_dir.exists():
         print(f"\n⚠️  Config directory not found: {config_dir}")
         print(f"   First, authenticate this account:")
         print(f"   CLAUDE_CONFIG_DIR={config_dir} claude")
         print()
-        return 1, []
+        return 1, [], None
 
     env = os.environ.copy()
-    env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+
+    # Only set CLAUDE_CONFIG_DIR for non-default directories
+    # Setting it explicitly (even to ~/.claude) can break MCP server detection
+    if config_dir != default_config_dir:
+        env["CLAUDE_CONFIG_DIR"] = str(config_dir)
 
     print(f"\n🔄 Using account: {account['name']} ({config_dir.name})")
 
     # Build command
     cmd = ["claude"] + args
 
-    # If injecting context, pass it as a prompt argument
-    if inject_context:
-        print("📋 Injecting previous context...")
-        # Add context as initial prompt
-        cmd.extend(["--print", inject_context])
+    # If resuming a session, use --resume flag
+    if session_id_to_resume:
+        print(f"📋 Resuming session: {session_id_to_resume[:8]}...")
+        cmd.extend(["--resume", session_id_to_resume])
 
     output_lines: list[str] = []
     rate_limit_detected = False
+    captured_session_id: str | None = None
 
     # Save original terminal settings
     stdin_fd = sys.stdin.fileno()
@@ -172,9 +203,16 @@ def run_claude_interactive(
                         sys.stdout.write(text)
                         sys.stdout.flush()
 
-                        # Track output for context preservation
+                        # Track output for context preservation and session ID capture
                         for line in text.splitlines():
                             output_lines.append(line)
+
+                            # Capture session ID from early output (first 50 lines)
+                            if captured_session_id is None and len(output_lines) < 50:
+                                session_id = extract_session_id(line)
+                                if session_id:
+                                    captured_session_id = session_id
+
                             if detect_rate_limit(line, patterns):
                                 rate_limit_detected = True
                                 # Restore terminal before printing
@@ -208,17 +246,32 @@ def run_claude_interactive(
             except OSError:
                 pass
 
-        # Get final exit status
-        try:
-            _, status = os.waitpid(pid, 0)
-            exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1
-        except ChildProcessError:
-            exit_code = 0
+        # Wait for child to exit with timeout, then force kill if needed
+        import time
+
+        exit_code = 0
+        for _ in range(30):  # 3 second timeout (30 * 0.1s)
+            result = os.waitpid(pid, os.WNOHANG)
+            if result[0] != 0:
+                exit_code = os.WEXITSTATUS(result[1]) if os.WIFEXITED(result[1]) else 1
+                break
+            time.sleep(0.1)
+        else:
+            # Child didn't respond to SIGTERM, force kill
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                pass
+            exit_code = 1
 
         if rate_limit_detected:
-            return -1, output_lines
+            return -1, output_lines, captured_session_id
 
-        return exit_code, output_lines
+        return exit_code, output_lines, captured_session_id
 
 
 def main():
@@ -229,47 +282,42 @@ def main():
     config = load_config()
     accounts = config["accounts"]
     patterns = config["detection_patterns"]
-    max_context_lines = config.get("context_preservation", {}).get("max_lines", 50)
 
     if not accounts:
         print("❌ No accounts configured in config.json")
         return 1
 
-    # Check for saved context from previous switch
-    saved_context = load_context()
-    if saved_context:
-        print("📋 Found context from previous account switch")
+    # Check for saved session ID from previous switch
+    saved_session_id = load_session_id()
+    if saved_session_id:
+        print(f"📋 Found session to resume: {saved_session_id[:8]}...")
 
     current_idx = 0
     all_output: list[str] = []
+    current_session_id: str | None = saved_session_id
 
     while current_idx < len(accounts):
         account = accounts[current_idx]
 
-        # Inject context on switch (not first run)
-        inject = None
-        if current_idx > 0 and all_output:
-            # Create context summary from previous conversation
-            summary = capture_conversation_buffer(all_output, max_context_lines * 2)
-            inject = f"""Continue the following conversation that was interrupted due to rate limit on the previous account:
+        # Resume session on switch (not first run, or if saved session exists)
+        resume_id = None
+        if current_idx > 0 and current_session_id:
+            resume_id = current_session_id
+        elif saved_session_id and current_idx == 0:
+            # Don't auto-resume on first run - let user control that
+            saved_session_id = None
 
----
-{summary}
----
-
-Please continue from where we left off."""
-        elif saved_context:
-            inject = saved_context
-            saved_context = None
-
-        exit_code, output = run_claude_interactive(account, args, patterns, inject)
+        exit_code, output, captured_id = run_claude_interactive(account, args, patterns, resume_id)
         all_output.extend(output)
 
+        # Update session ID if captured
+        if captured_id:
+            current_session_id = captured_id
+
         if exit_code == -1:  # Rate limit
-            # Save context before switching
-            if config.get("context_preservation", {}).get("enabled", True):
-                summary = capture_conversation_buffer(all_output, max_context_lines * 2)
-                save_context(summary)
+            # Save session ID for next account
+            if current_session_id:
+                save_session_id(current_session_id)
 
             current_idx += 1
             if current_idx < len(accounts):
