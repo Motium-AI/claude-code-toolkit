@@ -328,6 +328,8 @@ def get_git_diff() -> dict[str, str]:
                 ["git", "diff", "--cached", "--", filename],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=5,
             )
             if not diff.stdout:
@@ -335,6 +337,8 @@ def get_git_diff() -> dict[str, str]:
                     ["git", "diff", "--", filename],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=5,
                 )
 

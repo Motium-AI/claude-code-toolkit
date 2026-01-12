@@ -21,6 +21,8 @@ import re
 import select
 import signal
 import sys
+import termios
+import tty
 from datetime import datetime
 from pathlib import Path
 
@@ -131,6 +133,10 @@ def run_claude_interactive(
     output_lines: list[str] = []
     rate_limit_detected = False
 
+    # Save original terminal settings
+    stdin_fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(stdin_fd)
+
     # Use PTY for interactive terminal handling
     pid, fd = pty.fork()
 
@@ -140,10 +146,24 @@ def run_claude_interactive(
     else:
         # Parent process
         try:
+            # Set terminal to raw mode for proper keystroke handling
+            tty.setraw(stdin_fd)
+
             while True:
-                # Wait for data or timeout
-                ready, _, _ = select.select([fd], [], [], 0.1)
-                if ready:
+                # Monitor BOTH stdin AND PTY for data
+                ready, _, _ = select.select([fd, stdin_fd], [], [], 0.1)
+
+                # Forward stdin to PTY (user input)
+                if stdin_fd in ready:
+                    try:
+                        data = os.read(stdin_fd, 4096)
+                        if data:
+                            os.write(fd, data)
+                    except OSError:
+                        pass
+
+                # Read PTY output and display
+                if fd in ready:
                     try:
                         data = os.read(fd, 4096)
                         if not data:
@@ -157,6 +177,8 @@ def run_claude_interactive(
                             output_lines.append(line)
                             if detect_rate_limit(line, patterns):
                                 rate_limit_detected = True
+                                # Restore terminal before printing
+                                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_settings)
                                 print(
                                     f"\n\n⚠️  Rate limit detected on account: {account['name']}"
                                 )
@@ -179,14 +201,19 @@ def run_claude_interactive(
             os.kill(pid, signal.SIGTERM)
             raise
         finally:
+            # Always restore terminal settings
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_settings)
             try:
                 os.close(fd)
             except OSError:
                 pass
 
         # Get final exit status
-        _, status = os.waitpid(pid, 0)
-        exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1
+        try:
+            _, status = os.waitpid(pid, 0)
+            exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1
+        except ChildProcessError:
+            exit_code = 0
 
         if rate_limit_detected:
             return -1, output_lines
