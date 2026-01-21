@@ -68,7 +68,7 @@ Domain expertise Claude automatically applies when relevant keywords appear in y
 | `ux-improver` | UX usability review, user flows, affordances, feedback states |
 | `docs-navigator` | Read the docs, check documentation, unfamiliar codebase |
 
-### Hooks (4)
+### Hooks (3)
 
 Lifecycle handlers that run automatically at key moments.
 
@@ -76,8 +76,9 @@ Lifecycle handlers that run automatically at key moments.
 |------|-------|---------|
 | SessionStart | Session begins | Forces Claude to read project docs before starting |
 | Stop | Before stopping | Compliance checklist: code standards, docs, commit |
-| UserPromptSubmit (status) | Each prompt | Instructs Claude to update session-aware status file |
-| UserPromptSubmit (skills) | Each prompt | Suggests relevant skills based on prompt keywords |
+| UserPromptSubmit | Each prompt | Updates status file, triggers doc reading |
+
+> **Note:** Additional hooks (`skill-reminder.py`, `finalize-status-v5.py`) exist in `config/hooks/` but are not enabled by default. See [docs/concepts/hooks.md](docs/concepts/hooks.md) for configuration.
 
 ## How It Works
 
@@ -88,12 +89,13 @@ Lifecycle handlers that run automatically at key moments.
 │                                                                          │
 │  1. SESSION START                                                        │
 │     └─→ SessionStart hook fires                                          │
-│         └─→ Forces Claude to read CLAUDE.md, docs/index.md, MEMORIES.md │
+│         └─→ Forces Claude to read docs/index.md, CLAUDE.md, MEMORIES.md, │
+│             TECHNICAL_OVERVIEW.md                                        │
 │                                                                          │
 │  2. USER SENDS PROMPT                                                    │
 │     └─→ UserPromptSubmit hook fires                                      │
-│         └─→ skill-reminder.py scans for keywords                         │
-│             └─→ Suggests: "Consider using /nextjs-tanstack-stack"        │
+│         └─→ status-working.py updates session status file                │
+│         └─→ read-docs-trigger.py suggests reading relevant docs          │
 │                                                                          │
 │  3. USER RUNS /COMMAND                                                   │
 │     └─→ Command markdown loaded                                          │
@@ -130,11 +132,12 @@ claude-code-toolkit/
 │   │   ├── QA.md
 │   │   ├── deslop.md
 │   │   └── ...
-│   ├── hooks/                  # 4 Python hook scripts
-│   │   ├── stop-validator.py
-│   │   ├── status-working.py
-│   │   ├── skill-reminder.py
-│   │   └── read-docs-trigger.py
+│   ├── hooks/                  # 5 Python hook scripts (3 enabled by default)
+│   │   ├── stop-validator.py         # Enabled: Stop compliance checks
+│   │   ├── status-working.py         # Enabled: Status file updates
+│   │   ├── read-docs-trigger.py      # Enabled: Doc reading suggestions
+│   │   ├── skill-reminder.py         # Disabled: Skill keyword matching
+│   │   └── finalize-status-v5.py     # Disabled: AI status analysis
 │   └── skills/                 # 9 skill directories
 │       ├── async-python-patterns/
 │       ├── nextjs-tanstack-stack/

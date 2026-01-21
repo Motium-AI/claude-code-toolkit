@@ -127,7 +127,7 @@ Location: `~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'MANDATORY: Before executing ANY user request, you MUST use the Read tool to read these files IN ORDER: (1) docs/index.md - project documentation hub with architecture links (2) CLAUDE.md - coding standards you MUST follow (3) .claude/MEMORIES.md - prior session context. DO NOT skip this step. DO NOT summarize from memory. Actually READ the files. The user expects informed responses based on current project state, not generic assistance.'",
+            "command": "python3 ~/.claude/hooks/read-docs-reminder.py",
             "timeout": 5
           }
         ]
@@ -325,7 +325,8 @@ To make hooks effective, the language must be **forceful enough to compete with 
 SessionStart:startup hook success: MANDATORY: Before executing ANY user request,
 you MUST use the Read tool to read these files IN ORDER: (1) docs/index.md -
 project documentation hub with architecture links (2) CLAUDE.md - coding
-standards you MUST follow (3) .claude/MEMORIES.md - prior session context.
+standards you MUST follow (3) .claude/MEMORIES.md - prior session context
+(4) docs/TECHNICAL_OVERVIEW.md - architecture and system design (if exists).
 DO NOT skip this step. DO NOT summarize from memory. Actually READ the files.
 The user expects informed responses based on current project state, not generic
 assistance.
@@ -551,7 +552,7 @@ Format recommendation:
 
 1. Start a new Claude Code session (or resume)
 2. Look for system message: `SessionStart:* hook success: MANDATORY...`
-3. Verify Claude actually uses Read tool on docs/index.md, CLAUDE.md, and .claude/MEMORIES.md before responding
+3. Verify Claude actually uses Read tool on docs/index.md, CLAUDE.md, .claude/MEMORIES.md, and docs/TECHNICAL_OVERVIEW.md (if exists) before responding
 
 ### Verify Stop Hook (Blocking)
 
@@ -636,6 +637,64 @@ Stop hook error: JSON validation failed
 ```
 
 **Conclusion**: `type: "prompt"` hooks are unreliable. Use `type: "command"` with exit codes instead.
+
+## Optional Hooks (Disabled by Default)
+
+Two additional hooks exist in `config/hooks/` but are not enabled in `settings.json`:
+
+### skill-reminder.py
+
+Scans user prompts for keywords and suggests relevant skills.
+
+**Purpose**: Automatically remind Claude to use skills like `/nextjs-tanstack-stack` when relevant keywords appear.
+
+**How it works**:
+1. Receives user prompt via stdin JSON (`message` field)
+2. Matches keywords against skill trigger patterns
+3. Outputs suggestion like: `Consider using the Skill tool to invoke /nextjs-tanstack-stack`
+
+**To enable**, add to `settings.json` under `UserPromptSubmit`:
+
+```json
+{
+  "type": "command",
+  "command": "python3 ~/.claude/config/hooks/skill-reminder.py",
+  "timeout": 5
+}
+```
+
+**Why disabled**: Can be noisy if you don't use skills frequently. Enable if you want proactive skill suggestions.
+
+### finalize-status-v5.py
+
+Runs AI analysis on git diff to populate semantic status fields before stopping.
+
+**Purpose**: Enhance status files with machine-analyzed metadata:
+- `impact_level`: Scope of changes (local/module/cross-module)
+- `broadcast_level`: Who needs to know (team/org/external)
+- `doc_drift_risk`: Whether documentation may need updating
+
+**How it works**:
+1. Runs on Stop event (after stop-validator.py)
+2. Reads current git diff
+3. Uses Claude API to analyze changes
+4. Updates status file with semantic fields
+
+**Dependencies**:
+- Requires schema at `~/.claude/commander/schemas/finalize_status.json`
+- Requires Claude API access (uses `ANTHROPIC_API_KEY`)
+
+**To enable**, add to `settings.json` under `Stop`:
+
+```json
+{
+  "type": "command",
+  "command": "python3 ~/.claude/config/hooks/finalize-status-v5.py",
+  "timeout": 30
+}
+```
+
+**Why disabled**: Requires external schema and API access. Enable for teams using the Mimesis monitoring UI with semantic filtering.
 
 ## Related Documentation
 
