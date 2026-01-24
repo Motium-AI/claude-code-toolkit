@@ -33,6 +33,60 @@
             "type": "command",
             "command": "python3 ~/.claude/hooks/stop-validator.py",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-stop-validator.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-auto-answer.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-exitplan-auto-approve.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": {
+          "tool_name": "ExitPlanMode"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-auto-approve.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-subagent-validator.py",
+            "timeout": 10
           }
         ]
       }
