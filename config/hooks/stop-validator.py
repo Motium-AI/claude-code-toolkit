@@ -4,24 +4,88 @@ Global Stop Hook Validator
 
 Two-phase stop flow:
 1. First stop (stop_hook_active=false): Show FULL compliance checklist, block
-2. Second stop (stop_hook_active=true): Enforce status file freshness, then allow
+2. Second stop (stop_hook_active=true): Allow stop (loop prevention)
 
 Detects change types from git diff and shows relevant testing requirements.
 
 Exit codes:
   0 - Allow stop
   2 - Block stop (stderr shown to Claude)
+
+Note: Status file hooks were removed in January 2025. Anthropic's native Tasks
+feature now provides better session tracking and coordination.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+# Debug logging - helps diagnose Claude Code bug where stop hooks fail silently
+DEBUG_LOG = Path(tempfile.gettempdir()) / "stop-hook-debug.log"
 
-# Status file must be updated within this many seconds to be considered fresh
-STATUS_FILE_MAX_AGE_SECONDS = 300  # 5 minutes
+
+def log_debug(message: str, raw_input: str = "", parsed_data: dict | None = None) -> None:
+    """
+    Log diagnostic info to help debug Claude Code stop hook issues.
+
+    Per GitHub Issue #17805, Claude Code 2.1.x has a bug where stop hooks
+    fail silently. This logging captures what we actually receive.
+    """
+    try:
+        with open(DEBUG_LOG, "a") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Message: {message}\n")
+            if raw_input:
+                f.write(f"Raw stdin ({len(raw_input)} bytes): {repr(raw_input)}\n")
+            if parsed_data is not None:
+                f.write(f"Parsed data: {json.dumps(parsed_data, indent=2)}\n")
+            f.write(f"{'='*60}\n")
+    except Exception as e:
+        # Don't let logging failures break the hook
+        pass
+
+
+def write_checklist_file(cwd: str, checklist: str) -> Path:
+    """Write full checklist to .claude/compliance-checklist.md"""
+    checklist_path = Path(cwd) / ".claude" / "compliance-checklist.md"
+    checklist_path.parent.mkdir(exist_ok=True)
+    checklist_path.write_text(checklist)
+    return checklist_path
+
+# Plan file patterns for detecting deployment requirements
+PLAN_DEPLOY_PATTERNS = [
+    # Explicit deploy phrases
+    "deploy to", "deploy the", "run deploy", "execute deploy",
+    "push to azure", "deploy changes", "release to",
+    # Script-based deployment
+    "deploy.sh", "deploy.py", "deploy script",
+    "./scripts/deploy", "scripts/deploy",
+    # Action words with deploy
+    "redeploy", "re-deploy",
+    # Common deploy commands
+    "npm run deploy", "yarn deploy", "pnpm deploy",
+    "make deploy", "kubectl apply", "terraform apply",
+    "az deployment", "aws deploy", "gcloud deploy",
+    # CI/CD triggers
+    "trigger deploy", "start deploy", "initiate deploy",
+]
+PLAN_TEST_PATTERNS = [
+    "/webtest", "test in browser", "verify in browser",
+    "test the changes", "browser test", "e2e test"
+]
+
+# Regex patterns for deployment detection (more flexible)
+PLAN_DEPLOY_REGEX = [
+    r"deploy\s+to\s+\w+",        # "deploy to staging", "deploy to prod"
+    r"--env[=\s]*(staging|prod|production)",  # "--env=staging", "--env prod"
+    r"deploy\.(sh|py|ts|js)",    # script files
+    r"scripts?/deploy",          # scripts/deploy or script/deploy
+]
 
 # Patterns that only apply to specific file types (reduces false positives)
 # If not listed here, pattern applies to all files
@@ -35,6 +99,19 @@ EXCLUDED_PATHS = {
     "node_modules/",
     "__pycache__/",
 }
+
+# Patterns that indicate architectural changes requiring TECHNICAL_OVERVIEW.md update
+ARCHITECTURAL_CHANGE_PATTERNS = [
+    r"class\s+\w+Service",      # New service classes
+    r"class\s+\w+Router",       # New routers
+    r"class\s+\w+Handler",      # New handlers
+    r"@app\.(get|post|put|delete|patch)\s*\(['\"]\/(?!api)",  # New root routes
+    r"def\s+main\s*\(",         # New entry points
+    r"index_patterns",          # Elasticsearch template changes
+    r"pauwels_\w+\.json",       # Entity template changes
+    r"mappings.*properties",    # Schema changes
+    r"APIRouter\s*\(",          # New API routers
+]
 
 # Change type patterns and their testing requirements
 CHANGE_PATTERNS: dict[str, dict] = {
@@ -233,53 +310,101 @@ CHANGE_PATTERNS: dict[str, dict] = {
 }
 
 
-def check_status_file(cwd: str, session_id: str = "") -> tuple[bool, str]:
+def get_active_plan() -> dict:
     """
-    Check if status file exists and was recently updated.
+    Get the active plan file and its content.
 
-    Checks for session-specific file first (status.<session_id>.md),
-    then falls back to legacy project-level file (status.md).
-
-    Returns:
-        (is_valid, error_message) - is_valid=True if status file is fresh
+    Returns dict with:
+        - exists: bool
+        - path: str (plan file path)
+        - content: str (full plan content, max 2000 chars)
+        - deploy_required: bool
+        - test_required: bool
+        - env: str
     """
-    if not cwd:
-        return True, ""  # No cwd provided, skip check
+    plans_dir = Path.home() / ".claude" / "plans"
 
-    claude_dir = Path(cwd) / ".claude"
+    if not plans_dir.exists():
+        return {"exists": False, "path": "", "content": "", "deploy_required": False, "test_required": False, "env": "dev"}
 
-    # Try session-specific file first if session_id is available
-    if session_id:
-        session_status_path = claude_dir / f"status.{session_id}.md"
-        if session_status_path.exists():
-            return check_file_freshness(session_status_path)
+    # Get most recently modified plan
+    plan_files = sorted(plans_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not plan_files:
+        return {"exists": False, "path": "", "content": "", "deploy_required": False, "test_required": False, "env": "dev"}
 
-    # Fall back to legacy project-level file
-    legacy_status_path = claude_dir / "status.md"
-    if legacy_status_path.exists():
-        return check_file_freshness(legacy_status_path)
+    plan_path = plan_files[0]
+    plan_content_raw = plan_path.read_text()
+    plan_content_lower = plan_content_raw.lower()
 
-    # Neither file exists
-    if session_id:
-        expected_path = claude_dir / f"status.{session_id}.md"
-    else:
-        expected_path = legacy_status_path
+    # Truncate content for display (keep first 2000 chars)
+    plan_content_display = plan_content_raw[:2000]
+    if len(plan_content_raw) > 2000:
+        plan_content_display += "\n\n[... truncated, see full plan file ...]"
 
-    return False, f"MISSING: {expected_path}\nYou MUST create this file before stopping."
+    # Detect environment target
+    env = "dev"
+    if "prod" in plan_content_lower or "production" in plan_content_lower:
+        env = "prod"
+    elif "staging" in plan_content_lower:
+        env = "staging"
+
+    # Check string patterns
+    deploy_by_string = any(p in plan_content_lower for p in PLAN_DEPLOY_PATTERNS)
+
+    # Check regex patterns
+    deploy_by_regex = any(re.search(p, plan_content_lower) for p in PLAN_DEPLOY_REGEX)
+
+    return {
+        "exists": True,
+        "path": str(plan_path),
+        "content": plan_content_display,
+        "deploy_required": deploy_by_string or deploy_by_regex,
+        "test_required": any(p in plan_content_lower for p in PLAN_TEST_PATTERNS),
+        "env": env,
+    }
 
 
-def check_file_freshness(status_path: Path) -> tuple[bool, str]:
-    """Check if a status file was recently modified."""
-    try:
-        mtime = status_path.stat().st_mtime
-        age_seconds = datetime.now().timestamp() - mtime
+def parse_plan_requirements(cwd: str) -> dict:
+    """Extract deployment and testing requirements from active plan file."""
+    plan = get_active_plan()
+    return {
+        "deploy_required": plan["deploy_required"],
+        "test_required": plan["test_required"],
+        "env": plan["env"],
+        "plan_file": plan["path"]
+    }
 
-        if age_seconds > STATUS_FILE_MAX_AGE_SECONDS:
-            age_minutes = int(age_seconds / 60)
-            return False, f"STALE: {status_path}\nLast modified {age_minutes} minutes ago. You MUST update it before stopping."
-    except OSError as e:
-        return False, f"ERROR reading {status_path}: {e}"
 
+def check_plan_execution(cwd: str) -> tuple[bool, str]:
+    """Validate that plan requirements were actually executed."""
+    requirements = parse_plan_requirements(cwd)
+
+    issues = []
+
+    # Check deployment requirement - remind user to deploy if plan requires it
+    if requirements["deploy_required"]:
+        issues.append(f"""🚫 DEPLOYMENT NOT EXECUTED
+
+Your plan requires deployment to {requirements['env']} but you haven't run it.
+
+You MUST:
+1. Find and run the deploy script (e.g., ./scripts/deploy.sh, npm run deploy)
+2. Do NOT ask the user to deploy - YOU must do it
+
+Look for deploy scripts in: scripts/, package.json scripts, Makefile""")
+
+    # Check testing requirement
+    if requirements["test_required"]:
+        issues.append("""🚫 TESTING NOT EXECUTED
+
+Your plan requires browser testing but /webtest was not run.
+
+You MUST:
+1. Run /webtest skill to verify changes work in browser
+2. Do NOT ask the user to test - YOU must do it""")
+
+    if issues:
+        return False, "\n\n".join(issues)
     return True, ""
 
 
@@ -387,12 +512,26 @@ def detect_change_types(file_diffs: dict[str, str]) -> list[str]:
     return list(detected)
 
 
+def detect_architectural_changes(file_diffs: dict[str, str]) -> bool:
+    """
+    Detect if changes include architectural modifications requiring TECHNICAL_OVERVIEW.md update.
+    """
+    for filename, content in file_diffs.items():
+        for pattern in ARCHITECTURAL_CHANGE_PATTERNS:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+        # Also check if the filename itself indicates architectural change
+        if re.search(r"pauwels_\w+\.json$", filename):
+            return True
+    return False
+
+
 def format_change_specific_tests(change_types: list[str]) -> str:
     """Format testing requirements for detected change types."""
     if not change_types:
         return ""
 
-    lines = ["\n4. CHANGE-SPECIFIC TESTING REQUIRED:"]
+    lines = ["\n\n5. CHANGE-SPECIFIC TESTING REQUIRED:"]
 
     for change_type in change_types:
         config = CHANGE_PATTERNS[change_type]
@@ -404,44 +543,35 @@ def format_change_specific_tests(change_types: list[str]) -> str:
 
 
 def main():
+    # Skip for automation roles (knowledge sync, scheduled jobs)
+    fleet_role = os.environ.get("FLEET_ROLE", "")
+    if fleet_role in ("knowledge_sync", "scheduled_job"):
+        log_debug("Skipping: automation role", parsed_data={"fleet_role": fleet_role})
+        sys.exit(0)
+
+    # Read raw stdin first for diagnostic logging (Claude Code bug #17805)
+    raw_input = sys.stdin.read()
+    log_debug("Stop hook invoked", raw_input=raw_input)
+
+    # Parse the input
     try:
-        input_data = json.load(sys.stdin)
-    except json.JSONDecodeError:
+        input_data = json.loads(raw_input) if raw_input else {}
+    except json.JSONDecodeError as e:
+        # Log the parse failure for debugging
+        log_debug(f"JSON parse error: {e}", raw_input=raw_input)
         # If we can't parse input, allow stop to prevent blocking
         sys.exit(0)
 
+    log_debug("Parsed successfully", parsed_data=input_data)
+
     cwd = input_data.get("cwd", "")
-    session_id = input_data.get("session_id", "")
     stop_hook_active = input_data.get("stop_hook_active", False)
 
     # =========================================================================
-    # SECOND STOP (stop_hook_active=True): Only enforce status, then allow
+    # SECOND STOP (stop_hook_active=True): Allow stop (loop prevention)
     # =========================================================================
     if stop_hook_active:
-        status_ok, status_msg = check_status_file(cwd, session_id)
-        if not status_ok:
-            # Status still stale - block until updated
-            instructions = f"""🚫 STATUS FILE STILL NOT UPDATED
-
-{status_msg}
-
-You MUST update the status file with your completion status:
-
-```markdown
----
-status: completed  # or: error, blocked, idle
-updated: <current timestamp>
-task: <final task description>
----
-
-## Summary
-<What was accomplished>
-```
-
-Write the status file now, then try to stop again."""
-            print(instructions, file=sys.stderr)
-            sys.exit(2)
-        # Status OK - allow stop
+        log_debug("ALLOWING STOP: stop_hook_active=true (second stop)", parsed_data=input_data)
         sys.exit(0)
 
     # =========================================================================
@@ -449,64 +579,116 @@ Write the status file now, then try to stop again."""
     # =========================================================================
 
     # Gather all context
-    status_ok, status_msg = check_status_file(cwd, session_id)
     file_diffs = get_git_diff()
     change_types = detect_change_types(file_diffs)
     change_specific_tests = format_change_specific_tests(change_types)
+    has_architectural_changes = detect_architectural_changes(file_diffs)
 
-    # Build status section (item 0) - only shown if status check failed
-    status_section = ""
-    if not status_ok:
-        status_section = f"""
-0. 🚫 STATUS FILE UPDATE REQUIRED:
-   {status_msg}
+    # Get active plan content
+    plan = get_active_plan()
 
-   Update the status file with:
-   ```markdown
-   ---
-   status: completed
-   updated: <timestamp>
-   task: <what was done>
-   ---
-   ## Summary
-   <accomplishments>
-   ```
+    # Build plan section for the checklist
+    if plan["exists"]:
+        plan_section = f"""
+═══════════════════════════════════════════════════════════════════════════════
+   YOUR ACTIVE PLAN: {plan['path']}
+═══════════════════════════════════════════════════════════════════════════════
+
+{plan['content']}
+
+═══════════════════════════════════════════════════════════════════════════════
+"""
+    else:
+        plan_section = """
+   [No active plan file found in ~/.claude/plans/]
+
+   Even without a plan file, ask yourself:
+   - What did the user ACTUALLY ask for?
+   - Did I deliver that, or just part of it?
 """
 
-    # First stop - block and give FULL instructions
-    instructions = f"""Before stopping, complete these checks:
-{status_section}
-1. CLAUDE.md COMPLIANCE (if code written):
-   - boring over clever, local over abstract
-   - small composable units, stateless with side effects at edges
-   - fail loud never silent, tests are truth
-   - type hints everywhere, snake_case files, absolute imports
-   - Pydantic for contracts, files < 400 lines, functions < 60 lines
+    # Build deployment/testing reminder if detected in plan
+    deploy_test_reminder = ""
+    if plan["deploy_required"]:
+        deploy_test_reminder += f"""
+   🚫 DEPLOYMENT DETECTED IN PLAN → Did you deploy to {plan['env']}? If not, DO IT NOW."""
+    if plan["test_required"]:
+        deploy_test_reminder += """
+   🚫 TESTING DETECTED IN PLAN → Did you run /webtest? If not, DO IT NOW."""
 
-2. DOCUMENTATION (if code written):
-   - Read docs/index.md to understand the documentation structure
-   - Identify ALL docs affected by your changes (architecture, API, operations, etc.)
-   - Update those docs to reflect current implementation
-   - Docs are the authoritative source - keep them accurate and current
-   - Add new docs if you created new components/patterns not yet documented
+    # First stop - block and give FULL instructions with plan at top
+    instructions = f"""
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  🛑  MANDATORY COMPLETION CHECK - YOU MUST READ THIS BEFORE STOPPING  🛑      ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 
-3. UPDATE PROJECT .claude/MEMORIES.md (create if needed):
-   This is NOT a changelog. Only add HIGH-VALUE entries:
-   - User preferences that affect future work style
-   - Architectural decisions with WHY (not what)
-   - Non-obvious gotchas not documented elsewhere
-   - Consolidate/update existing entries rather than append duplicates
-   - If nothing significant learned, skip this step{change_specific_tests}
+This is NOT a suggestion. This is a BLOCKING REQUIREMENT.
 
-5. COMMIT AND PUSH:
-   - Stage all changes: git add -A
-   - Commit with descriptive message summarizing the work
-   - Push to remote: git push
-   - If on a feature branch, consider opening a PR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. DID YOU COMPLETE THE PLAN? (MANDATORY - CHECK THIS FIRST)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{plan_section}
+   ASK YOURSELF:
+   ✗ Are there items in this plan I haven't completed? → COMPLETE THEM NOW
+   ✗ Am I about to say "next steps would be..."? → Those ARE your job. DO THEM.
+   ✗ Am I about to suggest the user do something I could do? → FAILURE. Do it yourself.
+   ✗ Did I stop at 70-80% and call it "done"? → NOT ACCEPTABLE. Finish the job.
+{deploy_test_reminder}
 
-After completing these checks, you may stop."""
+   The user trusted you to work AUTONOMOUSLY. Stopping early and suggesting
+   "next steps" defeats the entire purpose. COMPLETE THE PLAN.
 
-    print(instructions, file=sys.stderr)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. DID YOU MEET THE USER'S ACTUAL GOAL? (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   What did the user ACTUALLY ask for in their original message?
+   - Not 70% done. Not "mostly working". COMPLETE.
+   - If testing was requested or implied, did you TEST?
+   - If deployment was mentioned, did you DEPLOY?
+   - If the user would need to do anything else to use your work, YOU'RE NOT DONE.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. CODE QUALITY (if code was written)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   CLAUDE.md compliance:
+   - Boring over clever, local over abstract
+   - Small composable units, fail loud never silent
+   - Type hints everywhere, files < 400 lines, functions < 60 lines
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. DOCUMENTATION (if code was written)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   - Update docs affected by your changes
+   - Update .claude/MEMORIES.md with significant learnings (not changelog)
+   - If architectural changes{': UPDATE docs/TECHNICAL_OVERVIEW.md' if has_architectural_changes else ': not detected'}{change_specific_tests}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. COMMIT AND PUSH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   - git add, commit with descriptive message, push to remote
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  Only after ALL items above are complete may you stop.                        ║
+║  If items 1 or 2 are NOT complete, you MUST continue working.                 ║
+╚═══════════════════════════════════════════════════════════════════════════════╝"""
+
+    checklist_path = write_checklist_file(cwd, instructions)
+    log_debug(
+        "BLOCKING STOP: first stop, showing compliance checklist",
+        parsed_data={
+            "cwd": cwd,
+            "stop_hook_active": stop_hook_active,
+            "change_types": change_types,
+            "has_architectural_changes": has_architectural_changes,
+            "plan_exists": plan["exists"],
+            "plan_path": plan["path"],
+        }
+    )
+    print(f"⚠️ Compliance check required - see {checklist_path.relative_to(cwd)}", file=sys.stderr)
     sys.exit(2)
 
 

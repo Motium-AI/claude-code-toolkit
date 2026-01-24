@@ -68,7 +68,7 @@ Domain expertise Claude automatically applies when relevant keywords appear in y
 | `ux-improver` | UX usability review, user flows, affordances, feedback states |
 | `docs-navigator` | Read the docs, check documentation, unfamiliar codebase |
 
-### Hooks (3)
+### Hooks (4)
 
 Lifecycle handlers that run automatically at key moments.
 
@@ -76,9 +76,10 @@ Lifecycle handlers that run automatically at key moments.
 |------|-------|---------|
 | SessionStart | Session begins | Forces Claude to read project docs before starting |
 | Stop | Before stopping | Compliance checklist: code standards, docs, commit |
-| UserPromptSubmit | Each prompt | Updates status file, triggers doc reading |
+| UserPromptSubmit | Each prompt | Suggests relevant docs based on keywords |
+| PostToolUse | ExitPlanMode | Reminds Claude to execute plans autonomously |
 
-> **Note:** Additional hooks (`skill-reminder.py`, `finalize-status-v5.py`) exist in `config/hooks/` but are not enabled by default. See [docs/concepts/hooks.md](docs/concepts/hooks.md) for configuration.
+> **Note:** Additional hook `skill-reminder.py` exists in `config/hooks/` but is not enabled by default. See [docs/concepts/hooks.md](docs/concepts/hooks.md) for configuration.
 
 ## How It Works
 
@@ -94,7 +95,6 @@ Lifecycle handlers that run automatically at key moments.
 │                                                                          │
 │  2. USER SENDS PROMPT                                                    │
 │     └─→ UserPromptSubmit hook fires                                      │
-│         └─→ status-working.py updates session status file                │
 │         └─→ read-docs-trigger.py suggests reading relevant docs          │
 │                                                                          │
 │  3. USER RUNS /COMMAND                                                   │
@@ -102,7 +102,12 @@ Lifecycle handlers that run automatically at key moments.
 │         └─→ Structured workflow executes (plan mode, parallel agents)    │
 │             └─→ Formatted output generated                               │
 │                                                                          │
-│  4. CLAUDE TRIES TO STOP                                                 │
+│  4. CLAUDE EXITS PLAN MODE                                               │
+│     └─→ PostToolUse (ExitPlanMode) hook fires                            │
+│         └─→ plan-execution-reminder.py outputs execution reminder        │
+│             └─→ Prompts Claude to begin autonomous implementation        │
+│                                                                          │
+│  5. CLAUDE TRIES TO STOP                                                 │
 │     └─→ Stop hook fires                                                  │
 │         └─→ stop-validator.py checks git diff for change types           │
 │             └─→ Shows: "⚠️ AUTH CHANGES DETECTED: test 401 cascade..."  │
@@ -132,12 +137,12 @@ claude-code-toolkit/
 │   │   ├── QA.md
 │   │   ├── deslop.md
 │   │   └── ...
-│   ├── hooks/                  # 5 Python hook scripts (3 enabled by default)
+│   ├── hooks/                  # 5 Python hook scripts (4 enabled by default)
 │   │   ├── stop-validator.py         # Enabled: Stop compliance checks
-│   │   ├── status-working.py         # Enabled: Status file updates
 │   │   ├── read-docs-trigger.py      # Enabled: Doc reading suggestions
-│   │   ├── skill-reminder.py         # Disabled: Skill keyword matching
-│   │   └── finalize-status-v5.py     # Disabled: AI status analysis
+│   │   ├── read-docs-reminder.py     # Enabled: Doc reading reminders
+│   │   ├── plan-execution-reminder.py # Enabled: Plan execution reminder
+│   │   └── skill-reminder.py         # Disabled: Skill keyword matching
 │   └── skills/                 # 9 skill directories
 │       ├── async-python-patterns/
 │       ├── nextjs-tanstack-stack/

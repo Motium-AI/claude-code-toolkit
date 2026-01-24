@@ -14,6 +14,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/read-docs-reminder.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [

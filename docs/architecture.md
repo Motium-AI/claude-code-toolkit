@@ -215,25 +215,9 @@ Claude stops → Hook blocks → Claude addresses → Claude stops → Hook allo
 
 **Purpose**: React to each user prompt. Multiple hooks can fire on the same event.
 
-This toolkit includes three UserPromptSubmit hooks:
+This toolkit includes two UserPromptSubmit hooks:
 
-#### 1. Status Update Hook (status-working.py)
-
-**Purpose**: Instructs Claude to update session-aware status file for monitoring UI.
-
-**Behavior**:
-1. Fires on every user prompt
-2. Determines status file path (session-specific or legacy)
-3. Outputs MANDATORY instruction to update status file
-4. Returns exit code 0 (advisory, non-blocking)
-
-**Status File Path**:
-- With session_id: `.claude/status.<session_id>.md`
-- Without: `.claude/status.md` (legacy fallback)
-
-**Combined with Stop Hook**: The Stop hook enforces that this status file exists and is fresh before allowing Claude to stop.
-
-#### 2. Skill Suggestion Hook (skill-reminder.py)
+#### 1. Skill Suggestion Hook (skill-reminder.py)
 
 **Purpose**: Suggests relevant skills based on prompt keywords.
 
@@ -243,7 +227,7 @@ This toolkit includes three UserPromptSubmit hooks:
 3. Suggests relevant skills via stdout
 4. Returns exit code 0 (non-blocking)
 
-#### 3. Documentation Trigger Hook (read-docs-trigger.py)
+#### 2. Documentation Trigger Hook (read-docs-trigger.py)
 
 **Purpose**: Triggers deep documentation reading when user says "read the docs".
 
@@ -255,6 +239,8 @@ This toolkit includes three UserPromptSubmit hooks:
 **Usage**: Include "read the docs" anywhere in your prompt:
 - "read the docs and implement the new API endpoint"
 - "I need you to read the docs before refactoring this"
+
+> **Note**: Status file hooks were removed in January 2025. Anthropic's native Tasks feature now handles session tracking. See [concepts/hooks.md](concepts/hooks.md#tasks-deprecation-note) for details.
 
 ## How Change Detection Works
 

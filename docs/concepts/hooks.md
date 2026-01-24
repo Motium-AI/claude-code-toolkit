@@ -4,40 +4,27 @@ Reference documentation for implementing global Claude Code hooks that inject co
 
 ## Overview
 
-Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers four patterns:
+Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers three patterns:
 
 1. **SessionStart (Context Injection)**: Force Claude to read project documentation before beginning work
-2. **Stop (Two-Phase Blocking)**: Block Claude from stopping until compliance checks are addressed AND status file is updated
-3. **UserPromptSubmit (Status Updates)**: Instruct Claude to update session-aware status file on every prompt for Mimesis UI monitoring
-4. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
+2. **Stop (Compliance Blocking)**: Block Claude from stopping until compliance checks are addressed
+3. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
+
+> **Note**: Status file hooks were removed in January 2025. Anthropic's native Tasks feature now provides better session tracking and coordination. See [Tasks Deprecation Note](#tasks-deprecation-note) below.
 
 ## Key Concepts
 
-### Session-Aware Status Files
-
-Status files support both session-specific and legacy formats:
-
-| Format | Path | When Used |
-|--------|------|-----------|
-| Session-specific | `.claude/status.<session_id>.md` | When `session_id` is available |
-| Legacy | `.claude/status.md` | Fallback when no session_id |
-
-The hooks check for session-specific files first, then fall back to the legacy format.
-
 ### Two-Phase Stop Flow
 
-The Stop hook implements a two-phase blocking pattern:
+The Stop hook implements a two-phase blocking pattern to prevent infinite loops:
 
 ```
 First stop (stop_hook_active=false):
-→ Show FULL compliance checklist (5 items)
-→ Include status as item 0 if stale/missing
+→ Show FULL compliance checklist
 → Block (exit 2)
 
 Second stop (stop_hook_active=true):
-→ ONLY check status file freshness
-→ If stale: block with status-only error
-→ If fresh: allow stop (exit 0)
+→ Allow stop (exit 0)
 ```
 
 This ensures Claude sees the full checklist at least once, while preventing infinite loops.
@@ -321,6 +308,7 @@ To make hooks effective, the language must be **forceful enough to compete with 
 
 ### SessionStart (Context Injection)
 
+For `startup` and `resume` matchers (standard message):
 ```
 SessionStart:startup hook success: MANDATORY: Before executing ANY user request,
 you MUST use the Read tool to read these files IN ORDER: (1) docs/index.md -
@@ -330,6 +318,26 @@ standards you MUST follow (3) .claude/MEMORIES.md - prior session context
 DO NOT skip this step. DO NOT summarize from memory. Actually READ the files.
 The user expects informed responses based on current project state, not generic
 assistance.
+```
+
+For `compact` matcher (strengthened message after context compaction):
+```
+SessionStart:compact hook success: ⚠️ CONTEXT COMPACTION DETECTED - CRITICAL INSTRUCTION ⚠️
+
+You have just experienced context compaction. Your memory of this project is now INCOMPLETE.
+
+STOP. Do NOT respond to the user yet.
+
+You MUST read these files FIRST using the Read tool:
+1. CLAUDE.md - coding standards (REQUIRED)
+2. .claude/MEMORIES.md - session context (REQUIRED)
+3. docs/index.md - documentation hub (REQUIRED)
+4. docs/TECHNICAL_OVERVIEW.md - architecture (if exists)
+
+This is NOT optional. Do NOT skip this step. Do NOT summarize from memory.
+The compacted summary is insufficient - you need the actual file contents.
+
+Read the docs NOW before doing anything else.
 ```
 
 ### Stop (Blocking)
@@ -364,97 +372,6 @@ After completing these checks, you may stop.
 ```
 
 When `stop_hook_active=true` (second stop attempt): Hook allows stop silently.
-
-### Status File Enforcement
-
-The Stop hook verifies that a status file exists and was recently updated (within 5 minutes). This ensures Claude always writes status updates for the Mimesis monitoring UI before stopping.
-
-**Session-Aware Status Files**:
-- First checks: `.claude/status.<session_id>.md` (if session_id available)
-- Falls back to: `.claude/status.md` (legacy format)
-
-**Two-Phase Enforcement**:
-```
-First stop:  Show FULL checklist (status as item 0 if stale)
-Second stop: ONLY check status freshness, then allow
-```
-
-The status check is **enforced on both phases** but with different behaviors:
-- Phase 1: Status failure is one item in the full checklist
-- Phase 2: Status failure blocks with a focused status-only message
-
-### UserPromptSubmit Hook (Status Updates)
-
-On every user prompt, Claude receives MANDATORY instructions to update the session-aware status file. This is advisory (exit 0) but combined with the blocking Stop hook, ensures status is always written.
-
-#### Status Working Script
-
-Location: `~/.claude/hooks/status-working.py`
-
-```python
-#!/usr/bin/env python3
-"""
-UserPromptSubmit hook - outputs MANDATORY instructions for Claude to write working status.
-
-This hook fires on every user prompt and instructs Claude to write its status
-to <cwd>/.claude/status.<session_id>.md. The daemon watches these files and streams
-updates to the Mimesis UI.
-"""
-import json
-import sys
-from datetime import datetime, timezone
-
-
-def main():
-    try:
-        input_data = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        sys.exit(0)
-
-    cwd = input_data.get("cwd", "")
-    session_id = input_data.get("session_id", "")
-
-    if not cwd:
-        sys.exit(0)
-
-    # Determine status file path - session-specific if available, else legacy
-    if session_id:
-        status_file = f"{cwd}/.claude/status.{session_id}.md"
-    else:
-        status_file = f"{cwd}/.claude/status.md"
-
-    timestamp = datetime.now(timezone.utc).isoformat()
-
-    instruction = f"""<system-reminder>
-MANDATORY: You MUST write your status to {status_file} BEFORE proceeding.
-
-This is REQUIRED for the Mimesis monitoring UI. The stop hook will BLOCK you from
-stopping if this file is missing or stale. Write it NOW.
-
-```markdown
----
-status: working
-updated: {timestamp}
-task: <brief description of what you're working on>
----
-
-## Summary
-<1-2 sentence summary of current activity>
-```
-
-Do NOT skip this step. Update this file when:
-- Starting a new subtask
-- Encountering blockers
-- Completing significant milestones
-</system-reminder>"""
-
-    print(instruction)
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
-```
 
 ### UserPromptSubmit Hook (On-Demand)
 
@@ -665,36 +582,50 @@ Scans user prompts for keywords and suggests relevant skills.
 
 **Why disabled**: Can be noisy if you don't use skills frequently. Enable if you want proactive skill suggestions.
 
-### finalize-status-v5.py
+## Tasks Deprecation Note
 
-Runs AI analysis on git diff to populate semantic status fields before stopping.
+**Status file hooks were removed in January 2025** because Anthropic implemented native Tasks in Claude Code.
 
-**Purpose**: Enhance status files with machine-analyzed metadata:
-- `impact_level`: Scope of changes (local/module/cross-module)
-- `broadcast_level`: Who needs to know (team/org/external)
-- `doc_drift_risk`: Whether documentation may need updating
+### Why Tasks Replace Status Files
 
-**How it works**:
-1. Runs on Stop event (after stop-validator.py)
-2. Reads current git diff
-3. Uses Claude API to analyze changes
-4. Updates status file with semantic fields
+The original status file system (`status-working.py`, `finalize-status-v5.py`, etc.) was a custom solution for:
+- Tracking what Claude is working on
+- Coordinating across sessions
+- Monitoring via external UI (Mimesis)
 
-**Dependencies**:
-- Requires schema at `~/.claude/commander/schemas/finalize_status.json`
-- Requires Claude API access (uses `ANTHROPIC_API_KEY`)
+Anthropic's native **Tasks** feature provides all of this natively with better capabilities:
 
-**To enable**, add to `settings.json` under `Stop`:
+| Old (Status Files) | New (Tasks) |
+|-------------------|-------------|
+| Custom markdown files per session | Native `~/.claude/tasks/` storage |
+| Manual status updates via hooks | Automatic task tracking |
+| Session-specific isolation | Cross-session coordination |
+| Required hook enforcement | Built-in to Claude Code |
 
-```json
-{
-  "type": "command",
-  "command": "python3 ~/.claude/config/hooks/finalize-status-v5.py",
-  "timeout": 30
-}
+### Using Native Tasks
+
+Tasks are now built into Claude Code. Key features:
+
+```bash
+# Share a task list across sessions
+CLAUDE_CODE_TASK_LIST_ID=my-project claude
+
+# Tasks persist in ~/.claude/tasks/
+# Multiple sessions can collaborate on same task list
 ```
 
-**Why disabled**: Requires external schema and API access. Enable for teams using the Mimesis monitoring UI with semantic filtering.
+**When to use Tasks**:
+- Multi-step projects spanning sessions
+- Subagent coordination
+- Complex tasks with dependencies and blockers
+
+**Task capabilities**:
+- Dependencies between tasks
+- Blockers that prevent progress
+- Broadcasts when tasks are updated
+- Works with `claude -p` and Agent SDK
+
+For more details, see the [official Tasks announcement](https://x.com/trq212/status/...).
 
 ## Related Documentation
 
