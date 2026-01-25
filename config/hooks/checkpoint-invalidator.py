@@ -27,6 +27,30 @@ CODE_EXTENSIONS = {
     '.java', '.rb', '.php', '.vue', '.svelte'
 }
 
+# Files/patterns excluded from version tracking (dirty calculation)
+# These don't represent code changes requiring re-deployment
+VERSION_TRACKING_EXCLUSIONS = [
+    ":(exclude).claude/",
+    ":(exclude)*.lock",
+    ":(exclude)package-lock.json",
+    ":(exclude)yarn.lock",
+    ":(exclude)pnpm-lock.yaml",
+    ":(exclude)poetry.lock",
+    ":(exclude)Pipfile.lock",
+    ":(exclude)Cargo.lock",
+    ":(exclude).gitmodules",
+    ":(exclude)*.pyc",
+    ":(exclude)__pycache__/",
+    ":(exclude).env*",
+    ":(exclude)*.log",
+    ":(exclude).DS_Store",
+    ":(exclude)*.swp",
+    ":(exclude)*.swo",
+    ":(exclude)*.orig",
+    ":(exclude).idea/",
+    ":(exclude).vscode/",
+]
+
 # Fields invalidated when code changes (in dependency order)
 # When a field is invalidated, all fields that depend on it are also invalidated
 FIELD_DEPENDENCIES = {
@@ -45,7 +69,13 @@ VERSION_DEPENDENT_FIELDS = list(FIELD_DEPENDENCIES.keys())
 
 
 def get_code_version(cwd: str = "") -> str:
-    """Get current code version (git HEAD + dirty state hash)."""
+    """
+    Get current code version (git HEAD + dirty state hash).
+
+    Excludes metadata files (lock files, IDE config, .claude/, etc.) from
+    dirty calculation. This prevents version-dependent checkpoint fields
+    from becoming stale when only metadata changes (not actual code).
+    """
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -57,7 +87,7 @@ def get_code_version(cwd: str = "") -> str:
             return "unknown"
 
         diff = subprocess.run(
-            ["git", "diff", "HEAD", "--", ":(exclude).claude/"],
+            ["git", "diff", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
             capture_output=True, text=True, timeout=5,
             cwd=cwd or None,
         )

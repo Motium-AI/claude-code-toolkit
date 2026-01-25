@@ -18,16 +18,41 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Files/patterns excluded from version tracking (dirty calculation)
+# These don't represent code changes requiring re-deployment
+VERSION_TRACKING_EXCLUSIONS = [
+    ":(exclude).claude/",
+    ":(exclude)*.lock",
+    ":(exclude)package-lock.json",
+    ":(exclude)yarn.lock",
+    ":(exclude)pnpm-lock.yaml",
+    ":(exclude)poetry.lock",
+    ":(exclude)Pipfile.lock",
+    ":(exclude)Cargo.lock",
+    ":(exclude).gitmodules",
+    ":(exclude)*.pyc",
+    ":(exclude)__pycache__/",
+    ":(exclude).env*",
+    ":(exclude)*.log",
+    ":(exclude).DS_Store",
+    ":(exclude)*.swp",
+    ":(exclude)*.swo",
+    ":(exclude)*.orig",
+    ":(exclude).idea/",
+    ":(exclude).vscode/",
+]
+
 
 def get_diff_hash(cwd: str) -> str:
     """
-    Get hash of current git diff (excluding .claude/).
+    Get hash of current git diff (excluding metadata files).
 
-    Excludes .claude/ to prevent checkpoint files from affecting the hash.
+    Excludes lock files, IDE config, .claude/, and other non-code files
+    that shouldn't affect version tracking.
     """
     try:
         result = subprocess.run(
-            ["git", "diff", "HEAD", "--", ":(exclude).claude/"],
+            ["git", "diff", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
             capture_output=True, text=True, timeout=5,
             cwd=cwd or None,
         )

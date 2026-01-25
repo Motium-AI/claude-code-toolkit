@@ -25,6 +25,30 @@ from pathlib import Path
 # Debug logging
 DEBUG_LOG = Path(tempfile.gettempdir()) / "stop-hook-debug.log"
 
+# Files/patterns excluded from version tracking (dirty calculation)
+# These don't represent code changes requiring re-deployment
+VERSION_TRACKING_EXCLUSIONS = [
+    ":(exclude).claude/",
+    ":(exclude)*.lock",
+    ":(exclude)package-lock.json",
+    ":(exclude)yarn.lock",
+    ":(exclude)pnpm-lock.yaml",
+    ":(exclude)poetry.lock",
+    ":(exclude)Pipfile.lock",
+    ":(exclude)Cargo.lock",
+    ":(exclude).gitmodules",
+    ":(exclude)*.pyc",
+    ":(exclude)__pycache__/",
+    ":(exclude).env*",
+    ":(exclude)*.log",
+    ":(exclude).DS_Store",
+    ":(exclude)*.swp",
+    ":(exclude)*.swo",
+    ":(exclude)*.orig",
+    ":(exclude).idea/",
+    ":(exclude).vscode/",
+]
+
 
 def log_debug(message: str, raw_input: str = "", parsed_data: dict | None = None) -> None:
     """Log diagnostic info for debugging."""
@@ -82,14 +106,17 @@ def has_frontend_changes(files: list[str]) -> bool:
 
 def get_diff_hash(cwd: str = "") -> str:
     """
-    Get hash of current git diff (excluding .claude/).
+    Get hash of current git diff (excluding metadata files).
 
     Used to detect if THIS session made changes by comparing against
     the snapshot taken at session start.
+
+    Excludes lock files, IDE config, and other non-code files that
+    shouldn't affect version tracking.
     """
     try:
         result = subprocess.run(
-            ["git", "diff", "HEAD", "--", ":(exclude).claude/"],
+            ["git", "diff", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
             capture_output=True, text=True, timeout=5,
             cwd=cwd or None,
         )
@@ -102,12 +129,13 @@ def get_code_version(cwd: str = "") -> str:
     """
     Get current code version (git HEAD + dirty state hash).
 
-    Excludes .claude/ from dirty calculation to prevent checkpoint file
-    from creating a self-referential dirty state (chicken-and-egg problem).
+    Excludes metadata files (lock files, IDE config, .claude/, etc.) from
+    dirty calculation. This prevents version-dependent checkpoint fields
+    from becoming stale when only metadata changes (not actual code).
 
     Returns format:
     - "abc1234" - clean commit
-    - "abc1234-dirty-def5678" - commit with uncommitted changes
+    - "abc1234-dirty-def5678" - commit with uncommitted code changes
     - "unknown" - not a git repo
     """
     try:
@@ -121,7 +149,7 @@ def get_code_version(cwd: str = "") -> str:
             return "unknown"
 
         diff = subprocess.run(
-            ["git", "diff", "HEAD", "--", ":(exclude).claude/"],
+            ["git", "diff", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
             capture_output=True, text=True, timeout=5,
             cwd=cwd or None,
         )
