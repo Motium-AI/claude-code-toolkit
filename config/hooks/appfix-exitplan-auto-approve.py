@@ -17,6 +17,22 @@ Exit codes:
 import json
 import os
 import sys
+from pathlib import Path
+
+
+def is_appfix_active(cwd: str) -> bool:
+    """Check if appfix is active via env var OR state file."""
+    # Method 1: Environment variable (backwards compatibility)
+    if os.environ.get("APPFIX_ACTIVE", "").lower() in ("true", "1", "yes"):
+        return True
+
+    # Method 2: State file exists in project
+    if cwd:
+        state_file = Path(cwd) / ".claude" / "appfix-state.json"
+        if state_file.exists():
+            return True
+
+    return False
 
 
 def main():
@@ -26,15 +42,13 @@ def main():
         sys.exit(0)
 
     tool_name = input_data.get("tool_name", "")
+    cwd = input_data.get("cwd", "")
 
     # Only process ExitPlanMode
     if tool_name != "ExitPlanMode":
         sys.exit(0)
 
-    # Check if appfix is active
-    appfix_active = os.environ.get("APPFIX_ACTIVE", "").lower() in ("true", "1", "yes")
-
-    if not appfix_active:
+    if not is_appfix_active(cwd):
         # Not in appfix mode - use standard behavior (show dialog)
         sys.exit(0)
 

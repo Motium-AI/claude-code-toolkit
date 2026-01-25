@@ -96,12 +96,41 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/status-working.py",
+            "command": "python3 ~/.claude/hooks/read-docs-trigger.py",
             "timeout": 5
-          },
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/read-docs-trigger.py",
+            "command": "python3 ~/.claude/hooks/plan-execution-reminder.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-exitplan-auto-approve.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/appfix-bash-auto-approve.py",
             "timeout": 5
           }
         ]

@@ -4,30 +4,34 @@ Reference documentation for implementing global Claude Code hooks that inject co
 
 ## Overview
 
-Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers three patterns:
+Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers five event types:
 
 1. **SessionStart (Context Injection)**: Force Claude to read project documentation before beginning work
-2. **Stop (Compliance Blocking)**: Block Claude from stopping until compliance checks are addressed
+2. **Stop (Completion Checkpoint)**: Block Claude from stopping until completion checkpoint passes
 3. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
+4. **PostToolUse (Post-Action Context)**: Inject autonomous execution context after plan approval
+5. **PermissionRequest (Permission Handling)**: Auto-approve tool permissions during appfix
 
 > **Note**: Status file hooks were removed in January 2025. Anthropic's native Tasks feature now provides better session tracking and coordination. See [Tasks Deprecation Note](#tasks-deprecation-note) below.
 
 ## Key Concepts
 
-### Two-Phase Stop Flow
+### Completion Checkpoint System
 
-The Stop hook implements a two-phase blocking pattern to prevent infinite loops:
+The Stop hook uses a **deterministic boolean checkpoint** to enforce completion:
 
 ```
-First stop (stop_hook_active=false):
-→ Show FULL compliance checklist
-→ Block (exit 2)
-
-Second stop (stop_hook_active=true):
-→ Allow stop (exit 0)
+Stop Hook Flow:
+1. Load .claude/completion-checkpoint.json
+2. Check booleans deterministically:
+   - is_job_complete: false → BLOCKED
+   - web_testing_done: false (if code changed) → BLOCKED
+   - deployed: false (if code changed) → BLOCKED
+   - what_remains not empty → BLOCKED
+3. All checks pass → Allow stop
 ```
 
-This ensures Claude sees the full checklist at least once, while preventing infinite loops.
+The model must explicitly state true/false for each field. If any required boolean is `false`, the hook blocks and prompts continuation.
 
 ## Architecture
 
@@ -169,10 +173,10 @@ Second stop: stop_hook_active=true  → Allow (loop prevention)
 
 Location: `~/.claude/hooks/stop-validator.py`
 
-The stop validator implements two-phase blocking with change-type detection:
+The stop validator implements two-phase blocking with execution validation:
 
-**Phase 1 (First Stop)**: Shows the full compliance checklist
-**Phase 2 (Second Stop)**: Only enforces status file freshness
+**Phase 1 (First Stop)**: Shows full compliance checklist with plan verification and change-specific testing
+**Phase 2 (Second Stop)**: Validates execution requirements before allowing stop
 
 ```python
 #!/usr/bin/env python3
@@ -181,7 +185,7 @@ Global Stop Hook Validator
 
 Two-phase stop flow:
 1. First stop (stop_hook_active=false): Show FULL compliance checklist, block
-2. Second stop (stop_hook_active=true): Enforce status file freshness, then allow
+2. Second stop (stop_hook_active=true): Validate execution, then allow
 
 Exit codes:
   0 - Allow stop
@@ -189,27 +193,21 @@ Exit codes:
 """
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
-STATUS_FILE_MAX_AGE_SECONDS = 300  # 5 minutes
+def check_plan_execution(cwd: str, session_id: str, file_diffs: dict) -> tuple[bool, str]:
+    """Validate that plan requirements were actually executed."""
+    requirements = parse_plan_requirements(cwd, session_id)
+    testing_state = read_testing_state(cwd, session_id)
 
-def check_status_file(cwd: str, session_id: str = "") -> tuple[bool, str]:
-    """Check session-specific or legacy status file."""
-    claude_dir = Path(cwd) / ".claude"
+    # Auto-detect testing requirement from frontend changes
+    frontend_testing_required = requires_browser_testing(file_diffs)
+    test_required = requirements["test_required"] or frontend_testing_required
+    webtest_executed = testing_state.get("webtest_invoked", False)
 
-    # Try session-specific file first
-    if session_id:
-        session_path = claude_dir / f"status.{session_id}.md"
-        if session_path.exists():
-            return check_freshness(session_path)
-
-    # Fall back to legacy
-    legacy_path = claude_dir / "status.md"
-    if legacy_path.exists():
-        return check_freshness(legacy_path)
-
-    return False, "MISSING: status file not found"
+    if test_required and not webtest_executed:
+        return False, "BROWSER TESTING NOT EXECUTED - run /webtest"
+    return True, ""
 
 def main():
     input_data = json.load(sys.stdin)
@@ -217,21 +215,29 @@ def main():
     session_id = input_data.get("session_id", "")
     stop_hook_active = input_data.get("stop_hook_active", False)
 
-    # SECOND STOP: Only enforce status, then allow
-    if stop_hook_active:
-        status_ok, msg = check_status_file(cwd, session_id)
-        if not status_ok:
-            print(f"🚫 STATUS FILE STILL NOT UPDATED\n{msg}", file=sys.stderr)
-            sys.exit(2)
-        sys.exit(0)  # Allow stop
+    file_diffs = get_git_diff()  # Analyze changed files
 
-    # FIRST STOP: Show FULL checklist
-    status_ok, status_msg = check_status_file(cwd, session_id)
-    # ... detect change types from git diff ...
-    # ... format full checklist with status as item 0 if needed ...
+    # SECOND STOP: Validate execution before allowing
+    if stop_hook_active:
+        execution_ok, msg = check_plan_execution(cwd, session_id, file_diffs)
+        if not execution_ok:
+            print(f"❌ BLOCKED: {msg}", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)  # All requirements met
+
+    # FIRST STOP: Show FULL checklist with plan and change detection
+    change_types = detect_change_types(file_diffs)
+    plan = get_active_plan(cwd, session_id)
+    # ... format checklist with plan verification, testing requirements ...
     print(instructions, file=sys.stderr)
     sys.exit(2)
 ```
+
+Key features:
+- **Plan execution validation**: Checks if deployment/testing from plan was actually done
+- **Frontend change detection**: Auto-requires browser testing for .tsx/.jsx changes
+- **Testing state tracking**: Reads `.claude/testing-state.json` to verify /webtest ran
+- **Second stop enforcement**: Blocks if requirements not met (prevents bypass)
 
 #### Change-Type Detection
 
@@ -555,6 +561,110 @@ Stop hook error: JSON validation failed
 
 **Conclusion**: `type: "prompt"` hooks are unreliable. Use `type: "command"` with exit codes instead.
 
+## Appfix Autonomous Execution
+
+The `/appfix` skill uses a simplified hook system based on **completion checkpoints**:
+
+### Detection Mechanism
+
+Appfix mode is detected via:
+1. **State file existence** (primary): `.claude/appfix-state.json` exists in the project
+2. **Environment variable** (backwards compatibility): `APPFIX_ACTIVE=true`
+
+### Hooks Used
+
+| Hook | File | Purpose |
+|------|------|---------|
+| PostToolUse | plan-execution-reminder.py | Injects aggressive fix-verify loop instructions after ExitPlanMode |
+| PermissionRequest | appfix-exitplan-auto-approve.py | Auto-approves ExitPlanMode to enable autonomous execution |
+| PermissionRequest | appfix-bash-auto-approve.py | Auto-approves Bash commands during appfix |
+| Stop | stop-validator.py | Validates completion checkpoint booleans |
+
+### PermissionRequest Hooks: Auto-Approve During Appfix
+
+The appfix workflow uses two PermissionRequest hooks to enable fully autonomous execution.
+
+#### ExitPlanMode Auto-Approve
+
+**File**: `~/.claude/hooks/appfix-exitplan-auto-approve.py`
+
+**Purpose**: Auto-approve the ExitPlanMode permission dialog during appfix.
+
+**Behavior**:
+1. Receives permission request for `ExitPlanMode` tool
+2. If appfix state file exists: Returns decision to allow the tool
+3. If not active: Silent pass-through (no output)
+
+#### Bash Auto-Approve
+
+**File**: `~/.claude/hooks/appfix-bash-auto-approve.py`
+
+**Purpose**: Auto-approve Bash commands during appfix to enable truly autonomous execution without permission prompts.
+
+**Behavior**:
+1. Receives permission request for `Bash` tool
+2. If appfix state file exists OR `APPFIX_ACTIVE=true` env var: Returns decision to allow
+3. If not active: Silent pass-through (Bash commands require user approval as normal)
+
+**Security model**: Bash auto-approval is ONLY active when appfix mode is detected. Normal sessions require user approval for Bash commands.
+
+#### Configuration
+
+```json
+"PermissionRequest": [
+  {
+    "matcher": "ExitPlanMode",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/hooks/appfix-exitplan-auto-approve.py",
+        "timeout": 5
+      }
+    ]
+  },
+  {
+    "matcher": "Bash",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/hooks/appfix-bash-auto-approve.py",
+        "timeout": 5
+      }
+    ]
+  }
+]
+```
+
+### Completion Checkpoint
+
+Before stopping, appfix must create `.claude/completion-checkpoint.json`:
+
+```json
+{
+  "self_report": {
+    "code_changes_made": true,
+    "web_testing_done": true,
+    "deployed": true,
+    "console_errors_checked": true,
+    "is_job_complete": true
+  },
+  "reflection": {
+    "what_was_done": "Fixed CORS, deployed, verified login works",
+    "what_remains": "none"
+  }
+}
+```
+
+The stop hook validates these booleans:
+- `is_job_complete: false` → BLOCKED
+- `web_testing_done: false` (if code changed) → BLOCKED
+- `deployed: false` (if code changed) → BLOCKED
+- `what_remains` not empty → BLOCKED
+
+**Key insight**: The booleans force honest self-reflection. If you say `false`, you're blocked. If you say `true` dishonestly, that's on you - but you can't accidentally stop early.
+
+---
+
 ## Optional Hooks (Disabled by Default)
 
 Two additional hooks exist in `config/hooks/` but are not enabled in `settings.json`:
@@ -625,7 +735,7 @@ CLAUDE_CODE_TASK_LIST_ID=my-project claude
 - Broadcasts when tasks are updated
 - Works with `claude -p` and Agent SDK
 
-For more details, see the [official Tasks announcement](https://x.com/trq212/status/...).
+For more details, see the official Claude Code documentation on Tasks.
 
 ## Related Documentation
 

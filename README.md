@@ -52,12 +52,13 @@ Slash commands for structured workflows. Run `/command-name` to invoke.
 | `/designimprove` | Recursively improve web UI via screenshot grading and targeted fixes |
 | `/uximprove` | Recursively improve UX via usability analysis and targeted fixes |
 
-### Skills (9)
+### Skills (10)
 
 Domain expertise Claude automatically applies when relevant keywords appear in your prompts.
 
 | Skill | Triggers On |
 |-------|-------------|
+| `appfix` | "fix the app", "/appfix", autonomous debugging |
 | `async-python-patterns` | asyncio, concurrent programming, async/await |
 | `nextjs-tanstack-stack` | Next.js App Router, TanStack Table/Query/Form, Zustand |
 | `prompt-engineering-patterns` | Prompt optimization, few-shot learning, chain-of-thought |
@@ -68,16 +69,18 @@ Domain expertise Claude automatically applies when relevant keywords appear in y
 | `ux-improver` | UX usability review, user flows, affordances, feedback states |
 | `docs-navigator` | Read the docs, check documentation, unfamiliar codebase |
 
-### Hooks (4)
+### Hooks (6 scripts across 5 event types)
 
 Lifecycle handlers that run automatically at key moments.
 
-| Hook | Event | Purpose |
-|------|-------|---------|
-| SessionStart | Session begins | Forces Claude to read project docs before starting |
-| Stop | Before stopping | Compliance checklist: code standards, docs, commit |
-| UserPromptSubmit | Each prompt | Suggests relevant docs based on keywords |
-| PostToolUse | ExitPlanMode | Reminds Claude to execute plans autonomously |
+| Event | Scripts | Purpose |
+|-------|---------|---------|
+| SessionStart | read-docs-reminder.py | Forces Claude to read project docs before starting |
+| Stop | stop-validator.py | Completion checkpoint validation |
+| UserPromptSubmit | read-docs-trigger.py | Suggests relevant docs based on keywords |
+| PostToolUse | plan-execution-reminder.py | Injects autonomous execution context after plan approval |
+| PermissionRequest | appfix-exitplan-auto-approve.py | Auto-approves ExitPlanMode during appfix |
+| PermissionRequest | appfix-bash-auto-approve.py | Auto-approves Bash commands during appfix |
 
 > **Note:** Additional hook `skill-reminder.py` exists in `config/hooks/` but is not enabled by default. See [docs/concepts/hooks.md](docs/concepts/hooks.md) for configuration.
 
@@ -104,14 +107,14 @@ Lifecycle handlers that run automatically at key moments.
 │                                                                          │
 │  4. CLAUDE EXITS PLAN MODE                                               │
 │     └─→ PostToolUse (ExitPlanMode) hook fires                            │
-│         └─→ plan-execution-reminder.py outputs execution reminder        │
+│         └─→ plan-execution-reminder.py outputs execution context         │
 │             └─→ Prompts Claude to begin autonomous implementation        │
 │                                                                          │
 │  5. CLAUDE TRIES TO STOP                                                 │
 │     └─→ Stop hook fires                                                  │
-│         └─→ stop-validator.py checks git diff for change types           │
-│             └─→ Shows: "⚠️ AUTH CHANGES DETECTED: test 401 cascade..."  │
-│                 └─→ Blocks until compliance confirmed                    │
+│         └─→ stop-validator.py validates completion checkpoint            │
+│             └─→ Checks: is_job_complete, web_testing_done, deployed...   │
+│                 └─→ Blocks until checkpoint booleans pass                │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -137,13 +140,15 @@ claude-code-toolkit/
 │   │   ├── QA.md
 │   │   ├── deslop.md
 │   │   └── ...
-│   ├── hooks/                  # 5 Python hook scripts (4 enabled by default)
-│   │   ├── stop-validator.py         # Enabled: Stop compliance checks
+│   ├── hooks/                  # 7 Python hook scripts (6 enabled by default)
+│   │   ├── stop-validator.py         # Enabled: Completion checkpoint validation
 │   │   ├── read-docs-trigger.py      # Enabled: Doc reading suggestions
 │   │   ├── read-docs-reminder.py     # Enabled: Doc reading reminders
-│   │   ├── plan-execution-reminder.py # Enabled: Plan execution reminder
+│   │   ├── plan-execution-reminder.py # Enabled: Autonomous execution context
+│   │   ├── appfix-exitplan-auto-approve.py # Enabled: Auto-approve ExitPlanMode
+│   │   ├── appfix-bash-auto-approve.py # Enabled: Auto-approve Bash commands
 │   │   └── skill-reminder.py         # Disabled: Skill keyword matching
-│   └── skills/                 # 9 skill directories
+│   └── skills/                 # 10 skill directories
 │       ├── async-python-patterns/
 │       ├── nextjs-tanstack-stack/
 │       └── ...
