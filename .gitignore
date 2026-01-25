@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Claude Code session state (transient files)
+.claude/completion-checkpoint.json
+.claude/session-snapshot.json
+.claude/appfix-state.json
+.claude/compacted.*.marker
+
+# OS
+.DS_Store
