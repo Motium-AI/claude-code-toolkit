@@ -214,7 +214,7 @@ While `/appfix` is the flagship, the toolkit includes additional capabilities:
 
 | Command | Purpose |
 |---------|---------|
-| `/QA` | Exhaustive architecture audit |
+| `/qa` | Exhaustive architecture audit |
 | `/deslop` | Detect and remove AI-generated code slop |
 | `/docupdate` | Documentation gap analysis |
 | `/webtest` | Browser automation testing |

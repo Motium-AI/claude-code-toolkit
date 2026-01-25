@@ -60,7 +60,7 @@ This confirms the SessionStart hook is working.
 
 In Claude Code, run:
 ```
-/QA
+/qa
 ```
 
 This triggers the exhaustive codebase audit. Claude will:

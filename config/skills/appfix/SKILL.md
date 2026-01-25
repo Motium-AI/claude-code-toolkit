@@ -93,13 +93,16 @@ The stop hook will reject checkpoints where `web_testing_done: true` but `urls_t
 
 Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 
-### Example: Code Changes Session
+### Example: Code Changes Session (with Surf CLI artifacts)
 ```json
 {
   "self_report": {
     "code_changes_made": true,
     "web_testing_done": true,
     "web_testing_done_at_version": "abc1234",
+    "web_smoke_artifacts_exist": true,
+    "web_smoke_passed": true,
+    "web_smoke_version": "abc1234",
     "api_testing_done": true,
     "deployed": true,
     "deployed_at_version": "abc1234",
@@ -115,13 +118,14 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
     "is_job_complete": true
   },
   "reflection": {
-    "what_was_done": "Fixed CORS config in next.config.js, deployed to staging, verified login flow works",
+    "what_was_done": "Fixed CORS config in next.config.js, deployed to staging, verified login flow works via Surf CLI",
     "what_remains": "none",
     "blockers": null
   },
   "evidence": {
     "urls_tested": ["https://staging.example.com/dashboard"],
-    "console_clean": true
+    "console_clean": true,
+    "web_smoke_summary": ".claude/web-smoke/summary.json"
   }
 }
 ```
@@ -158,6 +162,9 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 |-------|------|----------|---------|
 | `code_changes_made` | bool | yes | Were any code files modified? |
 | `web_testing_done` | bool | yes | Did you verify in a real browser? |
+| `web_smoke_artifacts_exist` | bool | appfix | Do Surf CLI artifacts exist in .claude/web-smoke/? |
+| `web_smoke_passed` | bool | appfix | Did Surf verification pass? |
+| `web_smoke_version` | string | appfix | Git version when Surf verification ran |
 | `api_testing_done` | bool | conditional | Did you test API endpoints? |
 | `deployed` | bool | conditional | Did you deploy the changes? |
 | `console_errors_checked` | bool | yes | Did you check browser console? |
@@ -169,6 +176,18 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 | `infra_pr_created` | bool | if az CLI used | Did you create PR to infra repo? |
 | `is_job_complete` | bool | yes | **Critical** - Is the job ACTUALLY done? |
 | `what_remains` | string | yes | Must be "none" to allow stop |
+
+### Web Smoke Artifact Fields (NEW)
+
+When using Surf CLI for verification, the stop hook validates artifacts in `.claude/web-smoke/`:
+
+| Field | Source | Validation |
+|-------|--------|------------|
+| `web_smoke_artifacts_exist` | summary.json exists | Required if appfix mode |
+| `web_smoke_passed` | summary.json → passed | Must be true |
+| `web_smoke_version` | summary.json → tested_at_version | Must match current git version |
+
+**If artifacts pass validation, `web_testing_done` and `console_errors_checked` are auto-set to true.**
 
 ### Documentation Requirements (docs_updated)
 
@@ -492,9 +511,51 @@ If you ran ANY of these commands:
 
 **You cannot claim success without browser verification.**
 
-### 4.1 Browser Verification
+### Phase 4.5: Deterministic Web Verification (PREFERRED)
 
-Use Chrome MCP tools:
+Instead of manually testing with Chrome MCP, run the deterministic Surf workflow for artifact-based proof:
+
+**Step 1: Ensure Surf CLI is installed**
+```bash
+which surf || npm install -g @nicobailon/surf-cli
+```
+
+**Step 2: Run verification**
+```bash
+# Using explicit URLs
+python3 ~/.claude/hooks/surf-verify.py --urls "https://staging.example.com/dashboard" "https://staging.example.com/login"
+
+# Or using URLs from service-topology.md
+python3 ~/.claude/hooks/surf-verify.py --from-topology
+```
+
+**Step 3: Check artifacts exist**
+```bash
+ls -la .claude/web-smoke/
+# Expected: summary.json, screenshots/, console.txt
+```
+
+**Step 4: If verification fails**
+- Check `.claude/web-smoke/summary.json` for error details
+- Check `.claude/web-smoke/console.txt` for console errors
+- Check `.claude/web-smoke/failing-requests.sh` for network errors
+- Fix issues and re-run verification
+
+**The stop hook validates these artifacts automatically.** If `summary.json` shows `passed: false`, you'll be blocked until you fix the issues.
+
+**Waiver file for expected errors:**
+If you have expected third-party errors (analytics blocked, etc.), create `.claude/web-smoke/waivers.json`:
+```json
+{
+  "console_patterns": ["analytics\\.js.*blocked"],
+  "network_patterns": ["GET.*googletagmanager\\.com.*4\\d\\d"],
+  "reason": "Third-party analytics blocked by privacy settings"
+}
+```
+
+### 4.1 Fallback: Chrome MCP Verification
+
+If Surf CLI is not available or fails, use Chrome MCP tools:
 ```
 - mcp__claude-in-chrome__navigate to the app URL
 - mcp__claude-in-chrome__computer action=screenshot to capture state
@@ -502,6 +563,8 @@ Use Chrome MCP tools:
 ```
 
 Or use /webtest skill.
+
+When using Chrome MCP, you must manually set `web_testing_done: true` in the checkpoint.
 
 ### 4.2 Check Console
 - ZERO uncaught JavaScript errors

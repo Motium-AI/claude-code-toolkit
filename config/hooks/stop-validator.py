@@ -96,11 +96,17 @@ def has_code_changes(files: list[str]) -> bool:
 
 def has_frontend_changes(files: list[str]) -> bool:
     """Check if any frontend files were modified."""
-    frontend_patterns = ['.tsx', '.jsx', 'components/', 'app/', 'pages/', 'hooks/']
+    frontend_patterns = ['.tsx', '.jsx', 'components/', 'app/', 'pages/']
+    # Hooks pattern needs special handling - only match src/hooks, not config/hooks
+    hooks_pattern = 'src/hooks/'
+
     for f in files:
         for pattern in frontend_patterns:
             if pattern in f or f.endswith(pattern.rstrip('/')):
                 return True
+        # Check for React hooks specifically (src/hooks), not Claude Code hooks (config/hooks)
+        if hooks_pattern in f:
+            return True
     return False
 
 
@@ -194,6 +200,96 @@ def load_checkpoint(cwd: str) -> dict | None:
         return json.loads(checkpoint_path.read_text())
     except (json.JSONDecodeError, IOError):
         return None
+
+
+def load_web_smoke_waivers(cwd: str) -> dict:
+    """Load waiver patterns for expected errors."""
+    if not cwd:
+        return {"console_patterns": [], "network_patterns": []}
+    waivers_path = Path(cwd) / ".claude" / "web-smoke" / "waivers.json"
+    if not waivers_path.exists():
+        return {"console_patterns": [], "network_patterns": []}
+    try:
+        return json.loads(waivers_path.read_text())
+    except (json.JSONDecodeError, IOError):
+        return {"console_patterns": [], "network_patterns": []}
+
+
+def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
+    """
+    Check if web smoke artifacts exist and pass conditions.
+
+    This provides ARTIFACT-BASED proof of web verification, replacing
+    the trust-based web_testing_done: true boolean.
+
+    Returns (is_valid, list_of_errors)
+    """
+    errors = []
+    artifact_dir = Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+    summary_path = artifact_dir / "summary.json"
+    screenshots_dir = artifact_dir / "screenshots"
+
+    # Check summary exists
+    if not summary_path.exists():
+        errors.append(
+            "web_smoke: No summary.json found. Run Surf verification first:\n"
+            "  python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com'\n"
+            "Or use Chrome MCP and manually create .claude/web-smoke/summary.json"
+        )
+        return False, errors
+
+    try:
+        summary = json.loads(summary_path.read_text())
+    except (json.JSONDecodeError, IOError) as e:
+        errors.append(f"web_smoke: Cannot parse summary.json: {e}")
+        return False, errors
+
+    # Check version freshness (artifacts become stale when code changes)
+    current_version = get_code_version(cwd)
+    tested_version = summary.get("tested_at_version", "")
+    if tested_version and current_version != "unknown" and tested_version != current_version:
+        errors.append(
+            f"web_smoke: Artifacts are STALE - tested at version '{tested_version}', "
+            f"but code is now at '{current_version}'. Code changed since verification.\n"
+            f"Re-run: python3 ~/.claude/hooks/surf-verify.py --urls ..."
+        )
+        return False, errors
+
+    # Check pass status
+    if not summary.get("passed", False):
+        console_errors = summary.get("console_errors", 0)
+        network_errors = summary.get("network_errors", 0)
+        failing_requests = summary.get("failing_requests", [])
+        error_msg = f"web_smoke: Verification FAILED - {console_errors} console errors, {network_errors} network errors"
+        if failing_requests:
+            error_msg += f"\n  Failing requests: {failing_requests[:3]}"  # Show first 3
+            if len(failing_requests) > 3:
+                error_msg += f" ... and {len(failing_requests) - 3} more"
+        errors.append(error_msg)
+        return False, errors
+
+    # Check screenshots exist
+    screenshot_count = summary.get("screenshot_count", 0)
+    if screenshot_count < 1:
+        # Also check filesystem in case summary is outdated
+        actual_screenshots = list(screenshots_dir.glob("*.png")) if screenshots_dir.exists() else []
+        if not actual_screenshots:
+            errors.append(
+                "web_smoke: No screenshots captured. At least 1 screenshot required.\n"
+                "Screenshots prove the page actually loaded and rendered."
+            )
+            return False, errors
+
+    # Check URLs were actually tested
+    urls_tested = summary.get("urls_tested", [])
+    if not urls_tested:
+        errors.append(
+            "web_smoke: urls_tested is empty. You must verify actual URLs.\n"
+            "Add URLs to test in service-topology.md under web_smoke_urls"
+        )
+        return False, errors
+
+    return True, []
 
 
 def save_checkpoint(cwd: str, checkpoint: dict) -> bool:
@@ -357,26 +453,52 @@ def validate_checkpoint(checkpoint: dict, modified_files: list[str], cwd: str = 
     # Check: In appfix mode, browser verification is ALWAYS required
     # (regardless of code_changes_made - infra fixes need verification too)
     if is_appfix_mode(cwd):
-        if not report.get("web_testing_done", False):
-            failures.append(
-                "web_testing_done is false - appfix requires browser verification "
-                "even for infrastructure-only changes. Use Chrome MCP or /webtest."
-            )
-        if not report.get("console_errors_checked", False):
-            failures.append(
-                "console_errors_checked is false - appfix requires checking browser "
-                "console for errors. Use read_console_messages tool."
-            )
+        # NEW: Artifact-based verification (primary method)
+        # Check for Surf CLI artifacts in .claude/web-smoke/
+        artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
+
+        if artifact_valid:
+            # Artifacts exist and pass - this is sufficient proof
+            # Auto-set the boolean fields for backward compatibility
+            if not report.get("web_testing_done", False):
+                report["web_testing_done"] = True
+                report["web_testing_done_at_version"] = get_code_version(cwd)
+                checkpoint_modified = True
+            if not report.get("console_errors_checked", False):
+                report["console_errors_checked"] = True
+                report["console_errors_checked_at_version"] = get_code_version(cwd)
+                checkpoint_modified = True
+        else:
+            # No valid artifacts - fall back to boolean checks
+            # Add artifact errors as informational (not blocking if booleans are set)
+            if not report.get("web_testing_done", False):
+                failures.append(
+                    "web_testing_done is false - appfix requires browser verification.\n"
+                    "PREFERRED: Run Surf CLI for deterministic proof:\n"
+                    "  python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com'\n"
+                    "FALLBACK: Use Chrome MCP and manually verify, then set web_testing_done: true"
+                )
+                # Add artifact error details
+                for err in artifact_errors:
+                    failures.append(f"  → {err}")
+
+            if not report.get("console_errors_checked", False):
+                failures.append(
+                    "console_errors_checked is false - appfix requires checking browser "
+                    "console for errors. Use read_console_messages tool or Surf CLI."
+                )
+
         # Check: urls_tested must have actual URLs when web_testing_done is true
-        evidence = checkpoint.get("evidence", {})
-        urls_tested = evidence.get("urls_tested", [])
-        if report.get("web_testing_done", False) and not urls_tested:
-            failures.append(
-                "web_testing_done is true but evidence.urls_tested is empty - "
-                "you must actually navigate to the app via Chrome MCP and record the URLs tested. "
-                "Database-only or infrastructure-only sessions still require browser verification "
-                "to confirm the fix worked."
-            )
+        # (unless artifacts provide the proof)
+        if not artifact_valid:
+            evidence = checkpoint.get("evidence", {})
+            urls_tested = evidence.get("urls_tested", [])
+            if report.get("web_testing_done", False) and not urls_tested:
+                failures.append(
+                    "web_testing_done is true but evidence.urls_tested is empty - "
+                    "you must actually navigate to the app via Chrome MCP and record the URLs tested. "
+                    "Or run Surf CLI which automatically tracks URLs tested."
+                )
 
     # Check: infra PR required if az CLI changes were made
     if report.get("az_cli_changes_made", False):

@@ -41,7 +41,7 @@ Central navigation hub for the Claude Code Toolkit documentation.
 
 | Command | Purpose |
 |---------|---------|
-| `/QA` | Exhaustive architecture audit |
+| `/qa` | Exhaustive architecture audit |
 | `/deslop` | AI slop detection and removal |
 | `/docupdate` | Documentation gap analysis |
 | `/webtest` | Browser automation testing |
@@ -72,13 +72,13 @@ Central navigation hub for the Claude Code Toolkit documentation.
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | read-docs-reminder.py | Forces reading of project docs |
-| Stop | stop-validator.py, appfix-stop-validator.py | Compliance checklist |
-| PreToolUse | appfix-auto-answer.py | Auto-answer questions (appfix) |
-| PermissionRequest | appfix-exitplan-auto-approve.py | Auto-approve ExitPlanMode (appfix) |
-| PostToolUse | appfix-auto-approve.py | Execution context injection |
-| SubagentStop | appfix-subagent-validator.py | Validate agent output (appfix) |
-| UserPromptSubmit | read-docs-trigger.py | Doc reading triggers |
+| SessionStart | session-snapshot.py, read-docs-reminder.py | Git diff snapshot, doc reading |
+| Stop | stop-validator.py | Validates completion checkpoint |
+| PostToolUse (Edit/Write) | checkpoint-invalidator.py | Resets stale checkpoint flags |
+| UserPromptSubmit | read-docs-trigger.py, skill-reminder.py | Doc reading triggers, skill suggestions |
+| PostToolUse (ExitPlanMode) | plan-execution-reminder.py, appfix-auto-approve.py | Execution context injection |
+| PermissionRequest (Bash) | appfix-bash-auto-approve.py | Auto-approve Bash commands (appfix) |
+| PermissionRequest (ExitPlanMode) | appfix-exitplan-auto-approve.py | Auto-approve plan transitions (appfix) |
 
 ## Directory Structure
 
