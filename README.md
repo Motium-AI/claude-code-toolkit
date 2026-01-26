@@ -220,7 +220,7 @@ While `/appfix` is the flagship, the toolkit includes additional capabilities:
 | `/qa` | Exhaustive architecture audit |
 | `/deslop` | Detect and remove AI-generated code slop |
 | `/docupdate` | Documentation gap analysis |
-| `/webtest` | Browser automation testing |
+| `/webtest` | Web testing via Surf CLI (autonomous) or Chrome MCP (interactive) |
 | `/interview` | Clarify requirements via Q&A |
 | `/designimprove` | Recursively improve UI via screenshot grading |
 | `/uximprove` | Recursively improve UX via usability analysis |

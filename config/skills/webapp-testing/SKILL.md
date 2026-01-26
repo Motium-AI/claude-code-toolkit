@@ -6,32 +6,90 @@ license: Complete terms in LICENSE.txt
 
 # Web Application Testing
 
-Two approaches for testing web applications, with Chrome integration as the preferred method:
+Three approaches for testing web applications:
 
 | Approach | When to Use | Capabilities |
 |----------|-------------|--------------|
+| **Surf CLI** | Autonomous mode (appfix/godo), artifact generation | Deterministic, produces stop-hook-compatible artifacts |
 | **Chrome Integration** | Interactive testing, debugging, authenticated apps | Real browser, login state, console/network access, GIF recording |
 | **Playwright Scripts** | CI/CD, headless, programmatic automation | Scripted, reproducible, no GUI required |
 
 ## Decision Tree
 
 ```
-User task → Is Claude Code running with --chrome flag?
+User task → Is Autonomous Mode active?
+    │       (check: ls .claude/appfix-state.json .claude/godo-state.json 2>/dev/null)
     │
-    ├─ Yes (Chrome available) → Use Chrome integration tools
+    ├─ Yes (Autonomous Mode) → Is Surf CLI installed?
+    │       │                  (check: which surf)
     │       │
-    │       ├─ Get tab context: tabs_context_mcp
-    │       ├─ Create new tab: tabs_create_mcp
-    │       ├─ Navigate: navigate tool
-    │       ├─ Read page: read_page or find tools
-    │       ├─ Interact: computer tool (click/type/screenshot)
-    │       └─ Debug: read_console_messages, read_network_requests
+    │       ├─ Yes (Surf available) → Use Surf CLI
+    │       │       │
+    │       │       ├─ Run: python3 ~/.claude/hooks/surf-verify.py --urls ...
+    │       │       ├─ Artifacts created in .claude/web-smoke/
+    │       │       └─ Stop hook validates summary.json
+    │       │
+    │       └─ No (Surf not installed) → Fall back to Chrome MCP
+    │               │
+    │               └─ Note: web_testing_done requires manual proof without Surf
     │
-    └─ No (Chrome not available) → Fall back to Playwright
+    └─ No (Interactive Mode) → Is Claude Code running with --chrome flag?
             │
-            ├─ Static HTML? → Read file directly, write Playwright script
-            └─ Dynamic app? → Use with_server.py + Playwright script
+            ├─ Yes (Chrome available) → Use Chrome integration tools
+            │       │
+            │       ├─ Get tab context: tabs_context_mcp
+            │       ├─ Create new tab: tabs_create_mcp
+            │       ├─ Navigate: navigate tool
+            │       ├─ Read page: read_page or find tools
+            │       ├─ Interact: computer tool (click/type/screenshot)
+            │       └─ Debug: read_console_messages, read_network_requests
+            │
+            └─ No (Chrome not available) → Fall back to Playwright
+                    │
+                    ├─ Static HTML? → Read file directly, write Playwright script
+                    └─ Dynamic app? → Use with_server.py + Playwright script
 ```
+
+## Autonomous Mode (appfix/godo)
+
+When autonomous mode is active, the stop hook requires proof of web testing via `.claude/web-smoke/summary.json`.
+
+### Detection
+
+```bash
+# Check for autonomous mode state files
+ls .claude/appfix-state.json .claude/godo-state.json 2>/dev/null && echo "AUTONOMOUS MODE"
+```
+
+### Surf CLI Workflow (Preferred)
+
+```bash
+# 1. Verify Surf is installed
+which surf && surf --version
+
+# 2. Run verification (choose one)
+python3 ~/.claude/hooks/surf-verify.py --urls "https://app.example.com" "https://app.example.com/dashboard"
+# OR
+python3 ~/.claude/hooks/surf-verify.py --from-topology
+
+# 3. Check results
+cat .claude/web-smoke/summary.json | jq '.passed'
+```
+
+**Artifacts produced** (in `.claude/web-smoke/`):
+- `summary.json` - Pass/fail with metadata (stop hook validates this)
+- `screenshots/` - Page screenshots
+- `console.txt` - Browser console output
+- `failing-requests.sh` - Curl commands to reproduce failures
+
+### Chrome MCP Fallback
+
+If Surf CLI is not available but Chrome MCP is:
+1. Use Chrome MCP for interactive testing
+2. The stop hook will require `web_testing_done: true` in completion checkpoint
+3. Proof must include specific observation details (not just "tested and works")
+
+---
 
 ## Chrome Integration (Preferred)
 

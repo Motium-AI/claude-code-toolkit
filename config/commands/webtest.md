@@ -4,6 +4,53 @@ description: Test new features using Chrome browser automation
 
 Use ultrathink to thoroughly plan and execute test scenarios.
 
+## Autonomous Mode (appfix/godo)
+
+When running in autonomous mode, use Surf CLI for deterministic artifact generation that the stop hook validates.
+
+### Step 1: Check for Autonomous Mode
+
+```bash
+# Check if autonomous mode is active
+ls .claude/appfix-state.json .claude/godo-state.json 2>/dev/null && echo "AUTONOMOUS MODE ACTIVE"
+```
+
+**If autonomous mode is active, follow Steps 2-4. Otherwise, skip to "Overview" section.**
+
+### Step 2: Check for Surf CLI
+
+```bash
+which surf && surf --version || echo "FALLBACK: Use Chrome MCP"
+```
+
+### Step 3: Run Surf Verification
+
+```bash
+# With explicit URLs
+python3 ~/.claude/hooks/surf-verify.py --urls "https://your-app.com" "https://your-app.com/dashboard"
+
+# Or read from service-topology.md
+python3 ~/.claude/hooks/surf-verify.py --from-topology
+```
+
+### Step 4: Verify Artifacts
+
+```bash
+cat .claude/web-smoke/summary.json | jq '.passed'
+```
+
+**Only fall back to Chrome MCP if:**
+- Surf CLI is not installed (`which surf` fails)
+- Interactive debugging is needed (console inspection, step-by-step actions)
+
+**Artifacts produced by Surf CLI** (in `.claude/web-smoke/`):
+- `summary.json` - Pass/fail status with metadata (stop hook validates this)
+- `screenshots/` - Page screenshots
+- `console.txt` - Browser console output
+- `failing-requests.sh` - Curl commands to reproduce failures
+
+---
+
 ## Overview
 
 Test the features you just built using the webapp-testing skill. This command prioritizes Chrome integration for real browser testing with console/network access and debugging capabilities.

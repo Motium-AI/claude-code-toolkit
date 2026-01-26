@@ -128,7 +128,7 @@ Use extended thinking to thoroughly analyze this architecture.
 | `/QA` | Exhaustive architecture, scalability, and maintainability audit |
 | `/deslop` | Detect and remove 25 patterns of AI-generated code slop |
 | `/docupdate` | Documentation gap analysis and staleness detection |
-| `/webtest` | Test new features using webapp-testing skill (Chrome) |
+| `/webtest` | Test features via Surf CLI (autonomous) or Chrome MCP (interactive) |
 | `/interview` | Clarify plan details via AskUserQuestion before implementation |
 | `/weboptimizer` | Performance benchmarks and optimization for Next.js + FastAPI |
 | `/config-audit` | Environment variable analysis and fallback pattern detection |
