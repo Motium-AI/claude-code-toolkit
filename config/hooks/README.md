@@ -11,6 +11,8 @@ This directory contains Python hook scripts that extend Claude Code's lifecycle 
 | `stop-validator.py` | Stop | Validates completion checkpoint before allowing session end |
 | `checkpoint-invalidator.py` | PostToolUse (Edit/Write) | Resets stale checkpoint fields when code changes |
 | `plan-execution-reminder.py` | PostToolUse (ExitPlanMode) | Injects autonomous execution context after plan approval |
+| `plan-mode-tracker.py` | PostToolUse (ExitPlanMode) | Marks plan_mode_completed=true in state file |
+| `plan-mode-enforcer.py` | PreToolUse (Edit/Write) | Blocks Edit/Write on first godo/appfix iteration until plan mode completed |
 | `appfix-auto-approve.py` | PermissionRequest | Auto-approves ALL tools during godo/appfix mode |
 | `read-docs-trigger.py` | UserPromptSubmit | Suggests reading docs when "read the docs" appears in prompt |
 
@@ -96,11 +98,15 @@ SessionStart
 UserPromptSubmit
     └─► read-docs-trigger.py (checks for "read the docs")
 
+PreToolUse (Edit/Write)
+    └─► plan-mode-enforcer.py (blocks until plan mode completed, iteration 1 only)
+
 PostToolUse (Edit/Write)
     └─► checkpoint-invalidator.py (resets stale checkpoint)
 
 PostToolUse (ExitPlanMode)
     └─► plan-execution-reminder.py (injects context)
+    └─► plan-mode-tracker.py (marks plan_mode_completed=true)
 
 PermissionRequest (any tool)
     └─► appfix-auto-approve.py (auto-approve if godo/appfix active)

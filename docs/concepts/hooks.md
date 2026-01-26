@@ -85,6 +85,10 @@ All hooks receive JSON input via stdin with these fields:
 | `hook_event_name` | string | The hook event type (SessionStart, Stop, UserPromptSubmit) |
 | `stop_hook_active` | boolean | **Stop hook only**: True if Claude is continuing after a previous block |
 | `message` | string | **UserPromptSubmit only**: The user's message text |
+| `tool_name` | string | **PreToolUse/PostToolUse only**: The tool being called (e.g., "Edit", "ExitPlanMode") |
+| `tool_input` | object | **PreToolUse/PostToolUse only**: The tool's input parameters |
+
+**Important**: All field names use `snake_case` (e.g., `tool_name`, not `toolName`). This applies to all hook events including PreToolUse and PostToolUse.
 
 ### SessionStart Matchers
 
@@ -208,12 +212,24 @@ When a field becomes stale, all dependent fields are also invalidated:
 
 **Trigger**: Fires after every `Edit` or `Write` tool use on code files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, etc.)
 
+#### Version Format
+
+The `get_code_version()` function returns:
+
+| State | Format | Example |
+|-------|--------|---------|
+| Clean commit | `{short_hash}` | `abc1234` |
+| Uncommitted changes | `{short_hash}-dirty` | `abc1234-dirty` |
+| Not a git repo | `unknown` | `unknown` |
+
+**Important**: The dirty indicator is a boolean flag, NOT a content hash. This ensures version stability during development—the version only changes at commit boundaries, not on every file edit. This prevents checkpoint invalidation loops where every edit would change the version and trigger re-verification.
+
 **Output**: Injects a warning message listing invalidated fields:
 ```
 ⚠️ CODE CHANGE DETECTED - Checkpoint fields invalidated: deployed, web_testing_done
 
 You edited: src/auth.py
-Current version: abc1234-dirty-xyz5678
+Current version: abc1234-dirty
 
 These fields were reset to false because the code changed since they were set:
   • deployed: now requires re-verification
@@ -225,6 +241,75 @@ Before stopping, you must:
 3. Re-test in browser (if web_testing_done was reset)
 4. Update checkpoint with new version
 ```
+
+### PreToolUse Hook: Plan Mode Enforcer
+
+**File**: `~/.claude/hooks/plan-mode-enforcer.py`
+
+**Purpose**: Blocks Edit/Write tools on the first iteration of godo/appfix until plan mode is completed. Ensures Claude explores the codebase before making changes.
+
+**Trigger**: Fires before `Edit` or `Write` tool use during godo/appfix workflows.
+
+**How it works**:
+1. Receives PreToolUse event with `tool_name: "Edit"` or `"Write"`
+2. Checks if godo or appfix state file exists
+3. If first iteration and `plan_mode_completed: false` → blocks the tool
+4. If plan files (paths containing `/plans/`) → always allows (for writing implementation plans)
+5. If subsequent iteration or plan mode completed → allows the tool
+
+**Configuration**:
+```json
+"PreToolUse": [
+  {
+    "matcher": "Edit",
+    "hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5}]
+  },
+  {
+    "matcher": "Write",
+    "hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5}]
+  }
+]
+```
+
+**Note**: Matchers must be separate entries (one for "Edit", one for "Write"). The `"Edit|Write"` regex-style syntax does NOT work—matchers use exact string matching, not regex patterns.
+
+**Block message** (when enforcing):
+```
+PLAN MODE REQUIRED - FIRST ITERATION
+
+1. Call EnterPlanMode
+2. Explore codebase architecture, recent commits, configs
+3. Write implementation plan to the plan file
+4. Call ExitPlanMode
+
+THEN your edit will be allowed.
+```
+
+### PostToolUse Hook: Plan Mode Tracker
+
+**File**: `~/.claude/hooks/plan-mode-tracker.py`
+
+**Purpose**: Marks plan mode as completed in godo/appfix state files after ExitPlanMode is called, enabling Edit/Write tools to proceed.
+
+**Trigger**: Fires after `ExitPlanMode` tool use during godo/appfix workflows.
+
+**How it works**:
+1. Receives PostToolUse event with `tool_name: "ExitPlanMode"`
+2. Checks if godo or appfix state file exists (`.claude/godo-state.json` or `.claude/appfix-state.json`)
+3. Updates the state file with `plan_mode_completed: true`
+4. The plan-mode-enforcer hook (PreToolUse) then allows Edit/Write tools
+
+**State file update**:
+```json
+{
+  "started_at": "2026-01-25T10:00:00Z",
+  "task": "user's task",
+  "iteration": 1,
+  "plan_mode_completed": true  // ← Set by this hook
+}
+```
+
+**Why this exists**: The plan-mode-enforcer blocks Edit/Write tools on the first iteration of godo/appfix to ensure Claude explores the codebase before making changes. This hook marks when that exploration is complete.
 
 ### Stop Hook (Blocking)
 
@@ -315,6 +400,31 @@ Key features:
 - **Frontend change detection**: Auto-requires browser testing for .tsx/.jsx changes
 - **Testing state tracking**: Reads `.claude/testing-state.json` to verify /webtest ran
 - **Second stop enforcement**: Blocks if requirements not met (prevents bypass)
+- **Infrastructure bypass**: Skips web testing for infrastructure-only changes
+
+#### Infrastructure Bypass
+
+The stop-validator skips web testing requirements when only infrastructure/toolkit files were changed. This prevents requiring Surf CLI artifacts for changes that have no web UI to test.
+
+**Infrastructure paths excluded from web testing**:
+- `config/hooks/` - Hook scripts
+- `config/skills/` - Skill definitions
+- `config/commands/` - Command definitions
+- `.claude/` - Claude configuration
+- `prompts/config/` - Toolkit configuration
+- `prompts/scripts/` - Toolkit scripts
+- `scripts/` - Project scripts
+
+**Logic**:
+```python
+# has_code_changes() returns False for infrastructure-only changes
+if is_autonomous_mode(cwd) and has_app_code:
+    # Require Surf CLI artifacts for application changes
+    artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
+# Infrastructure-only changes: skip web testing requirements
+```
+
+This allows hook/skill/script changes to be committed and pushed without requiring browser verification artifacts.
 
 #### Change-Type Detection
 
