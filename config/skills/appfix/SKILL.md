@@ -36,6 +36,66 @@ This workflow uses a **deterministic boolean checkpoint** to enforce completion:
 
 **Why this works**: The model must explicitly state true/false for each checkpoint field. If you say `false`, you're blocked. If you say `true` dishonestly, that's your problem - but you can't accidentally stop early.
 
+## Automatic Cascade Invalidation
+
+**CRITICAL: Checkpoint fields are automatically reset when code changes.**
+
+When you edit files or run git commits, PostToolUse hooks automatically detect version changes and reset stale checkpoint fields:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  DEPENDENCY CHAIN (upstream → downstream)                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  linters_pass ─────► deployed ─────► web_testing_done                │
+│                          │                                           │
+│                          └────────► console_errors_checked           │
+│                          │                                           │
+│                          └────────► api_testing_done                 │
+│                                                                      │
+│  If linters_pass is stale → deployed, web_testing_done, etc. reset  │
+│  If deployed is stale → web_testing_done, console_errors reset      │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **Edit/Write hook** (`checkpoint-invalidator.py`): After any file edit, checks if `*_at_version` fields are stale
+2. **Bash hook** (`bash-version-tracker.py`): After git commits or az CLI commands, rechecks version and invalidates
+3. **Stop hook** (`stop-validator.py`): Final validation before allowing stop
+
+### Example: Multi-Iteration Fix
+
+```
+ITERATION 1:
+  - Deploy at version "abc" → deployed: true, deployed_at_version: "abc"
+  - Test in browser → web_testing_done: true, web_testing_done_at_version: "abc"
+  - Test reveals error!
+
+ITERATION 2:
+  - Edit fix.py → version becomes "abc-dirty-xyz"
+  ⚠️ HOOK FIRES: deployed ("abc") != current ("abc-dirty-xyz")
+     → deployed: false, web_testing_done: false (cascade)
+
+  - Commit fix → version becomes "def"
+  ⚠️ HOOK FIRES: Same check, fields already reset
+
+  - MUST re-deploy (deployed is false!)
+  - MUST re-test (web_testing_done is false!)
+```
+
+### What Triggers Invalidation
+
+| Trigger | Hook | What's Checked |
+|---------|------|----------------|
+| Edit/Write any file | checkpoint-invalidator.py | Version mismatch |
+| `git commit` | bash-version-tracker.py | Version mismatch |
+| `az containerapp *` | bash-version-tracker.py | Testing fields reset |
+| `az keyvault *` | bash-version-tracker.py | Testing fields reset |
+
+**You cannot skip re-deployment or re-testing after code changes. The hooks enforce this.**
+
 ## CRITICAL: Autonomous Execution
 
 **THIS WORKFLOW IS 100% AUTONOMOUS. YOU MUST:**
@@ -52,9 +112,20 @@ This workflow uses a **deterministic boolean checkpoint** to enforce completion:
 
 If credentials are missing (LOGFIRE_READ_TOKEN, TEST_EMAIL, TEST_PASSWORD), ask the user **once at start**. After that, proceed autonomously.
 
-## Browser Verification is MANDATORY
+## Browser Verification is MANDATORY (Artifacts Required)
 
-**ALL appfix sessions require browser verification. No exceptions.**
+**ALL appfix sessions require browser verification with PROOF. No exceptions.**
+
+### Critical: Artifacts are MANDATORY
+
+Setting `web_testing_done: true` without Surf CLI artifacts will be **BLOCKED** by the stop hook.
+
+**The stop hook now requires:**
+1. **Surf CLI artifacts** in `.claude/web-smoke/summary.json` with `passed: true`
+2. **Real app URLs** in `urls_tested` (not just health endpoints)
+3. **Version match** - artifacts must be for current code version
+
+**Boolean-only claims are NO LONGER accepted.** You cannot set `web_testing_done: true` without running Surf CLI or manually creating valid artifacts.
 
 | Change Type | Browser Verification Purpose |
 |-------------|------------------------------|
@@ -71,19 +142,37 @@ If credentials are missing (LOGFIRE_READ_TOKEN, TEST_EMAIL, TEST_PASSWORD), ask 
 - "The fix was server-side"
 - "I only ran SQL queries"
 
+**INVALID WAYS TO CLAIM BROWSER TESTING:**
+- Setting `web_testing_done: true` without running Surf CLI
+- Using `curl` to hit health endpoints and claiming "web testing done"
+- Putting only `/health`, `/ping`, `/api/health` URLs in `urls_tested`
+
 The purpose of browser verification is to confirm **the application works after your fix**, not to test code changes specifically. A database fix (e.g., resetting CV statuses) must be verified by navigating to the affected page and confirming the data displays correctly.
+
+### Health Endpoints Don't Count
+
+The stop hook rejects `urls_tested` that contain **only** health endpoints:
+- `/health`, `/healthz`, `/api/health`
+- `/ping`, `/ready`, `/live`
+- `/readiness`, `/liveness`, `/status`
+
+You **MUST** test real user-facing pages like `/dashboard`, `/login`, `/profile`, etc.
 
 **Required evidence for ALL appfix sessions:**
 ```json
 {
   "evidence": {
-    "urls_tested": ["https://staging.example.com/affected-page"],  // REQUIRED - actual URLs
-    "console_clean": true
+    "urls_tested": ["https://staging.example.com/dashboard"],  // REQUIRED - REAL app pages
+    "console_clean": true,
+    "web_smoke_summary": ".claude/web-smoke/summary.json"      // REQUIRED - proof exists
   }
 }
 ```
 
-The stop hook will reject checkpoints where `web_testing_done: true` but `urls_tested` is empty.
+The stop hook will **BLOCK** checkpoints where:
+- `web_testing_done: true` but no Surf artifacts exist
+- `urls_tested` contains only health endpoints
+- `urls_tested` is empty
 
 ## Triggers
 

@@ -214,6 +214,31 @@ VERSION_DEPENDENT_FIELDS = [
     "api_testing_done",    # Depends on deployed
 ]
 
+# Health endpoint URL patterns - these don't count as real app pages
+HEALTH_URL_PATTERNS = [
+    '/health', '/healthz', '/api/health', '/ping', '/ready', '/live',
+    '/readiness', '/liveness', '/_health', '/status', '/api/status'
+]
+
+
+def has_real_app_urls(urls: list[str]) -> bool:
+    """
+    Check if any URLs are actual app pages (not just health endpoints).
+
+    Health endpoints like /health, /ping don't prove the app works -
+    they only prove the server is responding. Real verification requires
+    testing actual user-facing pages like /dashboard, /login, etc.
+    """
+    if not urls:
+        return False
+
+    for url in urls:
+        url_lower = url.lower()
+        is_health = any(pattern in url_lower for pattern in HEALTH_URL_PATTERNS)
+        if not is_health:
+            return True
+    return False
+
 # Dependency graph: field -> list of fields it depends on
 # If a dependency is stale, this field is also stale
 FIELD_DEPENDENCIES = {
@@ -520,7 +545,7 @@ def validate_checkpoint(checkpoint: dict, modified_files: list[str], cwd: str = 
     # Check: In autonomous mode (godo or appfix), browser verification is ALWAYS required
     # (regardless of code_changes_made - all changes need verification)
     if is_autonomous_mode(cwd):
-        # NEW: Artifact-based verification (primary method)
+        # Artifact-based verification is MANDATORY - booleans alone are NOT sufficient
         # Check for Surf CLI artifacts in .claude/web-smoke/
         artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
 
@@ -536,35 +561,49 @@ def validate_checkpoint(checkpoint: dict, modified_files: list[str], cwd: str = 
                 report["console_errors_checked_at_version"] = get_code_version(cwd)
                 checkpoint_modified = True
         else:
-            # No valid artifacts - fall back to boolean checks
-            # Add artifact errors as informational (not blocking if booleans are set)
-            if not report.get("web_testing_done", False):
-                failures.append(
-                    "web_testing_done is false - appfix requires browser verification.\n"
-                    "PREFERRED: Run Surf CLI for deterministic proof:\n"
-                    "  python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com'\n"
-                    "FALLBACK: Use Chrome MCP and manually verify, then set web_testing_done: true"
-                )
-                # Add artifact error details
-                for err in artifact_errors:
-                    failures.append(f"  → {err}")
+            # NO FALLBACK - artifacts are REQUIRED in autonomous mode
+            # Block REGARDLESS of boolean values - setting web_testing_done: true
+            # without actual proof is NOT allowed
+            failures.append(
+                "web_testing_done requires PROOF via Surf CLI artifacts.\n"
+                "Setting the boolean to true without artifacts is NOT allowed.\n"
+                "Run: python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com'\n"
+                "Or use Chrome MCP and manually create .claude/web-smoke/summary.json with passing results."
+            )
+            # Add artifact error details
+            for err in artifact_errors:
+                failures.append(f"  → {err}")
 
-            if not report.get("console_errors_checked", False):
+            # Also fail console_errors_checked since artifacts would have validated this
+            if report.get("console_errors_checked", False):
+                failures.append(
+                    "console_errors_checked is true but no Surf artifacts exist.\n"
+                    "Artifacts provide deterministic proof of console check. Run Surf CLI."
+                )
+            else:
                 failures.append(
                     "console_errors_checked is false - appfix requires checking browser "
-                    "console for errors. Use read_console_messages tool or Surf CLI."
+                    "console for errors. Run Surf CLI for deterministic proof."
                 )
 
-        # Check: urls_tested must have actual URLs when web_testing_done is true
-        # (unless artifacts provide the proof)
-        if not artifact_valid:
-            evidence = checkpoint.get("evidence", {})
-            urls_tested = evidence.get("urls_tested", [])
-            if report.get("web_testing_done", False) and not urls_tested:
+        # Check: urls_tested must contain REAL app pages, not just health endpoints
+        evidence = checkpoint.get("evidence", {})
+        urls_tested = evidence.get("urls_tested", [])
+
+        if report.get("web_testing_done", False):
+            if not urls_tested:
                 failures.append(
-                    "web_testing_done is true but evidence.urls_tested is empty - "
-                    "you must actually navigate to the app via Chrome MCP and record the URLs tested. "
-                    "Or run Surf CLI which automatically tracks URLs tested."
+                    "web_testing_done is true but evidence.urls_tested is empty.\n"
+                    "You must actually navigate to the app and record the URLs tested.\n"
+                    "Run Surf CLI which automatically tracks URLs tested."
+                )
+            elif not has_real_app_urls(urls_tested):
+                failures.append(
+                    "urls_tested contains ONLY health endpoints, not actual app pages.\n"
+                    f"URLs found: {urls_tested}\n"
+                    "Health endpoints (/health, /ping, etc.) don't prove the app works.\n"
+                    "You MUST verify real user-facing pages like /dashboard, /login, /profile, etc.\n"
+                    "Run: python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com/dashboard'"
                 )
 
     # Check: infra PR required if az CLI changes were made
