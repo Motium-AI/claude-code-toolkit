@@ -163,13 +163,28 @@ gh auth login
 
 ### Environment Variables
 
+Store credentials in a `.env` file in your project root:
+
+```bash
+# .env (add to .gitignore!)
+TEST_EMAIL=your-test@example.com
+TEST_PASSWORD=your-test-password
+LOGFIRE_READ_TOKEN=pylf_v1_xxx  # Optional: for Logfire
+```
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LOGFIRE_READ_TOKEN` | Optional | Query LogFire for structured logs |
 | `TEST_EMAIL` | Optional | Integration test user email |
 | `TEST_PASSWORD` | Optional | Integration test user password |
+| `LOGFIRE_READ_TOKEN` | Optional | Query LogFire for structured logs |
 
-**Note**: If credentials are missing and needed, the skill asks the user **once at start**, then proceeds autonomously.
+**How credentials are loaded**:
+1. Claude checks for `.env` file in the project root
+2. If credentials are found, they're used automatically
+3. If missing and needed, Claude asks the user **once at start**
+4. After asking, expects them in `.env` for future sessions
+
+**IMPORTANT**: Add `.env` to your `.gitignore` to prevent committing secrets.
 
 ### Project Files
 

@@ -112,6 +112,34 @@ ITERATION 2:
 
 If credentials are missing (LOGFIRE_READ_TOKEN, TEST_EMAIL, TEST_PASSWORD), ask the user **once at start**. After that, proceed autonomously.
 
+## Credentials and Authentication
+
+When the app requires authentication (login pages, API tokens, log access), Claude will:
+
+1. **Check for local `.env` file** in the project root
+2. **Read standard credential variables**:
+   - `TEST_EMAIL` - Email/username for login
+   - `TEST_PASSWORD` - Password for login
+   - `LOGFIRE_READ_TOKEN` - For Logfire log queries
+   - `API_TOKEN` or service-specific tokens
+3. **Ask user only if missing** - If `.env` doesn't contain needed credentials
+
+### Setting Up Credentials
+
+Create a `.env` file in your project root:
+
+```bash
+# .env (add to .gitignore!)
+TEST_EMAIL=your-test@example.com
+TEST_PASSWORD=your-test-password
+LOGFIRE_READ_TOKEN=pylf_v1_xxx  # For Logfire integration
+```
+
+**IMPORTANT**:
+- Add `.env` to `.gitignore` to prevent committing secrets
+- Copy from `.env.example` if available
+- Claude will ask once if credentials are missing, then expects them in `.env` for future use
+
 ## Browser Verification is MANDATORY (Artifacts Required)
 
 **ALL appfix sessions require browser verification with PROOF. No exceptions.**
@@ -379,12 +407,12 @@ Also maintain `.claude/appfix-state.json` for iteration tracking:
 
 ## Phase 0: Pre-Flight Check
 
-**CRITICAL: Create state files FIRST to enable auto-approval and cross-repo validation.**
+**CRITICAL: Create state files FIRST to enable auto-approval, cross-repo validation, and plan mode enforcement.**
 
 ```bash
 # 1. Create BOTH state files IMMEDIATELY
 # User-level state: enables cross-repo appfix detection (e.g., working in terraform repo)
-# Project-level state: backwards compatibility + iteration tracking
+# Project-level state: iteration tracking + plan mode enforcement
 
 mkdir -p ~/.claude && cat > ~/.claude/appfix-state.json << 'EOF'
 {
@@ -393,10 +421,16 @@ mkdir -p ~/.claude && cat > ~/.claude/appfix-state.json << 'EOF'
 }
 EOF
 
+# NOTE: plan_mode_completed starts as false - Edit/Write blocked until plan mode exits
 mkdir -p .claude && cat > .claude/appfix-state.json << 'EOF'
 {
   "iteration": 1,
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "plan_mode_completed": false,
+  "parallel_mode": false,
+  "agent_id": null,
+  "worktree_path": null,
+  "coordinator": true,
   "services": {},
   "fixes_applied": [],
   "verification_evidence": null
@@ -404,9 +438,26 @@ mkdir -p .claude && cat > .claude/appfix-state.json << 'EOF'
 EOF
 ```
 
+### State File Schema
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `iteration` | int | Current fix-verify iteration (starts at 1) |
+| `started_at` | string | ISO timestamp when appfix started |
+| `plan_mode_completed` | bool | True after ExitPlanMode called (Edit/Write blocked if false on iteration 1) |
+| `parallel_mode` | bool | True if running as parallel agent |
+| `agent_id` | string | Unique ID if running in worktree |
+| `worktree_path` | string | Path to worktree if isolated |
+| `coordinator` | bool | True if this is the coordinator (not a subagent) |
+| `services` | object | Service health status tracking |
+| `fixes_applied` | array | Log of fixes applied per iteration |
+| `verification_evidence` | object | Browser verification results |
+
+**Hook enforcement**: The `plan-mode-enforcer.py` hook blocks Edit/Write tools until `plan_mode_completed: true` on the first iteration. This ensures you explore the codebase and read docs before making changes.
+
 **Why both files?**
 - **User-level (`~/.claude/appfix-state.json`)**: Ensures stop hook validation works even when you switch to another repo (e.g., terraform-infra) to fix the root cause. Without this, the stop hook only checks the current working directory.
-- **Project-level (`.claude/appfix-state.json`)**: Tracks iteration state, fixes applied, and verification evidence for the specific project.
+- **Project-level (`.claude/appfix-state.json`)**: Tracks iteration state, fixes applied, plan mode completion, and verification evidence for the specific project.
 
 **Cleanup on completion**: Remove both files when appfix completes successfully:
 ```bash
@@ -768,6 +819,67 @@ All other actions proceed autonomously.
 - Missing credentials (once at start)
 - Infrastructure completely down
 - Ambiguous destructive action
+
+## Parallel Agent Isolation (Git Worktrees)
+
+When running multiple agents in parallel, each agent should use its own **git worktree** to avoid conflicts on git operations, checkpoint files, and version tracking.
+
+### Why Worktrees?
+
+Without isolation, parallel agents cause:
+- Race conditions on `git commit`/`git push`
+- Checkpoint invalidation chaos (Agent A's version invalidated by Agent B's commit)
+- Silent merge conflicts when editing same files
+
+### Worktree Workflow for Appfix
+
+```
+COORDINATOR (main repo)
+├── Creates worktrees for each agent
+├── Each agent diagnoses/fixes independently
+├── Sequential merge after completion
+└── Single deployment after merge
+
+AGENT WORKTREE
+├── Own branch: claude-agent/{agent-id}
+├── Own .claude/ directory (checkpoint, state)
+├── Independent log collection
+└── Independent version tracking
+```
+
+### Creating a Worktree for an Agent
+
+```bash
+# Coordinator creates worktree before spawning agent
+python3 ~/.claude/hooks/worktree-manager.py create <agent-id>
+# Returns: /tmp/claude-worktrees/<agent-id>
+
+# Agent runs in worktree directory
+cd /tmp/claude-worktrees/<agent-id>
+# All git operations are isolated to this branch
+```
+
+### Merging Agent Work
+
+```bash
+# After agent completes, merge back to main
+python3 ~/.claude/hooks/worktree-manager.py merge <agent-id>
+
+# If conflict detected (exit code 2):
+# - Coordinator must resolve or fall back to sequential execution
+
+# Cleanup after merge
+python3 ~/.claude/hooks/worktree-manager.py cleanup <agent-id>
+```
+
+### Conflict Strategy: Fail Fast
+
+When a merge conflict is detected:
+1. Abort the parallel approach
+2. Fall back to sequential execution
+3. Let the second agent rebase on the first agent's changes
+
+This maintains autonomous execution without requiring human intervention for conflict resolution.
 
 ## Example Session
 

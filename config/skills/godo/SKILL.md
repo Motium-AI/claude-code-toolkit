@@ -47,6 +47,32 @@ This workflow uses a **deterministic boolean checkpoint** to enforce completion:
 
 If credentials are missing (API keys, test credentials), ask the user **once at start**. After that, proceed autonomously.
 
+## Credentials and Authentication
+
+When the app requires authentication (login pages, API tokens), Claude will:
+
+1. **Check for local `.env` file** in the project root
+2. **Read standard credential variables**:
+   - `TEST_EMAIL` - Email/username for login
+   - `TEST_PASSWORD` - Password for login
+   - `API_TOKEN` or service-specific tokens
+3. **Ask user only if missing** - If `.env` doesn't contain needed credentials
+
+### Setting Up Credentials
+
+Create a `.env` file in your project root:
+
+```bash
+# .env (add to .gitignore!)
+TEST_EMAIL=your-test@example.com
+TEST_PASSWORD=your-test-password
+```
+
+**IMPORTANT**:
+- Add `.env` to `.gitignore` to prevent committing secrets
+- Copy from `.env.example` if available
+- Claude will ask once if credentials are missing, then expects them in `.env` for future use
+
 ## Browser Verification is MANDATORY
 
 **ALL godo sessions require browser verification. No exceptions.**
@@ -148,14 +174,21 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 
 ## Phase 0: Activation
 
-**CRITICAL: Create state file FIRST to enable auto-approval.**
+**CRITICAL: Create state file FIRST to enable auto-approval and plan mode enforcement.**
 
 ```bash
 # Create state file IMMEDIATELY (enables auto-approval hooks)
+# NOTE: plan_mode_completed starts as false - Edit/Write blocked until plan mode exits
 mkdir -p .claude && cat > .claude/godo-state.json << 'EOF'
 {
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "task": "user's task description"
+  "task": "user's task description",
+  "iteration": 1,
+  "plan_mode_completed": false,
+  "parallel_mode": false,
+  "agent_id": null,
+  "worktree_path": null,
+  "coordinator": true
 }
 EOF
 
@@ -167,6 +200,21 @@ mkdir -p ~/.claude && cat > ~/.claude/godo-state.json << 'EOF'
 }
 EOF
 ```
+
+### State File Schema
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `started_at` | string | ISO timestamp when godo started |
+| `task` | string | Description of the user's task |
+| `iteration` | int | Current fix-verify iteration (starts at 1) |
+| `plan_mode_completed` | bool | True after ExitPlanMode called (Edit/Write blocked if false on iteration 1) |
+| `parallel_mode` | bool | True if running as parallel agent |
+| `agent_id` | string | Unique ID if running in worktree |
+| `worktree_path` | string | Path to worktree if isolated |
+| `coordinator` | bool | True if this is the coordinator (not a subagent) |
+
+**Hook enforcement**: The `plan-mode-enforcer.py` hook blocks Edit/Write tools until `plan_mode_completed: true` on the first iteration. This ensures you explore the codebase before making changes.
 
 ## Phase 0.5: Codebase Context (MANDATORY)
 
@@ -345,6 +393,67 @@ rm -f ~/.claude/godo-state.json .claude/godo-state.json
 | Completion checkpoint | Same schema | Same schema |
 
 `/godo` is the universal base skill. `/appfix` is a debugging specialization that adds diagnostic phases.
+
+## Parallel Agent Isolation (Git Worktrees)
+
+When running multiple agents in parallel, each agent should use its own **git worktree** to avoid conflicts on git operations, checkpoint files, and version tracking.
+
+### Why Worktrees?
+
+Without isolation, parallel agents cause:
+- Race conditions on `git commit`/`git push`
+- Checkpoint invalidation chaos (Agent A's version invalidated by Agent B's commit)
+- Silent merge conflicts when editing same files
+
+### Worktree Workflow
+
+```
+COORDINATOR (main repo)
+├── Creates worktrees for each agent
+├── Agents work in isolation
+├── Sequential merge after completion
+└── Cleanup worktrees
+
+AGENT WORKTREE
+├── Own branch: claude-agent/{agent-id}
+├── Own .claude/ directory
+├── Own checkpoint file
+└── Independent version tracking
+```
+
+### Creating a Worktree for an Agent
+
+```bash
+# Coordinator creates worktree before spawning agent
+python3 ~/.claude/hooks/worktree-manager.py create <agent-id>
+# Returns: /tmp/claude-worktrees/<agent-id>
+
+# Agent runs in worktree directory
+cd /tmp/claude-worktrees/<agent-id>
+# All git operations are isolated to this branch
+```
+
+### Merging Agent Work
+
+```bash
+# After agent completes, merge back to main
+python3 ~/.claude/hooks/worktree-manager.py merge <agent-id>
+
+# If conflict detected (exit code 2):
+# - Coordinator must resolve or fall back to sequential execution
+
+# Cleanup after merge
+python3 ~/.claude/hooks/worktree-manager.py cleanup <agent-id>
+```
+
+### Conflict Strategy: Fail Fast
+
+When a merge conflict is detected:
+1. Abort the parallel approach
+2. Fall back to sequential execution
+3. Let the second agent rebase on the first agent's changes
+
+This maintains autonomous execution without requiring human intervention for conflict resolution.
 
 ## Philosophy: Honest Self-Reflection
 
