@@ -14,6 +14,7 @@
 #   ./scripts/install.sh --force      # Skip confirmation
 #   ./scripts/install.sh --verify     # Only run verification (no install)
 #   ./scripts/install.sh --remote     # Install on remote devbox
+#   ./scripts/install.sh --uninstall  # Remove toolkit symlinks (preserves ~/.claude)
 #
 
 set -e
@@ -35,6 +36,7 @@ FORCE=false
 VERIFY_ONLY=false
 REMOTE=false
 REMOTE_HOST=""
+UNINSTALL=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -50,6 +52,10 @@ while [[ $# -gt 0 ]]; do
             REMOTE=true
             REMOTE_HOST="${2:-ubuntu@cc-devbox}"
             shift 2 2>/dev/null || shift
+            ;;
+        --uninstall)
+            UNINSTALL=true
+            shift
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
@@ -70,6 +76,13 @@ verify_python() {
         return 1
     fi
     PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2)
+    PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+    PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+    if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]; }; then
+        echo -e "  ${RED}✗ Python $PYTHON_VERSION too old (need 3.8+)${NC}"
+        echo "    Upgrade Python: https://www.python.org/downloads/"
+        return 1
+    fi
     echo -e "  ${GREEN}✓ Python $PYTHON_VERSION${NC}"
     return 0
 }
@@ -191,6 +204,32 @@ verify_auto_approval() {
     fi
 }
 
+verify_optional_tools() {
+    echo -e "${BLUE}Checking optional tools...${NC}"
+
+    # Surf CLI - needed for /appfix web verification
+    echo -n "  Surf CLI: "
+    if command -v surf &> /dev/null; then
+        echo -e "${GREEN}installed${NC}"
+    else
+        echo -e "${YELLOW}not found (optional - needed for /appfix web verification)${NC}"
+        echo "    Install: npm install -g @nicobailon/surf-cli"
+    fi
+
+    # GitHub CLI - needed for PR creation and deployment workflows
+    echo -n "  GitHub CLI (gh): "
+    if command -v gh &> /dev/null; then
+        GH_VERSION=$(gh --version 2>&1 | head -1 | cut -d' ' -f3)
+        echo -e "${GREEN}$GH_VERSION${NC}"
+    else
+        echo -e "${YELLOW}not found (optional - needed for PR/deployment workflows)${NC}"
+        echo "    Install: https://cli.github.com/"
+    fi
+
+    # Always return 0 - these are optional
+    return 0
+}
+
 run_full_verification() {
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
@@ -205,6 +244,7 @@ run_full_verification() {
     verify_hook_imports || FAILED=1
     verify_state_detection || FAILED=1
     verify_auto_approval || FAILED=1
+    verify_optional_tools
 
     echo ""
     if [ $FAILED -eq 0 ]; then
@@ -300,8 +340,9 @@ install_remote() {
     echo ""
     echo -e "${BLUE}Running verification on remote...${NC}"
     ssh "$REMOTE_HOST" 'python3 -c "
-import sys
-sys.path.insert(0, \"/home/ubuntu/.claude/hooks\")
+import os, sys
+hooks_dir = os.path.expanduser(\"~/.claude/hooks\")
+sys.path.insert(0, hooks_dir)
 
 print(\"Checking hook imports...\")
 try:
@@ -312,7 +353,7 @@ except Exception as e:
     sys.exit(1)
 
 print(\"Checking state detection...\")
-import tempfile, os, json
+import tempfile, json
 test_dir = tempfile.mkdtemp()
 os.makedirs(f\"{test_dir}/.claude\", exist_ok=True)
 with open(f\"{test_dir}/.claude/appfix-state.json\", \"w\") as f:
@@ -334,8 +375,9 @@ os.makedirs(f\"{test_dir}/.claude\", exist_ok=True)
 with open(f\"{test_dir}/.claude/appfix-state.json\", \"w\") as f:
     json.dump({\"iteration\": 1, \"plan_mode_completed\": True}, f)
 
+hook_path = os.path.join(hooks_dir, \"appfix-auto-approve.py\")
 result = subprocess.run(
-    [\"python3\", \"/home/ubuntu/.claude/hooks/appfix-auto-approve.py\"],
+    [\"python3\", hook_path],
     cwd=test_dir,
     input=\"\",
     capture_output=True,
@@ -370,6 +412,56 @@ print(\"═\" * 50)
 # Handle remote installation
 if [ "$REMOTE" = true ]; then
     install_remote
+    exit 0
+fi
+
+# Handle uninstall
+if [ "$UNINSTALL" = true ]; then
+    echo -e "${GREEN}Claude Code Toolkit Uninstaller${NC}"
+    echo "================================="
+    echo ""
+
+    REMOVED=0
+
+    # Only remove symlinks that point to THIS repo
+    for ITEM in settings.json hooks commands skills; do
+        SPATH="$HOME/.claude/$ITEM"
+        if [ -L "$SPATH" ]; then
+            TARGET=$(readlink "$SPATH" 2>/dev/null || echo "")
+            if echo "$TARGET" | grep -q "$(basename "$REPO_DIR")"; then
+                rm -f "$SPATH"
+                echo -e "  ${GREEN}✓ Removed symlink: $ITEM → $TARGET${NC}"
+                REMOVED=$((REMOVED + 1))
+            else
+                echo -e "  ${YELLOW}⚠ Skipped $ITEM (points to: $TARGET, not this toolkit)${NC}"
+            fi
+        elif [ -e "$SPATH" ]; then
+            echo -e "  ${YELLOW}⚠ Skipped $ITEM (not a symlink)${NC}"
+        fi
+    done
+
+    if [ $REMOVED -eq 0 ]; then
+        echo -e "  ${YELLOW}No toolkit symlinks found to remove.${NC}"
+    else
+        echo ""
+        echo -e "${GREEN}Removed $REMOVED symlink(s).${NC}"
+    fi
+
+    echo ""
+    echo "Note: ~/.claude/ directory preserved (contains state files, plans, memories)."
+
+    # Check for backups
+    BACKUPS=$(ls -d "$HOME/.claude.backup."* 2>/dev/null | head -3)
+    if [ -n "$BACKUPS" ]; then
+        echo ""
+        echo "Backups available:"
+        for BACKUP in $BACKUPS; do
+            echo "  $BACKUP"
+        done
+        echo ""
+        echo "To restore a backup: mv <backup> ~/.claude"
+    fi
+
     exit 0
 fi
 

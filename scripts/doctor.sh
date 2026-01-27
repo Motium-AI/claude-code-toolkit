@@ -64,8 +64,16 @@ echo "────────────────────────�
 # Python
 echo -n "  Python 3: "
 if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version 2>&1)
-    echo -e "${GREEN}$PYTHON_VERSION${NC}"
+    PYTHON_VERSION_FULL=$(python3 --version 2>&1)
+    PYTHON_VERSION_NUM=$(echo "$PYTHON_VERSION_FULL" | cut -d' ' -f2)
+    PY_MAJOR=$(echo "$PYTHON_VERSION_NUM" | cut -d. -f1)
+    PY_MINOR=$(echo "$PYTHON_VERSION_NUM" | cut -d. -f2)
+    if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 8 ]; }; then
+        echo -e "${RED}$PYTHON_VERSION_FULL (need 3.8+)${NC}"
+        echo "    → Upgrade Python: https://www.python.org/downloads/"
+    else
+        echo -e "${GREEN}$PYTHON_VERSION_FULL${NC}"
+    fi
 else
     echo -e "${RED}NOT FOUND${NC}"
     echo "    → Install Python 3: https://www.python.org/downloads/"
@@ -88,6 +96,46 @@ if command -v claude &> /dev/null; then
 else
     echo -e "${RED}NOT FOUND${NC}"
     echo "    → Install: https://claude.ai/code"
+fi
+
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 1b: OPTIONAL TOOLS
+# ═══════════════════════════════════════════════════════════════════════════
+
+echo -e "${BLUE}1b. OPTIONAL TOOLS${NC}"
+echo "───────────────────────────────────────────────────────────────"
+
+# Surf CLI
+echo -n "  Surf CLI: "
+if command -v surf &> /dev/null; then
+    echo -e "${GREEN}installed${NC}"
+else
+    echo -e "${YELLOW}not found${NC}"
+    echo "    → Needed for /appfix web verification"
+    echo "    → Install: npm install -g @nicobailon/surf-cli"
+fi
+
+# GitHub CLI
+echo -n "  GitHub CLI (gh): "
+if command -v gh &> /dev/null; then
+    GH_VERSION=$(gh --version 2>&1 | head -1 | cut -d' ' -f3)
+    echo -e "${GREEN}$GH_VERSION${NC}"
+else
+    echo -e "${YELLOW}not found${NC}"
+    echo "    → Needed for PR creation and deployment workflows"
+    echo "    → Install: https://cli.github.com/"
+fi
+
+# jq (useful for debugging state files)
+echo -n "  jq: "
+if command -v jq &> /dev/null; then
+    JQ_VERSION=$(jq --version 2>&1)
+    echo -e "${GREEN}$JQ_VERSION${NC}"
+else
+    echo -e "${YELLOW}not found${NC}"
+    echo "    → Useful for inspecting state files during debugging"
 fi
 
 echo ""
@@ -417,10 +465,93 @@ fi
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SECTION 9: RECOMMENDATIONS
+# SECTION 9: PROJECT READINESS (--project mode)
 # ═══════════════════════════════════════════════════════════════════════════
 
-echo -e "${BLUE}9. RECOMMENDATIONS${NC}"
+if [ "$PROJECT_MODE" = true ]; then
+    echo -e "${BLUE}9. PROJECT READINESS${NC}"
+    echo "───────────────────────────────────────────────────────────────"
+    echo "  Project: $(cd "$PROJECT_DIR" && pwd)"
+    echo ""
+
+    # Project type detection
+    echo -n "  Project type: "
+    TYPES=""
+    [ -f "$PROJECT_DIR/package.json" ] && TYPES="${TYPES}Node.js "
+    [ -f "$PROJECT_DIR/pyproject.toml" ] || [ -f "$PROJECT_DIR/setup.py" ] && TYPES="${TYPES}Python "
+    [ -f "$PROJECT_DIR/tsconfig.json" ] && TYPES="${TYPES}TypeScript "
+    [ -f "$PROJECT_DIR/go.mod" ] && TYPES="${TYPES}Go "
+    [ -f "$PROJECT_DIR/Cargo.toml" ] && TYPES="${TYPES}Rust "
+    [ -f "$PROJECT_DIR/next.config.js" ] || [ -f "$PROJECT_DIR/next.config.mjs" ] || [ -f "$PROJECT_DIR/next.config.ts" ] && TYPES="${TYPES}Next.js "
+    [ -f "$PROJECT_DIR/docker-compose.yml" ] || [ -f "$PROJECT_DIR/docker-compose.yaml" ] && TYPES="${TYPES}Docker "
+    if [ -n "$TYPES" ]; then
+        echo -e "${GREEN}$TYPES${NC}"
+    else
+        echo -e "${YELLOW}unknown${NC}"
+    fi
+
+    # Documentation files
+    echo ""
+    echo "  Documentation files:"
+
+    check_project_file() {
+        local FILE=$1
+        local DESC=$2
+        local REQUIRED=$3
+        echo -n "    $FILE: "
+        if [ -f "$PROJECT_DIR/$FILE" ]; then
+            echo -e "${GREEN}exists${NC}"
+        elif [ "$REQUIRED" = "required" ]; then
+            echo -e "${RED}MISSING${NC} ($DESC)"
+        else
+            echo -e "${YELLOW}not found${NC} ($DESC)"
+        fi
+    }
+
+    check_project_file "CLAUDE.md" "project conventions for Claude Code" "recommended"
+    check_project_file "docs/index.md" "documentation hub" "recommended"
+    check_project_file ".claude/MEMORIES.md" "session context notes" "optional"
+    check_project_file "docs/TECHNICAL_OVERVIEW.md" "architecture documentation" "optional"
+
+    # Appfix-specific files
+    echo ""
+    echo "  /appfix readiness:"
+
+    # Service topology
+    echo -n "    service-topology.md: "
+    if [ -f "$PROJECT_DIR/.claude/skills/appfix/references/service-topology.md" ]; then
+        echo -e "${GREEN}exists${NC}"
+    elif [ -f "$HOME/.claude/skills/appfix/references/service-topology.md" ]; then
+        echo -e "${GREEN}exists (user-level)${NC}"
+    else
+        echo -e "${YELLOW}not found${NC} (needed for /appfix web smoke URLs)"
+    fi
+
+    # Environment file
+    echo -n "    .env file: "
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        # Check for common credential vars (names only, not values)
+        ENV_VARS=""
+        grep -q "TEST_EMAIL" "$PROJECT_DIR/.env" 2>/dev/null && ENV_VARS="${ENV_VARS}TEST_EMAIL "
+        grep -q "TEST_PASSWORD" "$PROJECT_DIR/.env" 2>/dev/null && ENV_VARS="${ENV_VARS}TEST_PASSWORD "
+        grep -q "LOGFIRE_READ_TOKEN" "$PROJECT_DIR/.env" 2>/dev/null && ENV_VARS="${ENV_VARS}LOGFIRE_READ_TOKEN "
+        if [ -n "$ENV_VARS" ]; then
+            echo -e "${GREEN}exists${NC} (has: $ENV_VARS)"
+        else
+            echo -e "${GREEN}exists${NC}"
+        fi
+    else
+        echo -e "${YELLOW}not found${NC} (credentials for testing)"
+    fi
+
+    echo ""
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 10: RECOMMENDATIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+echo -e "${BLUE}10. RECOMMENDATIONS${NC}"
 echo "───────────────────────────────────────────────────────────────"
 
 # Collect issues
