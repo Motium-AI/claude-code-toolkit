@@ -91,7 +91,9 @@ def has_code_changes(files: list[str]) -> bool:
         '.claude/',
         'prompts/config/',
         'prompts/scripts/',
+        'prompts/docs/',
         'scripts/',
+        'docs/',
     ]
     for f in files:
         if any(pattern in f for pattern in infrastructure_patterns):
