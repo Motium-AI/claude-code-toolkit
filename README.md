@@ -46,6 +46,16 @@ Claude will autonomously plan, execute, deploy, and verify your changes.
 ./scripts/doctor.sh               # Comprehensive diagnostics
 ```
 
+### Installing via Claude Code
+
+Already using Claude Code? Paste this prompt to have Claude install the toolkit:
+
+> Clone https://github.com/Motium-AI/claude-code-toolkit to ~/claude-code-toolkit and run ./scripts/install.sh to install the Claude Code Toolkit. After installation completes, restart Claude Code.
+
+### Auto-Update
+
+The toolkit automatically updates on session start. Use `/toolkit` to check status or manage updates.
+
 ---
 
 ## How /appfix Works

@@ -53,10 +53,11 @@ Central navigation hub for the Claude Code Toolkit documentation.
 | `/designimprove` | Recursive UI design improvement |
 | `/uximprove` | Recursive UX improvement |
 
-## Available Skills (12)
+## Available Skills (13)
 
 | Skill | Triggers On |
 |-------|-------------|
+| `toolkit` | /toolkit, "update toolkit", "toolkit status" - toolkit management and info |
 | `godo` | /godo, "go do", "just do it" - task-agnostic autonomous execution |
 | `appfix` | "fix the app", autonomous debugging (extends godo) |
 | `deploy-pipeline` | /deploy, deployment environments - Motium deployment guide |
