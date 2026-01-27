@@ -517,6 +517,58 @@ ls .claude/skills/appfix/references/service-topology.md
 
 On subsequent iterations, only enter plan mode if your hypothesis changes significantly.
 
+## Phase 0.75: Parallel Task Distribution (After Plan Approval)
+
+**After ExitPlanMode, BEFORE executing sequentially, analyze your plan for parallelizable work.**
+
+### When to Parallelize
+
+Parallelize when your plan contains 2+ independent work items that:
+- Touch different files or directories
+- Don't depend on each other's output
+- Can be explored, implemented, or tested independently
+
+**Skip parallelization** when:
+- The plan has only 1 task
+- Tasks have sequential dependencies (B needs A's output)
+- All changes are in the same file
+
+### How to Parallelize
+
+**Launch multiple Task tool calls in a SINGLE message** (this is what makes them parallel):
+
+```
+// CORRECT — parallel (single message, multiple tool calls):
+Task(description="Fix auth middleware", subagent_type="general-purpose", prompt="...")
+Task(description="Fix CORS config", subagent_type="general-purpose", prompt="...")
+Task(description="Update error handlers", subagent_type="general-purpose", prompt="...")
+
+// WRONG — sequential (separate messages, waits between each):
+Task(...) → wait → Task(...) → wait → Task(...)
+```
+
+### Subagent Types for Execution
+
+| Work Type | Subagent Type | Use When |
+|-----------|--------------|----------|
+| Research/exploration | `Explore` | Finding files, understanding patterns, reading code |
+| Code changes | `general-purpose` | Editing files, implementing features, fixing bugs |
+| Build/test commands | `Bash` | Running linters, tests, builds |
+
+### Task Prompt Requirements
+
+Each Task agent prompt MUST include:
+1. **Full context** — The agent has NO memory of your plan or the fix-verify loop. Include ALL relevant file paths, error details, and requirements
+2. **Specific scope** — Exactly which files/directories to work on
+3. **Expected output** — What the agent should produce or change
+4. **Constraints** — Don't modify files outside your scope
+
+### After Parallel Tasks Complete
+
+1. Review all agent results for correctness
+2. Resolve any conflicts (if agents touched overlapping files)
+3. Continue with sequential phases (health check, log collection, commit, deploy, verify)
+
 ## Phase 1: Health Check
 
 Check each service's health endpoint from `service-topology.md`:

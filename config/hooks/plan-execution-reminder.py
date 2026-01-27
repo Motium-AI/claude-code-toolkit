@@ -83,6 +83,13 @@ You are in an AUTOMATED FIX-VERIFY LOOP. The following is MANDATORY:
    - Use Edit tool for targeted changes
    - Do NOT ask for confirmation
 
+1.5 DISTRIBUTE INDEPENDENT TASKS IN PARALLEL
+   - Review your plan for 2+ independent work items
+   - Launch multiple Task tool calls in a SINGLE message for parallel execution
+   - Each Task agent needs FULL context (file paths, error details, requirements)
+   - Wait for all agents to complete before proceeding to commit/deploy
+   - If your plan has only 1 task or tasks depend on each other, skip this step
+
 2. COMMIT AND PUSH CHANGES
    - After applying fixes, commit immediately:
      git add <files> && git commit -m "appfix: [brief description]"
@@ -125,6 +132,12 @@ You have exited plan mode. The following requirements are MANDATORY:
    - Your task is to engage in an iterative loop until the goal is FULLY achieved
    - NO shortcuts. NO "next steps" left to pursue.
    - If something isn't working, debug and fix it - don't suggest the user do it
+
+1.5 PARALLELIZE INDEPENDENT WORK
+   - If your plan has 2+ independent items, launch them as parallel Task agents
+   - Use a SINGLE message with multiple Task tool calls (NOT sequential calls)
+   - Each agent needs full context — they don't see your plan
+   - Combine results, then proceed to testing and deployment
 
 2. TEST AND VALIDATE EVERYTHING
    - Use /webtest or Chrome MCP to verify UI changes in browser
