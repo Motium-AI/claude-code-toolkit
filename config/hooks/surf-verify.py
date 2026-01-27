@@ -51,12 +51,16 @@ def get_git_version() -> str:
 def load_waivers() -> dict:
     """Load waiver patterns if they exist."""
     if not os.path.exists(WAIVERS_PATH):
-        return {"console_patterns": [], "network_patterns": []}
+        return {"console_patterns": [], "network_patterns": [], "content_patterns": []}
     try:
         with open(WAIVERS_PATH) as f:
-            return json.load(f)
+            data = json.load(f)
+            # Ensure content_patterns key exists
+            if "content_patterns" not in data:
+                data["content_patterns"] = []
+            return data
     except (json.JSONDecodeError, IOError):
-        return {"console_patterns": [], "network_patterns": []}
+        return {"console_patterns": [], "network_patterns": [], "content_patterns": []}
 
 
 def matches_waiver(text: str, patterns: list[str]) -> bool:
@@ -119,12 +123,33 @@ def run_surf_workflow(urls: list[str]) -> dict:
         "screenshot_count": 0,
         "console_errors": 0,
         "network_errors": 0,
+        "content_errors": 0,
         "failing_requests": [],
+        "content_errors_found": [],
         "waivers_applied": 0,
     }
 
+    # Common error patterns to detect in page content
+    CONTENT_ERROR_PATTERNS = [
+        "internal server error",
+        "error loading",
+        "something went wrong",
+        "failed to load",
+        "unexpected error",
+        "500 error",
+        "404 not found",
+        "access denied",
+        "unauthorized",
+        "forbidden",
+        "connection refused",
+        "service unavailable",
+        "timeout error",
+        "unhandled exception",
+    ]
+
     all_console_output = []
     all_failing_requests = []
+    all_content_errors = []
 
     for i, url in enumerate(urls):
         print(f"[{i+1}/{len(urls)}] Testing: {url}")
@@ -166,6 +191,29 @@ def run_surf_workflow(urls: list[str]) -> dict:
                 print(f"  ⚠ Screenshot not saved (path: {screenshot_path})")
         except (subprocess.TimeoutExpired, FileNotFoundError):
             print("  ⚠ Screenshot failed")
+
+        # Check page content for error messages
+        try:
+            page_text_result = subprocess.run(
+                ["surf", "page.text"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            page_content = page_text_result.stdout.lower()
+
+            for pattern in CONTENT_ERROR_PATTERNS:
+                if pattern in page_content:
+                    # Check if pattern is waived
+                    if matches_waiver(pattern, waivers.get("content_patterns", [])):
+                        results["waivers_applied"] += 1
+                    else:
+                        results["content_errors"] += 1
+                        error_entry = f"{url}: Found '{pattern}'"
+                        all_content_errors.append(error_entry)
+                        print(f"  ✗ Page contains error text: '{pattern}'")
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            print("  ⚠ Page content check failed")
 
         # Capture console output
         try:
@@ -222,8 +270,12 @@ def run_surf_workflow(urls: list[str]) -> dict:
             f.write("\n".join(all_failing_requests))
         results["failing_requests"] = all_failing_requests
 
+    # Add content errors to results
+    if all_content_errors:
+        results["content_errors_found"] = all_content_errors
+
     # Determine pass/fail
-    if results["console_errors"] > 0 or results["network_errors"] > 0:
+    if results["console_errors"] > 0 or results["network_errors"] > 0 or results["content_errors"] > 0:
         results["passed"] = False
 
     if results["screenshot_count"] == 0:
@@ -248,6 +300,7 @@ def print_summary(results: dict) -> None:
     print(f"  Screenshots:       {results['screenshot_count']}")
     print(f"  Console errors:    {results['console_errors']}")
     print(f"  Network errors:    {results['network_errors']}")
+    print(f"  Content errors:    {results['content_errors']}")
     print(f"  Waivers applied:   {results['waivers_applied']}")
     print(f"  Version:           {results['tested_at_version']}")
     print(f"  Artifacts:         {ARTIFACT_DIR}/")

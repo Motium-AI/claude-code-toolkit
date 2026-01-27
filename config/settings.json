@@ -127,6 +127,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/skill-state-initializer.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/read-docs-trigger.py",
             "timeout": 5
           }

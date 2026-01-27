@@ -174,11 +174,23 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 
 ## Phase 0: Activation
 
-**CRITICAL: Create state file FIRST to enable auto-approval and plan mode enforcement.**
+### State File (Automatic)
+
+**The state file is created automatically by the `skill-state-initializer.py` hook when you invoke `/godo`.**
+
+When you type `/godo`, "go do", "just do it", or similar triggers, the UserPromptSubmit hook immediately creates:
+- `.claude/godo-state.json` - Project-level state for iteration tracking
+- `~/.claude/godo-state.json` - User-level state for cross-repo detection
+
+This happens BEFORE Claude starts processing, ensuring auto-approval hooks are active from the first tool call.
+
+**You do NOT need to manually create these files.** The hook handles it automatically.
+
+<details>
+<summary>Manual fallback (only if hook fails)</summary>
 
 ```bash
-# Create state file IMMEDIATELY (enables auto-approval hooks)
-# NOTE: plan_mode_completed starts as false - Edit/Write blocked until plan mode exits
+# Only use this if the automatic hook didn't create the files
 mkdir -p .claude && cat > .claude/godo-state.json << 'EOF'
 {
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -192,7 +204,6 @@ mkdir -p .claude && cat > .claude/godo-state.json << 'EOF'
 }
 EOF
 
-# Also create user-level state for cross-repo work
 mkdir -p ~/.claude && cat > ~/.claude/godo-state.json << 'EOF'
 {
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -200,6 +211,7 @@ mkdir -p ~/.claude && cat > ~/.claude/godo-state.json << 'EOF'
 }
 EOF
 ```
+</details>
 
 ### State File Schema
 

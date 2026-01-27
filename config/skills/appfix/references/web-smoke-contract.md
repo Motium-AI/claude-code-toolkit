@@ -28,7 +28,9 @@ After web verification, the following must exist:
   "screenshot_count": 3,
   "console_errors": 0,
   "network_errors": 0,
+  "content_errors": 0,
   "failing_requests": [],
+  "content_errors_found": [],
   "waivers_applied": 0
 }
 ```
@@ -42,7 +44,9 @@ After web verification, the following must exist:
 | `screenshot_count` | int | yes | Number of screenshots captured |
 | `console_errors` | int | yes | Console errors after waivers |
 | `network_errors` | int | yes | Network errors after waivers |
+| `content_errors` | int | yes | Page content errors (error text in DOM) |
 | `failing_requests` | array | no | List of failed request details |
+| `content_errors_found` | array | no | List of error patterns found in page content |
 | `waivers_applied` | int | no | Number of errors filtered by waivers |
 
 ## Pass Conditions
@@ -53,7 +57,8 @@ The stop hook requires ALL of these:
 2. `screenshot_count >= 1`
 3. `console_errors == 0` (after waivers applied)
 4. `network_errors == 0` (after waivers applied)
-5. `tested_at_version == current_git_version` (not stale)
+5. `content_errors == 0` (after waivers applied)
+6. `tested_at_version == current_git_version` (not stale)
 
 ## Waiver File Schema
 
@@ -70,6 +75,10 @@ For expected errors (third-party, known issues), create `.claude/web-smoke/waive
     "GET.*googletagmanager\\.com.*4\\d\\d",
     "GET.*facebook\\.com.*blocked"
   ],
+  "content_patterns": [
+    "maintenance mode",
+    "demo error"
+  ],
   "reason": "Third-party analytics blocked by browser privacy settings"
 }
 ```
@@ -78,10 +87,11 @@ For expected errors (third-party, known issues), create `.claude/web-smoke/waive
 |-------|------|-------------|
 | `console_patterns` | array | Regex patterns to ignore in console |
 | `network_patterns` | array | Regex patterns to ignore in network errors |
+| `content_patterns` | array | Regex patterns to ignore in page content (error text) |
 | `reason` | string | Why these errors are expected |
 
 Patterns are applied as regex filters. Matching errors are:
-- Excluded from `console_errors` / `network_errors` counts
+- Excluded from `console_errors` / `network_errors` / `content_errors` counts
 - Counted in `waivers_applied`
 - Still logged in raw artifacts for debugging
 
