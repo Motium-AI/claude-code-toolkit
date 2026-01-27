@@ -11,6 +11,8 @@ helping prevent wasted effort from setting invalid checkpoint values.
 Exit codes:
   0 - Always (warnings only, never blocks)
 """
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path

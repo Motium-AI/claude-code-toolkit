@@ -23,6 +23,8 @@ Module Structure:
 - _sv_validators.py: Validation logic (sub-validators, artifact checks)
 - _sv_templates.py: Blocking message templates
 """
+from __future__ import annotations
+
 import json
 import os
 import sys

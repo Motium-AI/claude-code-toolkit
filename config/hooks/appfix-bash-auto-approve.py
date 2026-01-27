@@ -7,6 +7,8 @@ truly autonomous execution without permission prompts.
 
 Detection: Checks for .claude/appfix-state.json in cwd or APPFIX_ACTIVE env var.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys

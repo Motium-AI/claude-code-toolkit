@@ -5,6 +5,8 @@ Stop Validator - Validation functions for completion checkpoint.
 This module contains all validation logic for the stop hook, broken into
 composable sub-validators for maintainability.
 """
+from __future__ import annotations
+
 import json
 import subprocess
 from pathlib import Path

@@ -11,6 +11,8 @@ This solves the "pre-existing changes" loop:
 - Session B stops - diff hash unchanged, so no checkpoint required
 - Without this, Session B would be blocked because git diff shows changes from A
 """
+from __future__ import annotations
+
 import hashlib
 import json
 import subprocess

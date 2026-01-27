@@ -12,6 +12,8 @@ Matcher: ExitPlanMode
 Exit codes:
   0 - Always succeeds (informational hook)
 """
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path

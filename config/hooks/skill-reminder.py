@@ -3,6 +3,8 @@
 UserPromptSubmit hook that suggests relevant skills based on prompt keywords.
 Dynamically reads skill triggers from SKILL.md files.
 """
+from __future__ import annotations
+
 import json
 import re
 import sys

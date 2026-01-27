@@ -16,6 +16,8 @@ Matcher: Edit|Write
 Exit codes:
   0 - Decision made (deny via hookSpecificOutput or silent passthrough)
 """
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path

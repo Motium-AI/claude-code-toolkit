@@ -30,6 +30,8 @@ Exit codes:
     1 - Error (message on stderr)
     2 - Conflict detected (for merge command)
 """
+from __future__ import annotations
+
 import json
 import os
 import shutil

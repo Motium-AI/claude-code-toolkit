@@ -4,6 +4,8 @@ Shared utilities for Claude Code hooks.
 
 This module contains common functions used across multiple hooks to avoid duplication.
 """
+from __future__ import annotations
+
 import hashlib
 import json
 import os

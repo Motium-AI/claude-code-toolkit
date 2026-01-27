@@ -5,6 +5,8 @@ with completion checkpoint requirement.
 
 Also handles appfix mode with enhanced autonomy context.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys

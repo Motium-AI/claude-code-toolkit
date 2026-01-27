@@ -3,6 +3,8 @@
 UserPromptSubmit hook - triggers documentation reading when user says "read the docs".
 Also suggests relevant docs based on keywords in the user's message.
 """
+from __future__ import annotations
+
 import json
 import sys
 

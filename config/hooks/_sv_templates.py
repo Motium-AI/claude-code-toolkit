@@ -5,6 +5,8 @@ Stop Validator Templates - Blocking message templates and functions.
 This module contains the user-facing messages displayed when the stop hook
 blocks execution due to missing or invalid completion checkpoints.
 """
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 

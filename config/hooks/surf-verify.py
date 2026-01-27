@@ -20,6 +20,7 @@ Exit codes:
     1 - Verification failed (errors found)
     2 - Setup error (Surf not installed, missing URLs, etc.)
 """
+from __future__ import annotations
 
 import argparse
 import json

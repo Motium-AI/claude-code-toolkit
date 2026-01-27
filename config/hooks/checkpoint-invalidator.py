@@ -20,6 +20,8 @@ Worktree Support:
 Exit codes:
   0 - Success (always exits 0, this is informational only)
 """
+from __future__ import annotations
+
 import json
 import subprocess
 import sys

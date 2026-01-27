@@ -15,6 +15,8 @@ Why this hook exists:
   to execute via Bash - but by then, EnterPlanMode's PermissionRequest had already fired
 - This hook creates the file BEFORE Claude processes anything, fixing the race condition
 """
+from __future__ import annotations
+
 import json
 import os
 import re

@@ -11,6 +11,8 @@ Detection: Checks for .claude/godo-state.json or .claude/appfix-state.json
 Hook event: PermissionRequest
 Matcher: * (wildcard - matches all tools)
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
