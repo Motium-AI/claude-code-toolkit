@@ -10,6 +10,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/auto-update.py",
+            "timeout": 45
+          },
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/session-snapshot.py",
             "timeout": 5
           },
@@ -23,6 +28,11 @@
       {
         "matcher": "compact",
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/auto-update.py",
+            "timeout": 45
+          },
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/session-snapshot.py",

@@ -148,6 +148,45 @@ Location: `~/.claude/settings.json`
 }
 ```
 
+### SessionStart Hook: Auto-Update
+
+**File**: `~/.claude/hooks/auto-update.py`
+
+**Purpose**: Automatically checks for and downloads toolkit updates from GitHub on session start.
+
+**Key features**:
+- Rate-limited to once per 24 hours (configurable via `CHECK_INTERVAL_HOURS`)
+- Uses `git ls-remote` for fast version check without full fetch
+- Uses `git pull --ff-only` to avoid merge conflicts
+- Non-blocking on errors (network failures don't break sessions)
+- Detects settings.json changes and warns user to restart
+
+**State file**: `~/.claude/toolkit-update-state.json`
+```json
+{
+  "last_check_timestamp": "2026-01-27T10:30:00Z",
+  "last_check_result": "up_to_date",
+  "local_commit_at_check": "abc1234",
+  "remote_commit_at_check": "abc1234",
+  "settings_hash_at_session_start": "sha256:abc123...",
+  "pending_restart_reason": null,
+  "update_history": [...]
+}
+```
+
+**Disable auto-update**: Set environment variable `CLAUDE_TOOLKIT_AUTO_UPDATE=false`
+
+**Restart requirement**: When settings.json changes in an update, the hook outputs a warning:
+```
+⚠️ TOOLKIT UPDATED - RESTART REQUIRED ⚠️
+...
+CRITICAL: settings.json changed in this update.
+Hooks are captured at session startup and require restart to reload.
+ACTION REQUIRED: Exit this session and start a new one.
+```
+
+The hook tracks pending restarts and re-displays the warning on subsequent sessions until the user actually restarts.
+
 ### SessionStart Hook: Session Snapshot
 
 **File**: `~/.claude/hooks/session-snapshot.py`
@@ -657,6 +696,39 @@ Format recommendation:
 - Information already in docs/CLAUDE.md
 
 ## Testing & Verification
+
+### Automated Test Suite
+
+Three levels of automated tests verify hook behavior:
+
+```bash
+# Level 1: Pytest subprocess tests (fast, deterministic, no API cost)
+cd prompts && python3 -m pytest config/hooks/tests/test_plan_mode_hooks.py -v
+
+# Level 2: Claude headless E2E (real sessions via claude -p, ~$0.05-0.15)
+cd prompts && bash scripts/test-e2e-headless.sh
+
+# Level 3: tmux interactive E2E (manual observation with --observe)
+cd prompts && bash scripts/test-e2e-tmux.sh --observe
+```
+
+**Pytest tests** (`config/hooks/tests/test_plan_mode_hooks.py`) — 24 tests covering:
+- `TestPlanModeEnforcer`: `.claude/` artifact exemption, code blocking, plan completion, iteration skip, godo state
+- `TestPlanModeTracker`: State updates on ExitPlanMode, field preservation, no-stdout behavior
+- `TestSkillStateInitializer`: `/appfix` and `/godo` state creation, natural language triggers
+- `TestHookChain`: Full appfix lifecycle (init → enforce → track → allow), auto-approval
+
+**Headless E2E** (`scripts/test-e2e-headless.sh`) — 5 tests using `claude -p --dangerously-skip-permissions`:
+- `.claude/` writes allowed during plan enforcement
+- Code files blocked before plan mode
+- Code files allowed after plan mode
+- Iteration > 1 skips enforcement
+- No state file = normal passthrough
+
+**tmux E2E** (`scripts/test-e2e-tmux.sh`) — 3 interactive tests:
+- `.claude/` artifact write in interactive session
+- Code file blocking in interactive session
+- Full lifecycle: enforce → plan → allow
 
 ### Verify SessionStart Hook
 

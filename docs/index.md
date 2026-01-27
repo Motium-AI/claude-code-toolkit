@@ -74,7 +74,7 @@ Central navigation hub for the Claude Code Toolkit documentation.
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | session-snapshot.py, read-docs-reminder.py | Git diff snapshot, doc reading |
+| SessionStart | auto-update.py, session-snapshot.py, read-docs-reminder.py | Auto-update, git diff snapshot, doc reading |
 | UserPromptSubmit | read-docs-trigger.py, skill-state-initializer.py | Doc triggers, state file creation |
 | PreToolUse (Edit/Write) | plan-mode-enforcer.py | Blocks edits until plan mode done |
 | PostToolUse (Edit/Write) | checkpoint-invalidator.py | Resets stale checkpoint flags |
@@ -82,6 +82,19 @@ Central navigation hub for the Claude Code Toolkit documentation.
 | PostToolUse (ExitPlanMode) | plan-execution-reminder.py, plan-mode-tracker.py | Execution context, state update |
 | PermissionRequest | appfix-auto-approve.py | Auto-approve all tools during godo/appfix |
 | Stop | stop-validator.py | Validates completion checkpoint |
+
+## Testing
+
+```bash
+# Hook subprocess tests (fast, no API cost)
+cd prompts && python3 -m pytest config/hooks/tests/ -v
+
+# Claude headless E2E tests (real sessions)
+cd prompts && bash scripts/test-e2e-headless.sh
+
+# tmux interactive E2E tests
+cd prompts && bash scripts/test-e2e-tmux.sh --observe
+```
 
 ## Directory Structure
 
@@ -93,7 +106,13 @@ prompts/
 │   ├── settings.json      # Hook definitions
 │   ├── commands/          # 11 command specs
 │   ├── hooks/             # 7 active hooks + 5 utilities
+│   │   └── tests/         # Pytest hook integration tests
 │   └── skills/            # 11 skill directories
+├── scripts/
+│   ├── install.sh         # Toolkit installer
+│   ├── doctor.sh          # Health check
+│   ├── test-e2e-headless.sh  # Headless E2E tests
+│   └── test-e2e-tmux.sh     # Interactive E2E tests
 ├── docs/
 │   ├── index.md           # You are here
 │   ├── architecture.md    # System design

@@ -564,6 +564,24 @@ if [ -d "$CONFIG_DIR/hooks" ]; then
     echo "  ✓ hooks/*.py"
 fi
 
+# Initialize auto-update state file
+echo "Initializing auto-update state..."
+TOOLKIT_STATE="$HOME/.claude/toolkit-update-state.json"
+if [ ! -f "$TOOLKIT_STATE" ]; then
+    cat > "$TOOLKIT_STATE" << EOF
+{
+  "last_check_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "last_check_result": "up_to_date",
+  "settings_hash_at_session_start": null,
+  "pending_restart_reason": null,
+  "update_history": []
+}
+EOF
+    echo "  ✓ initialized toolkit-update-state.json"
+else
+    echo "  ✓ toolkit-update-state.json already exists"
+fi
+
 echo ""
 echo -e "${GREEN}Symlinks created!${NC}"
 echo ""
