@@ -295,6 +295,9 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 | `preexisting_issues_fixed` | bool | if code changed | Did you fix ALL issues (no excuses)? |
 | `az_cli_changes_made` | bool | yes | Did you run az CLI infrastructure commands? |
 | `infra_pr_created` | bool | if az CLI used | Did you create PR to infra repo? |
+| `validation_tests_defined` | bool | if code changed | Did you define fix-specific tests? |
+| `validation_tests_passed` | bool | if code changed | Did ALL validation tests pass? |
+| `validation_tests_passed_at_version` | string | if tests run | Git version when tests passed |
 | `is_job_complete` | bool | yes | **Critical** - Is the job ACTUALLY done? |
 | `what_remains` | string | yes | Must be "none" to allow stop |
 
@@ -370,7 +373,13 @@ Update these when your changes affect them:
 │        └─► Update IaC files in infra repo                           │
 │        └─► Create PR to infra repo                                  │
 │                                                                      │
-│     f. VERIFY (Surf CLI first, Chrome MCP fallback)                 │
+│     f. FIX VALIDATION TESTS (Phase 3.7 - MANDATORY)                 │
+│        └─► Define: What would PROVE this fix worked?                │
+│        └─► Execute tests, record actual values                      │
+│        └─► If ANY test fails → SURFACE ISSUE → FIX → re-test       │
+│        └─► Save artifacts to .claude/validation-tests/              │
+│                                                                      │
+│     g. WEB SMOKE VERIFY (Surf CLI first, Chrome MCP fallback)       │
 │        └─► Run: python3 ~/.claude/hooks/surf-verify.py              │
 │        └─► Check .claude/web-smoke/summary.json passed              │
 │        └─► Update appfix-state.json                                 │
@@ -407,13 +416,23 @@ Also maintain `.claude/appfix-state.json` for iteration tracking:
 
 ## Phase 0: Pre-Flight Check
 
-**CRITICAL: Create state files FIRST to enable auto-approval, cross-repo validation, and plan mode enforcement.**
+### State File (Automatic)
+
+**The state file is created automatically by the `skill-state-initializer.py` hook when you invoke `/appfix`.**
+
+When you type `/appfix`, "fix the app", or similar triggers, the UserPromptSubmit hook immediately creates:
+- `.claude/appfix-state.json` - Project-level state for iteration tracking
+- `~/.claude/appfix-state.json` - User-level state for cross-repo detection
+
+This happens BEFORE Claude starts processing, ensuring auto-approval hooks are active from the first tool call.
+
+**You do NOT need to manually create these files.** The hook handles it automatically.
+
+<details>
+<summary>Manual fallback (only if hook fails)</summary>
 
 ```bash
-# 1. Create BOTH state files IMMEDIATELY
-# User-level state: enables cross-repo appfix detection (e.g., working in terraform repo)
-# Project-level state: iteration tracking + plan mode enforcement
-
+# Only use this if the automatic hook didn't create the files
 mkdir -p ~/.claude && cat > ~/.claude/appfix-state.json << 'EOF'
 {
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -421,7 +440,6 @@ mkdir -p ~/.claude && cat > ~/.claude/appfix-state.json << 'EOF'
 }
 EOF
 
-# NOTE: plan_mode_completed starts as false - Edit/Write blocked until plan mode exits
 mkdir -p .claude && cat > .claude/appfix-state.json << 'EOF'
 {
   "iteration": 1,
@@ -437,6 +455,7 @@ mkdir -p .claude && cat > .claude/appfix-state.json << 'EOF'
 }
 EOF
 ```
+</details>
 
 ### State File Schema
 
@@ -651,6 +670,141 @@ If you ran ANY of these commands:
 - IaC state doesn't match reality
 - Team confusion about actual configuration
 - Compliance and audit issues
+
+## Phase 3.7: Fix Validation Tests (MANDATORY for code changes)
+
+**Before claiming completion, you MUST define and execute tests that PROVE the fix worked.**
+
+### Why This Matters
+
+Web smoke tests prove "the app loads" but NOT "the fix worked."
+
+**Example failure mode:**
+- Fix: Notes summarization pipeline
+- Web test: Dashboard loads ✓
+- Reality: Werner Iwens still has `bullhorn_notes_summary_json = NULL`
+- Result: Fix DIDN'T WORK but we claimed success!
+
+### Step 1: Define Validation Tests
+
+Ask yourself: **"What would PROVE this specific fix worked?"**
+
+| Fix Type | Example Test |
+|----------|--------------|
+| Database field populated | Query returns expected value |
+| API endpoint fixed | Endpoint returns 200 with expected body |
+| UI element appears | Page contains expected text/element |
+| Error resolved | Log no longer contains error pattern |
+| Config applied | Config query returns new value |
+
+**Add tests to checkpoint:**
+
+```json
+{
+  "validation_tests": {
+    "fix_description": "Notes summarization should populate bullhorn_notes_summary_json",
+    "tests": [
+      {
+        "id": "notes_summary_populated",
+        "description": "Werner Iwens' notes should be summarized",
+        "type": "database_query",
+        "expected": "NOT NULL"
+      }
+    ]
+  }
+}
+```
+
+### Step 2: Execute Tests
+
+Run each test and record actual results:
+
+```bash
+# Database query example
+RESULT=$(psql $DATABASE_URL -t -c "SELECT bullhorn_notes_summary_json FROM persons WHERE person_id = 123")
+
+# API endpoint example
+curl -s https://staging.example.com/api/notes/123 | jq '.summary'
+
+# Page content example (via Surf CLI)
+surf navigate "https://staging.example.com/persons/123"
+surf page.text | grep -i "notes summary"
+```
+
+### Step 3: If Tests FAIL - Surface the Issue
+
+**CRITICAL: Failed tests surface issues that must be fixed!**
+
+Do NOT:
+- Claim completion with failed tests
+- Skip tests because "the app works"
+- Weaken expected values to make tests pass
+- Remove failing tests
+
+DO:
+- Investigate WHY the test failed
+- Fix the root cause
+- Re-run the test
+- Loop until ALL tests pass
+
+### Step 4: Update Checkpoint with Results
+
+After all tests pass:
+
+```json
+{
+  "validation_tests": {
+    "tests": [
+      {
+        "id": "notes_summary_populated",
+        "description": "Werner Iwens' notes should be summarized",
+        "type": "database_query",
+        "expected": "NOT NULL",
+        "actual": "{\"summary\": \"Werner is a senior consultant...\"}",
+        "passed": true,
+        "tested_at": "2026-01-27T10:30:00Z"
+      }
+    ],
+    "summary": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "last_run_version": "abc1234"
+    }
+  },
+  "self_report": {
+    "validation_tests_defined": true,
+    "validation_tests_passed": true,
+    "validation_tests_passed_at_version": "abc1234"
+  }
+}
+```
+
+### Step 5: Create Artifacts
+
+Save evidence to `.claude/validation-tests/summary.json`:
+
+```bash
+mkdir -p .claude/validation-tests
+cat > .claude/validation-tests/summary.json << 'EOF'
+{
+  "passed": true,
+  "tested_at": "2026-01-27T10:30:00Z",
+  "tested_at_version": "abc1234",
+  "fix_description": "Notes summarization pipeline",
+  "total_tests": 1,
+  "passed_tests": 1,
+  "failed_tests": 0,
+  "tests": [{
+    "id": "notes_summary_populated",
+    "passed": true,
+    "actual": "NOT NULL"
+  }]
+}
+EOF
+```
+
+See `.claude/skills/appfix/references/validation-tests-contract.md` for full schema.
 
 ## Phase 4: Verification (MANDATORY)
 
@@ -957,3 +1111,113 @@ The stop hook doesn't try to catch lies. It asks direct questions:
 - "Is the job actually complete?" → Answer honestly
 
 If you answer `false`, you're blocked. If you answer `true` honestly, you're done.
+
+## Troubleshooting
+
+### Hooks Not Working
+
+**Symptom**: Auto-approval doesn't work, plan mode enforcer doesn't block, stop validator doesn't fire.
+
+**Root Cause**: Hooks are captured at Claude Code session startup. Changes to hook files or state files don't take effect until a new session starts.
+
+**Solution**:
+1. Exit Claude Code completely
+2. Start a new session: `claude`
+3. Look for `SessionStart:` message confirming hooks loaded
+
+### State File Not Detected
+
+**Symptom**: Auto-approval hook returns silent passthrough (no output) instead of `{"behavior": "allow"}`.
+
+**Root Cause**: The `is_autonomous_mode_active()` function looks for `.claude/appfix-state.json` (or godo-state.json) by walking up the directory tree. If not found, auto-approval is disabled.
+
+**Solution**: The state file should be created automatically by `skill-state-initializer.py` when you type `/appfix`. If it's not working:
+
+1. Check that the hook is registered in `~/.claude/settings.json` under UserPromptSubmit
+2. Verify the hook file exists: `ls ~/.claude/hooks/skill-state-initializer.py`
+3. Start a NEW Claude Code session (hooks are captured at startup)
+
+**Manual fallback** (only if hook fails):
+```bash
+mkdir -p .claude
+cat > .claude/appfix-state.json << 'EOF'
+{
+  "iteration": 1,
+  "started_at": "2026-01-26T10:00:00Z",
+  "plan_mode_completed": true,
+  "parallel_mode": false,
+  "agent_id": null,
+  "worktree_path": null,
+  "coordinator": true,
+  "services": {},
+  "fixes_applied": [],
+  "verification_evidence": null
+}
+EOF
+```
+
+### PermissionRequest Hook Empty Stdin
+
+**Symptom**: Auto-approval hook fails with JSONDecodeError.
+
+**Root Cause**: `PermissionRequest` hooks may NOT receive JSON via stdin (unlike other hook types like PreToolUse, PostToolUse, Stop).
+
+**Solution**: The `appfix-auto-approve.py` hook handles this by falling back to `os.getcwd()` when stdin is empty:
+```python
+stdin_data = sys.stdin.read()
+if stdin_data.strip():
+    input_data = json.loads(stdin_data)
+    cwd = input_data.get("cwd", os.getcwd())
+else:
+    cwd = os.getcwd()  # Fallback for PermissionRequest hooks
+```
+
+### Verify Hook Installation
+
+Run the doctor script:
+```bash
+./scripts/doctor.sh
+```
+
+Or manually test:
+```bash
+# Test state detection
+python3 -c "
+import sys
+sys.path.insert(0, '$HOME/.claude/hooks')
+from _common import is_autonomous_mode_active, is_appfix_active
+print('is_appfix_active:', is_appfix_active('$(pwd)'))
+print('is_autonomous_mode_active:', is_autonomous_mode_active('$(pwd)'))
+"
+
+# Test auto-approval hook
+cd /path/to/project/with/state/file
+echo "" | python3 ~/.claude/hooks/appfix-auto-approve.py
+# Should output: {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}
+```
+
+### Cross-Repo Detection Not Working
+
+**Symptom**: When switching to terraform/infra repo to fix root cause, appfix mode not detected.
+
+**Root Cause**: State file detection walks UP the directory tree, but if you're in a different repo, it won't find the original project's state file.
+
+**Solution**: Create user-level state file that persists across repos:
+```bash
+mkdir -p ~/.claude
+cat > ~/.claude/appfix-state.json << 'EOF'
+{
+  "started_at": "2026-01-26T10:00:00Z",
+  "origin_project": "/path/to/original/project"
+}
+EOF
+```
+
+### Debug Log
+
+All hooks log diagnostic info to `/tmp/claude-hooks-debug.log`:
+```bash
+tail -f /tmp/claude-hooks-debug.log
+```
+
+Check this log when hooks behave unexpectedly.

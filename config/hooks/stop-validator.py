@@ -430,6 +430,112 @@ def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     return True, []
 
 
+def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[str]]:
+    """
+    Validate that fix-specific validation tests were defined, executed, and passed.
+
+    In appfix mode, validation tests are REQUIRED to prove the fix worked,
+    not just that the app loads. Tests must:
+    1. Be defined (non-empty tests array)
+    2. All pass (summary.failed == 0)
+    3. Be current version (not stale)
+
+    Returns (is_valid, list_of_errors)
+    """
+    errors = []
+
+    # Only required for appfix mode (not godo - godo is task-agnostic)
+    if not is_appfix_mode(cwd):
+        return True, []
+
+    validation_tests = checkpoint.get("validation_tests", {})
+    tests = validation_tests.get("tests", [])
+
+    # Check if artifact exists
+    artifact_dir = Path(cwd) / ".claude" / "validation-tests" if cwd else Path(".claude/validation-tests")
+    summary_path = artifact_dir / "summary.json"
+
+    # If no tests in checkpoint and no artifact, check if this is a fix scenario
+    # For research/audit tasks (no code changes), validation tests may not be needed
+    report = checkpoint.get("self_report", {})
+    code_changes_made = report.get("code_changes_made", False)
+
+    if not code_changes_made:
+        # No code changes = likely research/audit, validation tests optional
+        return True, []
+
+    # Code changes were made - validation tests are expected
+    if not tests and not summary_path.exists():
+        errors.append(
+            "VALIDATION TESTS REQUIRED: You made code changes but didn't define fix-specific tests.\n"
+            "These tests PROVE the fix worked, not just that the app loads.\n\n"
+            "Ask yourself: 'What would PROVE this specific fix worked?'\n\n"
+            "Example for 'notes summarization fix':\n"
+            "  {\n"
+            '    "id": "notes_summary_populated",\n'
+            '    "description": "Werner Iwens bullhorn_notes_summary_json is NOT NULL",\n'
+            '    "type": "database_query",\n'
+            '    "expected": "NOT NULL"\n'
+            "  }\n\n"
+            "Add tests to .claude/completion-checkpoint.json → validation_tests.tests\n"
+            "Then execute tests and save results to .claude/validation-tests/summary.json"
+        )
+        return False, errors
+
+    # Load artifact if exists (takes precedence over checkpoint)
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text())
+            tests = summary.get("tests", tests)  # Use artifact tests if available
+        except (json.JSONDecodeError, IOError):
+            pass  # Fall back to checkpoint tests
+
+    # Check tests were defined
+    if not tests:
+        errors.append(
+            "VALIDATION TESTS EMPTY: Tests array is empty.\n"
+            "Define at least one test that proves your fix worked."
+        )
+        return False, errors
+
+    # Check for failed tests
+    failed_tests = [t for t in tests if not t.get("passed", False)]
+    if failed_tests:
+        errors.append(
+            f"VALIDATION TESTS FAILED: {len(failed_tests)} of {len(tests)} tests failed.\n"
+            "These failures SURFACE issues that must be fixed before completion.\n"
+        )
+        for test in failed_tests:
+            test_desc = test.get("description", test.get("id", "unknown"))
+            expected = test.get("expected", "?")
+            actual = test.get("actual", "?")
+            errors.append(
+                f"  FAILED: {test_desc}\n"
+                f"    Expected: {expected}\n"
+                f"    Actual:   {actual}\n"
+                f"    -> This issue must be FIXED - continue working!"
+            )
+        return False, errors
+
+    # Check version freshness from artifact
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text())
+            tested_version = summary.get("tested_at_version", "")
+            current_version = get_code_version(cwd)
+            if tested_version and current_version != "unknown" and tested_version != current_version:
+                errors.append(
+                    f"VALIDATION TESTS STALE: Tested at version '{tested_version}', "
+                    f"but code is now at '{current_version}'.\n"
+                    "Re-run validation tests after code changes."
+                )
+                return False, errors
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return True, []
+
+
 def save_checkpoint(cwd: str, checkpoint: dict) -> bool:
     """Save checkpoint file back to disk."""
     if not cwd:
@@ -619,9 +725,12 @@ def validate_checkpoint(checkpoint: dict, modified_files: list[str], cwd: str = 
                 "before starting appfix work"
             )
 
-    # Check: In autonomous mode (godo or appfix), browser verification required for APP code
-    # Infrastructure-only changes (hooks, skills, scripts) don't have web UI to test
-    if is_autonomous_mode(cwd) and has_app_code:
+    # Check: In autonomous mode (godo or appfix), browser verification required for:
+    # 1. Application code changes (has_app_code)
+    # 2. Infrastructure CLI changes (az keyvault, az containerapp, etc.)
+    # The latter is tracked by bash-version-tracker.py which sets az_cli_changes_made
+    has_infra_changes = report.get("az_cli_changes_made", False)
+    if is_autonomous_mode(cwd) and (has_app_code or has_infra_changes):
         # Artifact-based verification is MANDATORY for application code changes
         # Check for Surf CLI artifacts in .claude/web-smoke/
         artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
@@ -691,6 +800,12 @@ def validate_checkpoint(checkpoint: dict, modified_files: list[str], cwd: str = 
                 "create a PR to the infra repo. Sync your changes with IaC files."
             )
 
+    # Check: Fix-specific validation tests (appfix mode only)
+    # These prove the fix worked, not just that the app loads
+    tests_valid, test_errors = validate_fix_specific_tests(cwd, checkpoint)
+    if not tests_valid:
+        failures.extend(test_errors)
+
     # Check: what_remains should be empty or "none"
     what_remains = reflection.get("what_remains", "")
     if what_remains and what_remains.lower() not in ["none", "nothing", "n/a", ""]:
@@ -734,7 +849,28 @@ This file requires HONEST self-reporting of what you've done:
     "preexisting_issues_fixed": true,       // Did you fix ALL issues (no "not my code")?
     "az_cli_changes_made": false,           // Did you run az CLI infrastructure commands?
     "infra_pr_created": false,              // Did you create PR to infra repo? (if az CLI used)
+    "validation_tests_defined": false,      // Did you define fix-specific tests? (if code changed)
+    "validation_tests_passed": false,       // Did ALL validation tests pass?
+    "validation_tests_passed_at_version": "",// Version when validation tests passed
     "is_job_complete": false                // Is the job ACTUALLY done?
+  }},
+  "validation_tests": {{                    // Fix-specific tests (REQUIRED if code changed)
+    "tests": [
+      {{
+        "id": "example_test",
+        "description": "What would PROVE this fix worked?",
+        "type": "database_query|api_response|page_content",
+        "expected": "NOT NULL|status=200|CONTAINS text",
+        "actual": "",                       // Fill after executing
+        "passed": false
+      }}
+    ],
+    "summary": {{
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "last_run_version": ""
+    }}
   }},
   "reflection": {{
     "what_was_done": "...",                 // Honest summary of work completed
@@ -832,6 +968,19 @@ If infra_pr_created is false (but az_cli_changes_made is true):
   → Update Terraform/Bicep/ARM templates to match
   → Create PR: gh pr create --title "Sync infra changes from appfix"
   → Update checkpoint: infra_pr_created: true
+
+If validation_tests_defined is false (and you made code changes):
+  → Ask: "What would PROVE this specific fix worked?"
+  → Define tests in checkpoint → validation_tests.tests array
+  → Test types: database_query, api_response, page_content
+  → Each test needs: id, description, type, expected
+
+If validation_tests_passed is false:
+  → Execute each test and record actual results
+  → If tests FAIL → The fix didn't work! Fix the root cause.
+  → Re-run tests until ALL pass
+  → Save artifacts to .claude/validation-tests/summary.json
+  → Update checkpoint: validation_tests_passed: true, version
 
 If is_job_complete is false:
   → You honestly answered that the job isn't done
