@@ -491,8 +491,8 @@ if ! verify_python; then
     exit 1
 fi
 
-# Confirm unless --force
-if [ "$FORCE" = false ]; then
+# Confirm unless --force or non-interactive (stdin not a terminal)
+if [ "$FORCE" = false ] && [ -t 0 ]; then
     read -p "Continue? (y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
