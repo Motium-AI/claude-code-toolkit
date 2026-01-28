@@ -38,6 +38,15 @@ Examples:
 
 #### Agents to Launch
 
+**CRITICAL: All agents have FULL TOOL ACCESS and MUST educate themselves before answering.**
+
+Each agent should:
+1. **Search local codebase** — Use Glob/Grep/Read to find relevant code, configs, docs
+2. **Search the web** — Use WebSearch for novel techniques, recent research, best practices
+3. **Ground analysis in evidence** — Don't just reason from priors; cite what you found
+
+---
+
 **3 DYNAMIC AGENTS** (generated based on the question):
 
 For each of the 3 domain-relevant perspectives you identified:
@@ -50,13 +59,32 @@ Task(
 
 Question: [INSERT FULL QUESTION]
 
-Analyze this from your specific expertise. Focus on what YOU uniquely see that other perspectives might miss.
+## MANDATORY: Research Before Answering
 
-Deliver (max 300 words):
-1. **Key insights from your perspective** (max 6 bullets)
-2. **What others might overlook** (2-3 points)
-3. **Risks you're uniquely positioned to see** (2-3)
-4. **Follow-up questions** (3)
+You have FULL TOOL ACCESS. Before forming your opinion:
+
+1. **Search locally** (if relevant codebase context exists):
+   - Use Glob to find relevant files (configs, schemas, implementations)
+   - Use Grep to search for patterns, function names, error messages
+   - Use Read to examine key files in detail
+
+2. **Search the web** for current best practices:
+   - Use WebSearch: "[topic] best practices 2024", "[topic] vs [alternative]"
+   - Find recent blog posts, papers, case studies
+   - Look for lessons learned and failure modes
+
+3. **Cite your sources**: Reference specific files or URLs you found
+
+## Then Analyze
+
+From your expertise, focus on what YOU uniquely see that others might miss.
+
+Deliver (max 400 words):
+1. **Research findings** (what you learned from local docs + web)
+2. **Key insights from your perspective** (max 6 bullets, grounded in research)
+3. **What others might overlook** (2-3 points)
+4. **Risks you're uniquely positioned to see** (2-3)
+5. **Follow-up questions** (3)
 """
 )
 ```
@@ -71,15 +99,28 @@ Task(
   subagent_type="general-purpose",
   description="Contrarian perspective",
   model="opus",
-  prompt="""You are a rigorous contrarian. Your job is to find weaknesses in whatever is being proposed or considered.
+  prompt="""You are a rigorous contrarian. Your job is to find weaknesses in whatever is being proposed.
 
 Question/proposal to stress-test: [INSERT FULL QUESTION]
 
-Deliver (max 250 words):
-1. **Strongest counterargument**
-2. **Where this approach breaks** in practice (2-3 scenarios)
-3. **What evidence would change your mind**
-4. **"Gotcha" questions** (3)
+## MANDATORY: Research Before Critiquing
+
+You have FULL TOOL ACCESS. Before forming your critique:
+
+1. **Search for failure cases**: Use WebSearch to find "[topic] failures", "[topic] problems", "why [topic] failed"
+2. **Find counterexamples**: Search for cases where the opposite approach succeeded
+3. **Check local context**: Use Grep/Read to understand the specific codebase constraints
+
+Ground your critique in EVIDENCE, not just logical possibilities.
+
+## Then Critique
+
+Deliver (max 300 words):
+1. **Research findings** (failure cases, counterexamples you found)
+2. **Strongest counterargument** (grounded in evidence)
+3. **Where this approach breaks** in practice (2-3 scenarios with citations)
+4. **What evidence would change your mind**
+5. **"Gotcha" questions** (3)
 
 Be constructive but relentless. Don't strawman.
 """
@@ -94,16 +135,35 @@ Task(
   subagent_type="general-purpose",
   description="Systems perspective",
   model="opus",
-  prompt="""You are a systems thinker. Analyze the second and third-order effects.
+  prompt="""You are a systems thinker. Analyze second and third-order effects.
 
 Question: [INSERT FULL QUESTION]
 
-Deliver (max 300 words):
-1. **System boundaries** - what's in/out scope
-2. **Feedback loops** - reinforcing and balancing
-3. **Emergent behaviors** - what happens at scale
-4. **Leverage points** - where small changes have big effects
-5. **Follow-up questions** (3)
+## MANDATORY: Research Before Analyzing
+
+You have FULL TOOL ACCESS. Before mapping the system:
+
+1. **Map the actual system**: Use Glob/Grep/Read to understand:
+   - What components exist in the codebase?
+   - How do they connect? (imports, API calls, data flow)
+   - What are the existing feedback mechanisms?
+
+2. **Research similar systems**: Use WebSearch to find:
+   - "[topic] system architecture"
+   - "[topic] at scale problems"
+   - "second-order effects [topic]"
+
+Ground your systems analysis in the ACTUAL system, not abstract models.
+
+## Then Analyze
+
+Deliver (max 350 words):
+1. **Research findings** (actual system structure, similar system case studies)
+2. **System boundaries** - what's in/out scope
+3. **Feedback loops** - reinforcing and balancing (cite specific components)
+4. **Emergent behaviors** - what happens at scale
+5. **Leverage points** - where small changes have big effects
+6. **Follow-up questions** (3)
 """
 )
 ```
@@ -120,11 +180,30 @@ Task(
 
 Question: [INSERT FULL QUESTION]
 
-Deliver (max 250 words):
-1. **Implementation path** - simplest viable approach
-2. **Gotchas** - what breaks when you actually build this
-3. **Iteration strategy** - how to start small and learn
-4. **Follow-up questions** (3)
+## MANDATORY: Research Before Planning
+
+You have FULL TOOL ACCESS. Before proposing implementation:
+
+1. **Understand the current state**: Use Glob/Grep/Read to find:
+   - Existing similar implementations in the codebase
+   - Current tech stack and patterns used
+   - Dependencies and constraints
+
+2. **Find practical guidance**: Use WebSearch for:
+   - "[topic] implementation guide"
+   - "[topic] tutorial production"
+   - "[topic] migration lessons learned"
+
+Ground your implementation path in REALITY, not theory.
+
+## Then Plan
+
+Deliver (max 300 words):
+1. **Research findings** (existing patterns, practical guides found)
+2. **Implementation path** - simplest viable approach (with specific files/tools)
+3. **Gotchas** - what breaks when you actually build this (cite sources)
+4. **Iteration strategy** - how to start small and learn
+5. **Follow-up questions** (3)
 """
 )
 ```
@@ -169,17 +248,26 @@ Your reasoning was: [X's reasoning]
 [AGENT Y] disagrees. They claim: [Y's position]
 Their reasoning: [Y's reasoning]
 
-Your task: DEFEND your position against their critique.
+## MANDATORY: Research to Strengthen Your Defense
+
+You have FULL TOOL ACCESS. Before responding:
+
+1. **Find supporting evidence**: Use WebSearch to find data, case studies, or expert opinions that support your position
+2. **Check their claims**: Search for evidence that challenges their reasoning
+3. **Look for resolution**: Search for "[topic A] vs [topic B]" comparisons
+
+Your task: DEFEND your position with NEW EVIDENCE.
 - Address their strongest point directly
-- Provide additional evidence or reasoning
+- Provide additional evidence from your research
 - Identify where you might update your view (if anywhere)
 - State what would change your mind
 
-Deliver (max 300 words):
-1. **Direct response** to their critique
-2. **Strengthened argument** (new evidence or framing)
-3. **Concessions** (where they have a point)
-4. **Crux** (what we'd need to know to resolve this)
+Deliver (max 350 words):
+1. **New evidence found** (citations)
+2. **Direct response** to their critique (grounded in evidence)
+3. **Strengthened argument** (new evidence or framing)
+4. **Concessions** (where they have a point)
+5. **Crux** (what we'd need to know to resolve this)
 """
 )
 ```
@@ -199,17 +287,30 @@ You claimed: [Y's position from Round 1]
 [PASTE AGENT X's RESPONSE FROM STEP 1]
 ---
 
+## MANDATORY: Research to Challenge Their Defense
+
+You have FULL TOOL ACCESS. Before responding:
+
+1. **Verify their evidence**: Use WebSearch to check if their citations are accurate and representative
+2. **Find counter-evidence**: Search for cases that contradict their new arguments
+3. **Check for blind spots**: Use Glob/Grep/Read to find local context they may have missed
+
+Ground your response in EVIDENCE, not just rhetoric.
+
+## Then Respond
+
 Your task: RESPOND to their defense.
 - Did they address your strongest point?
 - Where does their argument still fail?
 - Where did they change your mind (if anywhere)?
 - What's the remaining disagreement (if any)?
 
-Deliver (max 300 words):
-1. **Assessment** of their response
-2. **Remaining weaknesses** in their position
-3. **Updated view** (where you shifted)
-4. **Final verdict**: agreement, partial agreement, or persistent disagreement
+Deliver (max 350 words):
+1. **Research findings** (what you found checking their claims)
+2. **Assessment** of their response (grounded in evidence)
+3. **Remaining weaknesses** in their position (with citations)
+4. **Updated view** (where you shifted, if anywhere)
+5. **Final verdict**: agreement, partial agreement, or persistent disagreement
 """
 )
 ```
@@ -241,17 +342,38 @@ THREAD: [describe the contested point]
 CONTEXT FROM ROUND 1:
 [paste relevant excerpts from Round 1 agents]
 
+## MANDATORY: Research Before Deep-Diving
+
+You have FULL TOOL ACCESS. Before forming conclusions:
+
+1. **Search for root causes**: Use WebSearch to find:
+   - Academic papers or industry analysis on this specific tension
+   - "[topic A] vs [topic B] analysis", "[topic] tradeoffs research"
+   - How similar disagreements were resolved in real projects
+
+2. **Check local constraints**: Use Glob/Grep/Read to find:
+   - Relevant constraints in the actual codebase
+   - Existing decisions that inform this tension
+   - Technical debt or legacy factors
+
+3. **Find resolution patterns**: Search for how others navigated this exact tradeoff
+
+Ground your deep-dive in EVIDENCE from both research and local context.
+
+## Then Analyze
+
 Your task:
 - Investigate the root cause of this disagreement
 - Find evidence that resolves or clarifies it
 - Propose a synthesis that honors both sides
 - Identify what's truly unresolvable vs just underexplored
 
-Deliver (max 400 words):
-1. **Root analysis**
-2. **Evidence/reasoning**
-3. **Proposed resolution**
-4. **Remaining uncertainty**
+Deliver (max 450 words):
+1. **Research findings** (papers, case studies, local constraints found)
+2. **Root analysis** (why this disagreement exists)
+3. **Evidence/reasoning** (grounded in what you found)
+4. **Proposed resolution** (with citations)
+5. **Remaining uncertainty** (what's genuinely unresolvable)
 """
 )
 ```
@@ -267,17 +389,40 @@ Task(
 SYNTHESIS SO FAR:
 [paste the intermediate synthesis]
 
+## MANDATORY: Research Before Attacking
+
+You have FULL TOOL ACCESS. Before critiquing:
+
+1. **Search for similar failures**: Use WebSearch to find:
+   - Cases where this type of synthesis/recommendation failed
+   - "[topic] failures", "[approach] post-mortem", "why [decision] went wrong"
+   - Blind spots in similar analyses
+
+2. **Find what's missing**: Search for:
+   - Perspectives or stakeholders not represented
+   - Edge cases that break the recommendation
+   - "[topic] edge cases", "[topic] unexpected consequences"
+
+3. **Check local reality**: Use Glob/Grep/Read to find:
+   - Constraints the synthesis might have missed
+   - Historical decisions that inform this situation
+
+Ground your attack in EVIDENCE, not hypotheticals.
+
+## Then Attack
+
 Your job:
 - Find the weakest link
 - Identify what we're missing
 - Challenge the consensus
 - Propose what would falsify this view
 
-Deliver (max 300 words):
-1. **Weakest point in synthesis**
-2. **Missing perspective**
-3. **Falsification criteria**
-4. **Final "gotcha" question**
+Deliver (max 350 words):
+1. **Research findings** (failure cases, missing perspectives found)
+2. **Weakest point in synthesis** (with evidence)
+3. **Missing perspective** (grounded in research)
+4. **Falsification criteria** (specific, testable)
+5. **Final "gotcha" question** (the hardest question for this synthesis)
 """
 )
 ```
@@ -364,9 +509,18 @@ After Round 2 completes, generate the final answer:
 - Concessions are explicit — "you changed my mind on X" is a valuable signal
 - Two rounds of exchange is usually enough; more risks performative debate
 
+**Self-education powers better analysis:**
+- All agents use `subagent_type="general-purpose"` which grants full tool access
+- "MANDATORY: Research Before..." sections force agents to gather evidence first
+- Local codebase search (Glob, Grep, Read) grounds analysis in actual constraints
+- Web search (WebSearch) brings in current best practices and failure cases
+- Citing sources enables verification and builds trust in conclusions
+- Opinion without research is speculation; research-backed analysis is insight
+
 **Avoid:**
 - Point-based rubrics that narrow reasoning
 - Overly deterministic formats
 - Forcing agents into identical output structures
 - Premature consensus (honor real disagreements)
 - Smoothing over disagreements in synthesis
+- Agents that reason from priors without checking reality first
