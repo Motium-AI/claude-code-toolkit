@@ -4,7 +4,7 @@ Unit tests for stop-validator modules.
 
 Run with: python3 -m pytest tests/test_sv_validators.py -v
 """
-import json
+
 import sys
 import tempfile
 from pathlib import Path
@@ -17,14 +17,11 @@ from _sv_validators import (
     validate_version_staleness,
     validate_core_completion,
     validate_code_requirements,
-    validate_fix_specific_tests,
     validate_web_testing,
     has_code_changes,
     has_frontend_changes,
     has_real_app_urls,
     get_dependent_fields,
-    FIELD_DEPENDENCIES,
-    VERSION_DEPENDENT_FIELDS,
 )
 from _common import (
     load_checkpoint,
@@ -38,19 +35,19 @@ class TestHasCodeChanges:
     """Tests for has_code_changes function."""
 
     def test_detects_python_files(self):
-        files = ['src/main.py', 'README.md']
+        files = ["src/main.py", "README.md"]
         assert has_code_changes(files) is True
 
     def test_detects_typescript_files(self):
-        files = ['src/App.tsx', 'package.json']
+        files = ["src/App.tsx", "package.json"]
         assert has_code_changes(files) is True
 
     def test_ignores_config_hooks(self):
-        files = ['config/hooks/stop-validator.py', 'config/skills/appfix/SKILL.md']
+        files = ["config/hooks/stop-validator.py", "config/skills/appfix/SKILL.md"]
         assert has_code_changes(files) is False
 
     def test_ignores_claude_directory(self):
-        files = ['.claude/completion-checkpoint.json', '.claude/state.json']
+        files = [".claude/completion-checkpoint.json", ".claude/state.json"]
         assert has_code_changes(files) is False
 
     def test_empty_list(self):
@@ -61,20 +58,20 @@ class TestHasFrontendChanges:
     """Tests for has_frontend_changes function."""
 
     def test_detects_tsx_files(self):
-        files = ['src/App.tsx']
+        files = ["src/App.tsx"]
         assert has_frontend_changes(files) is True
 
     def test_detects_components_directory(self):
-        files = ['components/Button.js']
+        files = ["components/Button.js"]
         assert has_frontend_changes(files) is True
 
     def test_detects_src_hooks(self):
-        files = ['src/hooks/useAuth.ts']
+        files = ["src/hooks/useAuth.ts"]
         assert has_frontend_changes(files) is True
 
     def test_ignores_config_hooks(self):
         # config/hooks is NOT frontend
-        files = ['config/hooks/stop-validator.py']
+        files = ["config/hooks/stop-validator.py"]
         assert has_frontend_changes(files) is False
 
 
@@ -82,15 +79,15 @@ class TestHasRealAppUrls:
     """Tests for has_real_app_urls function."""
 
     def test_real_dashboard_url(self):
-        urls = ['https://app.example.com/dashboard']
+        urls = ["https://app.example.com/dashboard"]
         assert has_real_app_urls(urls) is True
 
     def test_health_endpoint_only(self):
-        urls = ['https://app.example.com/health']
+        urls = ["https://app.example.com/health"]
         assert has_real_app_urls(urls) is False
 
     def test_mixed_urls(self):
-        urls = ['https://app.example.com/health', 'https://app.example.com/login']
+        urls = ["https://app.example.com/health", "https://app.example.com/login"]
         assert has_real_app_urls(urls) is True
 
     def test_empty_list(self):
@@ -98,11 +95,11 @@ class TestHasRealAppUrls:
 
     def test_all_health_patterns(self):
         health_urls = [
-            'https://app.com/health',
-            'https://app.com/healthz',
-            'https://app.com/api/health',
-            'https://app.com/ping',
-            'https://app.com/ready',
+            "https://app.com/health",
+            "https://app.com/healthz",
+            "https://app.com/api/health",
+            "https://app.com/ping",
+            "https://app.com/ready",
         ]
         assert has_real_app_urls(health_urls) is False
 
@@ -112,46 +109,46 @@ class TestGetDependentFields:
 
     def test_deployed_depends_on_linters(self):
         # If linters_pass is stale, deployed should be in dependents
-        dependents = get_dependent_fields('linters_pass')
-        assert 'deployed' in dependents
+        dependents = get_dependent_fields("linters_pass")
+        assert "deployed" in dependents
 
     def test_web_testing_depends_on_deployed(self):
-        dependents = get_dependent_fields('deployed')
-        assert 'web_testing_done' in dependents
-        assert 'console_errors_checked' in dependents
+        dependents = get_dependent_fields("deployed")
+        assert "web_testing_done" in dependents
+        assert "console_errors_checked" in dependents
 
     def test_transitive_dependency(self):
         # linters_pass -> deployed -> web_testing_done
-        dependents = get_dependent_fields('linters_pass')
-        assert 'web_testing_done' in dependents
+        dependents = get_dependent_fields("linters_pass")
+        assert "web_testing_done" in dependents
 
 
 class TestValidateCoreCompletion:
     """Tests for validate_core_completion function."""
 
     def test_job_incomplete_fails(self):
-        report = {'is_job_complete': False}
-        reflection = {'what_remains': 'none'}
+        report = {"is_job_complete": False}
+        reflection = {"what_remains": "none"}
         failures = validate_core_completion(report, reflection)
         assert len(failures) == 1
-        assert 'is_job_complete' in failures[0]
+        assert "is_job_complete" in failures[0]
 
     def test_what_remains_not_empty_fails(self):
-        report = {'is_job_complete': True}
-        reflection = {'what_remains': 'Need to add tests'}
+        report = {"is_job_complete": True}
+        reflection = {"what_remains": "Need to add tests"}
         failures = validate_core_completion(report, reflection)
         assert len(failures) == 1
-        assert 'what_remains' in failures[0]
+        assert "what_remains" in failures[0]
 
     def test_valid_checkpoint_passes(self):
-        report = {'is_job_complete': True}
-        reflection = {'what_remains': 'none'}
+        report = {"is_job_complete": True}
+        reflection = {"what_remains": "none"}
         failures = validate_core_completion(report, reflection)
         assert len(failures) == 0
 
     def test_what_remains_nothing_passes(self):
-        report = {'is_job_complete': True}
-        reflection = {'what_remains': 'nothing'}
+        report = {"is_job_complete": True}
+        reflection = {"what_remains": "nothing"}
         failures = validate_core_completion(report, reflection)
         assert len(failures) == 0
 
@@ -160,60 +157,72 @@ class TestValidateCodeRequirements:
     """Tests for validate_code_requirements function."""
 
     def test_no_app_code_passes(self):
-        report = {'linters_pass': False}
-        failures = validate_code_requirements(report, has_app_code=False, has_frontend=False)
+        report = {"linters_pass": False}
+        failures = validate_code_requirements(
+            report, has_app_code=False, has_frontend=False
+        )
         assert len(failures) == 0
 
     def test_app_code_requires_linters(self):
-        report = {'linters_pass': False, 'deployed': True}
-        failures = validate_code_requirements(report, has_app_code=True, has_frontend=False)
-        assert any('linters_pass' in f for f in failures)
+        report = {"linters_pass": False, "deployed": True}
+        failures = validate_code_requirements(
+            report, has_app_code=True, has_frontend=False
+        )
+        assert any("linters_pass" in f for f in failures)
 
     def test_app_code_requires_deployed(self):
-        report = {'linters_pass': True, 'deployed': False}
-        failures = validate_code_requirements(report, has_app_code=True, has_frontend=False)
-        assert any('deployed' in f for f in failures)
+        report = {"linters_pass": True, "deployed": False}
+        failures = validate_code_requirements(
+            report, has_app_code=True, has_frontend=False
+        )
+        assert any("deployed" in f for f in failures)
 
     def test_frontend_requires_web_testing(self):
-        report = {'linters_pass': True, 'deployed': True, 'web_testing_done': False}
-        failures = validate_code_requirements(report, has_app_code=True, has_frontend=True)
-        assert any('web_testing_done' in f for f in failures)
+        report = {"linters_pass": True, "deployed": True, "web_testing_done": False}
+        failures = validate_code_requirements(
+            report, has_app_code=True, has_frontend=True
+        )
+        assert any("web_testing_done" in f for f in failures)
 
 
 class TestVersionStaleness:
     """Tests for validate_version_staleness function."""
 
-    @patch('_sv_validators.get_code_version')
+    @patch("_sv_validators.get_code_version")
     def test_detects_stale_field(self, mock_version):
-        mock_version.return_value = 'def5678'
+        mock_version.return_value = "def5678"
         checkpoint = {
-            'self_report': {
-                'deployed': True,
-                'deployed_at_version': 'abc1234',  # Different version
+            "self_report": {
+                "deployed": True,
+                "deployed_at_version": "abc1234",  # Different version
             }
         }
-        modified, failures, reset_fields = validate_version_staleness(checkpoint, '/tmp')
+        modified, failures, reset_fields = validate_version_staleness(
+            checkpoint, "/tmp"
+        )
         assert modified is True
-        assert 'deployed' in reset_fields
-        assert checkpoint['self_report']['deployed'] is False  # Was reset
+        assert "deployed" in reset_fields
+        assert checkpoint["self_report"]["deployed"] is False  # Was reset
 
-    @patch('_sv_validators.get_code_version')
+    @patch("_sv_validators.get_code_version")
     def test_cascades_to_dependents(self, mock_version):
-        mock_version.return_value = 'def5678'
+        mock_version.return_value = "def5678"
         checkpoint = {
-            'self_report': {
-                'linters_pass': True,
-                'linters_pass_at_version': 'abc1234',  # Stale
-                'deployed': True,
-                'deployed_at_version': 'def5678',  # Current version
-                'web_testing_done': True,
-                'web_testing_done_at_version': 'def5678',  # Current version
+            "self_report": {
+                "linters_pass": True,
+                "linters_pass_at_version": "abc1234",  # Stale
+                "deployed": True,
+                "deployed_at_version": "def5678",  # Current version
+                "web_testing_done": True,
+                "web_testing_done_at_version": "def5678",  # Current version
             }
         }
-        modified, failures, reset_fields = validate_version_staleness(checkpoint, '/tmp')
+        modified, failures, reset_fields = validate_version_staleness(
+            checkpoint, "/tmp"
+        )
         # linters_pass is stale, so deployed (which depends on it) should cascade
-        assert 'linters_pass' in reset_fields
-        assert 'deployed' in reset_fields  # Cascade!
+        assert "linters_pass" in reset_fields
+        assert "deployed" in reset_fields  # Cascade!
 
 
 class TestCheckpointIO:
@@ -226,10 +235,10 @@ class TestCheckpointIO:
 
     def test_save_and_load_checkpoint(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            claude_dir = Path(tmpdir) / '.claude'
+            claude_dir = Path(tmpdir) / ".claude"
             claude_dir.mkdir()
 
-            checkpoint = {'self_report': {'is_job_complete': True}}
+            checkpoint = {"self_report": {"is_job_complete": True}}
             save_checkpoint(tmpdir, checkpoint)
 
             loaded = load_checkpoint(tmpdir)
@@ -295,110 +304,123 @@ class TestCleanupAutonomousState:
 class TestWebTestingBypassPrevention:
     """Tests for preventing web testing bypass via false claims."""
 
-    @patch('_sv_validators.is_autonomous_mode_active')
-    @patch('_sv_validators.validate_web_smoke_artifacts')
+    @patch("_sv_validators.is_autonomous_mode_active")
+    @patch("_sv_validators.validate_web_smoke_artifacts")
     def test_rejects_claim_without_artifacts(self, mock_artifacts, mock_autonomous):
         """web_testing_done=true without artifacts should fail and be reset."""
         mock_autonomous.return_value = True
         mock_artifacts.return_value = (False, ["No summary.json found"])
 
         checkpoint = {
-            'self_report': {
-                'web_testing_done': True,
-                'web_testing_done_at_version': 'abc123',
-                'code_changes_made': False,  # "Backend-only" claim
+            "self_report": {
+                "web_testing_done": True,
+                "web_testing_done_at_version": "abc123",
+                "code_changes_made": False,  # "Backend-only" claim
             },
-            'evidence': {'urls_tested': []}
+            "evidence": {"urls_tested": []},
         }
 
         failures, modified = validate_web_testing(
-            checkpoint, has_app_code=False, has_infra_changes=False, cwd='/tmp'
+            checkpoint, has_app_code=False, has_infra_changes=False, cwd="/tmp"
         )
 
         # Should fail validation
         assert len(failures) > 0
-        assert any('web_testing_done is TRUE but no valid Surf artifacts' in f for f in failures)
+        assert any(
+            "web_testing_done is TRUE but no valid Surf artifacts" in f
+            for f in failures
+        )
 
         # Should auto-reset the false claim
         assert modified is True
-        assert checkpoint['self_report']['web_testing_done'] is False
-        assert checkpoint['self_report']['web_testing_done_at_version'] == ""
+        assert checkpoint["self_report"]["web_testing_done"] is False
+        assert checkpoint["self_report"]["web_testing_done_at_version"] == ""
 
-    @patch('_sv_validators.is_autonomous_mode_active')
-    @patch('_sv_validators.validate_web_smoke_artifacts')
-    def test_auto_resets_console_checked_without_artifacts(self, mock_artifacts, mock_autonomous):
+    @patch("_sv_validators.is_autonomous_mode_active")
+    @patch("_sv_validators.validate_web_smoke_artifacts")
+    def test_auto_resets_console_checked_without_artifacts(
+        self, mock_artifacts, mock_autonomous
+    ):
         """console_errors_checked=true without artifacts should fail and be reset."""
         mock_autonomous.return_value = True
         mock_artifacts.return_value = (False, ["No summary.json found"])
 
         checkpoint = {
-            'self_report': {
-                'console_errors_checked': True,
-                'console_errors_checked_at_version': 'abc123',
-                'code_changes_made': False,
+            "self_report": {
+                "console_errors_checked": True,
+                "console_errors_checked_at_version": "abc123",
+                "code_changes_made": False,
             },
-            'evidence': {'urls_tested': []}
+            "evidence": {"urls_tested": []},
         }
 
         failures, modified = validate_web_testing(
-            checkpoint, has_app_code=False, has_infra_changes=False, cwd='/tmp'
+            checkpoint, has_app_code=False, has_infra_changes=False, cwd="/tmp"
         )
 
-        assert any('console_errors_checked is TRUE but no valid Surf artifacts' in f for f in failures)
+        assert any(
+            "console_errors_checked is TRUE but no valid Surf artifacts" in f
+            for f in failures
+        )
         assert modified is True
-        assert checkpoint['self_report']['console_errors_checked'] is False
+        assert checkpoint["self_report"]["console_errors_checked"] is False
 
-    @patch('_sv_validators.is_autonomous_mode_active')
-    @patch('_sv_validators.validate_web_smoke_artifacts')
-    def test_backend_only_still_requires_verification(self, mock_artifacts, mock_autonomous):
+    @patch("_sv_validators.is_autonomous_mode_active")
+    @patch("_sv_validators.validate_web_smoke_artifacts")
+    def test_backend_only_still_requires_verification(
+        self, mock_artifacts, mock_autonomous
+    ):
         """Backend-only changes (code_changes_made=true) still need Surf verification."""
         mock_autonomous.return_value = True
         mock_artifacts.return_value = (False, ["No summary.json found"])
 
         checkpoint = {
-            'self_report': {
-                'web_testing_done': False,
-                'code_changes_made': True,  # Backend change claimed
+            "self_report": {
+                "web_testing_done": False,
+                "code_changes_made": True,  # Backend change claimed
             },
-            'evidence': {'urls_tested': []}
+            "evidence": {"urls_tested": []},
         }
 
         failures, modified = validate_web_testing(
-            checkpoint, has_app_code=False, has_infra_changes=False, cwd='/tmp'
+            checkpoint, has_app_code=False, has_infra_changes=False, cwd="/tmp"
         )
 
         # Should still require web smoke verification
-        assert any('WEB SMOKE VERIFICATION REQUIRED' in f for f in failures)
+        assert any("WEB SMOKE VERIFICATION REQUIRED" in f for f in failures)
 
-    @patch('_sv_validators.is_autonomous_mode_active')
-    @patch('_sv_validators.validate_web_smoke_artifacts')
-    @patch('_sv_validators.get_code_version')
-    def test_valid_artifacts_auto_set_booleans(self, mock_version, mock_artifacts, mock_autonomous):
+    @patch("_sv_validators.is_autonomous_mode_active")
+    @patch("_sv_validators.validate_web_smoke_artifacts")
+    @patch("_sv_validators.get_code_version")
+    def test_valid_artifacts_auto_set_booleans(
+        self, mock_version, mock_artifacts, mock_autonomous
+    ):
         """Valid artifacts should auto-set web_testing_done and console_errors_checked."""
         mock_autonomous.return_value = True
         mock_artifacts.return_value = (True, [])
-        mock_version.return_value = 'abc123'
+        mock_version.return_value = "abc123"
 
         checkpoint = {
-            'self_report': {
-                'web_testing_done': False,
-                'console_errors_checked': False,
-                'code_changes_made': True,
+            "self_report": {
+                "web_testing_done": False,
+                "console_errors_checked": False,
+                "code_changes_made": True,
             },
-            'evidence': {'urls_tested': ['https://app.com/dashboard']}
+            "evidence": {"urls_tested": ["https://app.com/dashboard"]},
         }
 
         failures, modified = validate_web_testing(
-            checkpoint, has_app_code=True, has_infra_changes=False, cwd='/tmp'
+            checkpoint, has_app_code=True, has_infra_changes=False, cwd="/tmp"
         )
 
         # Should pass and auto-set booleans
         assert len(failures) == 0
         assert modified is True
-        assert checkpoint['self_report']['web_testing_done'] is True
-        assert checkpoint['self_report']['console_errors_checked'] is True
+        assert checkpoint["self_report"]["web_testing_done"] is True
+        assert checkpoint["self_report"]["console_errors_checked"] is True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import pytest
-    pytest.main([__file__, '-v'])
+
+    pytest.main([__file__, "-v"])

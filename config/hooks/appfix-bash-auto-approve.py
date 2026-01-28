@@ -7,6 +7,7 @@ truly autonomous execution without permission prompts.
 
 Detection: Checks for .claude/appfix-state.json in cwd or APPFIX_ACTIVE env var.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,9 +51,7 @@ def main():
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PermissionRequest",
-            "decision": {
-                "behavior": "allow"
-            }
+            "decision": {"behavior": "allow"},
         }
     }
 

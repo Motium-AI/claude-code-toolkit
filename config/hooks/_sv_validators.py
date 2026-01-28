@@ -5,6 +5,7 @@ Stop Validator - Validation functions for completion checkpoint.
 This module contains all validation logic for the stop hook, broken into
 composable sub-validators for maintainability.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,9 +17,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _common import (
-    get_code_version, load_checkpoint, save_checkpoint,
-    is_appfix_active, is_godo_active, is_autonomous_mode_active,
-    VERSION_TRACKING_EXCLUSIONS,
+    get_code_version,
+    save_checkpoint,
+    is_appfix_active,
+    is_autonomous_mode_active,
 )
 
 
@@ -29,27 +31,36 @@ from _common import (
 # Fields that are invalidated when code changes after they were set
 # Ordered by dependency: upstream fields come first
 VERSION_DEPENDENT_FIELDS = [
-    "linters_pass",            # Must pass before deploy
-    "deployed",                # Must deploy before testing
-    "web_testing_done",        # Depends on deployed
+    "linters_pass",  # Must pass before deploy
+    "deployed",  # Must deploy before testing
+    "web_testing_done",  # Depends on deployed
     "console_errors_checked",  # Depends on deployed
-    "api_testing_done",        # Depends on deployed
+    "api_testing_done",  # Depends on deployed
 ]
 
 # Dependency graph: field -> list of fields it depends on
 # If a dependency is stale, this field is also stale
 FIELD_DEPENDENCIES = {
-    "linters_pass": [],                          # Base field, only depends on code
-    "deployed": ["linters_pass"],                # Can't deploy unlinted code
-    "web_testing_done": ["deployed"],            # Can't test undeployed code
-    "console_errors_checked": ["deployed"],      # Can't check console of undeployed code
-    "api_testing_done": ["deployed"],            # Can't test APIs of undeployed code
+    "linters_pass": [],  # Base field, only depends on code
+    "deployed": ["linters_pass"],  # Can't deploy unlinted code
+    "web_testing_done": ["deployed"],  # Can't test undeployed code
+    "console_errors_checked": ["deployed"],  # Can't check console of undeployed code
+    "api_testing_done": ["deployed"],  # Can't test APIs of undeployed code
 }
 
 # Health endpoint URL patterns - these don't count as real app pages
 HEALTH_URL_PATTERNS = [
-    '/health', '/healthz', '/api/health', '/ping', '/ready', '/live',
-    '/readiness', '/liveness', '/_health', '/status', '/api/status'
+    "/health",
+    "/healthz",
+    "/api/health",
+    "/ping",
+    "/ready",
+    "/live",
+    "/readiness",
+    "/liveness",
+    "/_health",
+    "/status",
+    "/api/status",
 ]
 
 
@@ -57,16 +68,21 @@ HEALTH_URL_PATTERNS = [
 # Git Utilities
 # ============================================================================
 
+
 def get_git_diff_files() -> list[str]:
     """Get list of modified files (staged + unstaged)."""
     try:
         staged = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         unstaged = subprocess.run(
             ["git", "diff", "--name-only"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         staged_files = [f for f in staged.stdout.strip().split("\n") if f]
         unstaged_files = [f for f in unstaged.stdout.strip().split("\n") if f]
@@ -83,17 +99,28 @@ def has_code_changes(files: list[str]) -> bool:
     - .claude/ directory files
     - Documentation and scripts in prompts/ directory
     """
-    code_extensions = {'.py', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs', '.java', '.rb', '.php'}
+    code_extensions = {
+        ".py",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".php",
+    }
     infrastructure_patterns = [
-        'config/hooks/',
-        'config/skills/',
-        'config/commands/',
-        '.claude/',
-        'prompts/config/',
-        'prompts/scripts/',
-        'prompts/docs/',
-        'scripts/',
-        'docs/',
+        "config/hooks/",
+        "config/skills/",
+        "config/commands/",
+        ".claude/",
+        "prompts/config/",
+        "prompts/scripts/",
+        "prompts/docs/",
+        "scripts/",
+        "docs/",
     ]
     for f in files:
         if any(pattern in f for pattern in infrastructure_patterns):
@@ -106,12 +133,12 @@ def has_code_changes(files: list[str]) -> bool:
 
 def has_frontend_changes(files: list[str]) -> bool:
     """Check if any frontend files were modified."""
-    frontend_patterns = ['.tsx', '.jsx', 'components/', 'app/', 'pages/']
-    hooks_pattern = 'src/hooks/'
+    frontend_patterns = [".tsx", ".jsx", "components/", "app/", "pages/"]
+    hooks_pattern = "src/hooks/"
 
     for f in files:
         for pattern in frontend_patterns:
-            if pattern in f or f.endswith(pattern.rstrip('/')):
+            if pattern in f or f.endswith(pattern.rstrip("/")):
                 return True
         if hooks_pattern in f:
             return True
@@ -121,6 +148,7 @@ def has_frontend_changes(files: list[str]) -> bool:
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def get_dependent_fields(field: str) -> list[str]:
     """Get all fields that depend on a given field (transitively).
@@ -168,13 +196,16 @@ def load_web_smoke_waivers(cwd: str) -> dict:
 # Artifact Validators
 # ============================================================================
 
+
 def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     """Check if web smoke artifacts exist and pass conditions.
 
     Returns (is_valid, list_of_errors)
     """
     errors = []
-    artifact_dir = Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+    artifact_dir = (
+        Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+    )
     summary_path = artifact_dir / "summary.json"
     screenshots_dir = artifact_dir / "screenshots"
 
@@ -195,7 +226,11 @@ def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     # Check version freshness
     current_version = get_code_version(cwd)
     tested_version = summary.get("tested_at_version", "")
-    if tested_version and current_version != "unknown" and tested_version != current_version:
+    if (
+        tested_version
+        and current_version != "unknown"
+        and tested_version != current_version
+    ):
         errors.append(
             f"web_smoke: Artifacts are STALE - tested at version '{tested_version}', "
             f"but code is now at '{current_version}'. Code changed since verification.\n"
@@ -219,7 +254,9 @@ def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     # Check screenshots exist
     screenshot_count = summary.get("screenshot_count", 0)
     if screenshot_count < 1:
-        actual_screenshots = list(screenshots_dir.glob("*.png")) if screenshots_dir.exists() else []
+        actual_screenshots = (
+            list(screenshots_dir.glob("*.png")) if screenshots_dir.exists() else []
+        )
         if not actual_screenshots:
             errors.append(
                 "web_smoke: No screenshots captured. At least 1 screenshot required.\n"
@@ -254,7 +291,11 @@ def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[
     validation_tests = checkpoint.get("validation_tests", {})
     tests = validation_tests.get("tests", [])
 
-    artifact_dir = Path(cwd) / ".claude" / "validation-tests" if cwd else Path(".claude/validation-tests")
+    artifact_dir = (
+        Path(cwd) / ".claude" / "validation-tests"
+        if cwd
+        else Path(".claude/validation-tests")
+    )
     summary_path = artifact_dir / "summary.json"
 
     # Check if code changes were made
@@ -291,12 +332,16 @@ def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[
     # Check for failed tests
     failed_tests = [t for t in tests if not t.get("passed", False)]
     if failed_tests:
-        errors.append(f"VALIDATION TESTS FAILED: {len(failed_tests)} of {len(tests)} tests failed.")
+        errors.append(
+            f"VALIDATION TESTS FAILED: {len(failed_tests)} of {len(tests)} tests failed."
+        )
         for test in failed_tests:
             test_desc = test.get("description", test.get("id", "unknown"))
             expected = test.get("expected", "?")
             actual = test.get("actual", "?")
-            errors.append(f"  FAILED: {test_desc}\n    Expected: {expected}\n    Actual: {actual}")
+            errors.append(
+                f"  FAILED: {test_desc}\n    Expected: {expected}\n    Actual: {actual}"
+            )
         return False, errors
 
     # Check version freshness
@@ -305,7 +350,11 @@ def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[
             summary = json.loads(summary_path.read_text())
             tested_version = summary.get("tested_at_version", "")
             current_version = get_code_version(cwd)
-            if tested_version and current_version != "unknown" and tested_version != current_version:
+            if (
+                tested_version
+                and current_version != "unknown"
+                and tested_version != current_version
+            ):
                 errors.append(
                     f"VALIDATION TESTS STALE: Tested at version '{tested_version}', "
                     f"but code is now at '{current_version}'. Re-run validation tests."
@@ -321,7 +370,10 @@ def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[
 # Sub-validators
 # ============================================================================
 
-def validate_version_staleness(checkpoint: dict, cwd: str) -> tuple[bool, list[str], set[str]]:
+
+def validate_version_staleness(
+    checkpoint: dict, cwd: str
+) -> tuple[bool, list[str], set[str]]:
     """Detect stale version-dependent fields and cascade to dependents.
 
     Returns (checkpoint_modified, failures, fields_reset)
@@ -352,7 +404,9 @@ def validate_version_staleness(checkpoint: dict, cwd: str) -> tuple[bool, list[s
         for dep in dependents:
             if report.get(dep, False) and dep not in fields_to_reset:
                 cascade_fields.add(dep)
-                failures.append(f"{dep} CASCADE INVALIDATED - depends on {stale_field}.")
+                failures.append(
+                    f"{dep} CASCADE INVALIDATED - depends on {stale_field}."
+                )
 
     fields_to_reset.update(cascade_fields)
 
@@ -381,7 +435,9 @@ def validate_core_completion(report: dict, reflection: dict) -> list[str]:
     return failures
 
 
-def validate_code_requirements(report: dict, has_app_code: bool, has_frontend: bool) -> list[str]:
+def validate_code_requirements(
+    report: dict, has_app_code: bool, has_frontend: bool
+) -> list[str]:
     """Check linters, deployed, preexisting issues for app code changes."""
     failures = []
 
@@ -389,13 +445,19 @@ def validate_code_requirements(report: dict, has_app_code: bool, has_frontend: b
         return failures
 
     if has_frontend and not report.get("web_testing_done", False):
-        failures.append("web_testing_done is false - frontend changes require browser testing")
+        failures.append(
+            "web_testing_done is false - frontend changes require browser testing"
+        )
 
     if not report.get("deployed", False):
-        failures.append("deployed is false - you made application code changes but didn't deploy")
+        failures.append(
+            "deployed is false - you made application code changes but didn't deploy"
+        )
 
     if has_frontend and not report.get("console_errors_checked", False):
-        failures.append("console_errors_checked is false - check browser console for errors")
+        failures.append(
+            "console_errors_checked is false - check browser console for errors"
+        )
 
     if not report.get("linters_pass", False):
         failures.append(
@@ -403,7 +465,9 @@ def validate_code_requirements(report: dict, has_app_code: bool, has_frontend: b
             "You cannot claim 'these errors aren't related to our code' - fix them ALL"
         )
 
-    if report.get("linters_pass", False) and not report.get("preexisting_issues_fixed", True):
+    if report.get("linters_pass", False) and not report.get(
+        "preexisting_issues_fixed", True
+    ):
         failures.append(
             "preexisting_issues_fixed is false - you acknowledged pre-existing issues but didn't fix them."
         )
@@ -416,19 +480,22 @@ def validate_autonomous_requirements(report: dict, cwd: str) -> list[str]:
     failures = []
 
     if is_appfix_active(cwd) and not report.get("docs_read_at_start", False):
-        failures.append("docs_read_at_start is false - read docs/index.md and TECHNICAL_OVERVIEW.md first")
+        failures.append(
+            "docs_read_at_start is false - read docs/index.md and TECHNICAL_OVERVIEW.md first"
+        )
 
-    if report.get("az_cli_changes_made", False) and not report.get("infra_pr_created", False):
-        failures.append("infra_pr_created is false - sync infrastructure changes with IaC files")
+    if report.get("az_cli_changes_made", False) and not report.get(
+        "infra_pr_created", False
+    ):
+        failures.append(
+            "infra_pr_created is false - sync infrastructure changes with IaC files"
+        )
 
     return failures
 
 
 def validate_web_testing(
-    checkpoint: dict,
-    has_app_code: bool,
-    has_infra_changes: bool,
-    cwd: str
+    checkpoint: dict, has_app_code: bool, has_infra_changes: bool, cwd: str
 ) -> tuple[list[str], bool]:
     """Check web testing requirements for autonomous mode.
 
@@ -525,7 +592,9 @@ def validate_web_testing(
 
     if report.get("web_testing_done", False):
         if not urls_tested:
-            failures.append("web_testing_done is true but evidence.urls_tested is empty.")
+            failures.append(
+                "web_testing_done is true but evidence.urls_tested is empty."
+            )
         elif not has_real_app_urls(urls_tested):
             failures.append(
                 f"urls_tested contains ONLY health endpoints: {urls_tested}\n"
@@ -539,10 +608,9 @@ def validate_web_testing(
 # Main Orchestrator
 # ============================================================================
 
+
 def validate_checkpoint(
-    checkpoint: dict,
-    modified_files: list[str],
-    cwd: str = ""
+    checkpoint: dict, modified_files: list[str], cwd: str = ""
 ) -> tuple[bool, list[str]]:
     """Validate checkpoint booleans deterministically.
 

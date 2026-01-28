@@ -15,6 +15,7 @@ Output: No stdout on success (avoids hookSpecificOutput format issues).
 Exit codes:
   0 - Always succeeds (informational hook)
 """
+
 from __future__ import annotations
 
 import json
@@ -71,7 +72,11 @@ def main():
         log_debug(
             "Plan mode marked as completed",
             hook_name="plan-mode-tracker",
-            parsed_data={"state_type": state_type, "state_file": state_filename, "cwd": cwd},
+            parsed_data={
+                "state_type": state_type,
+                "state_file": state_filename,
+                "cwd": cwd,
+            },
         )
         # No stdout output - avoids hookSpecificOutput format issues with Claude Code.
         # The state file update is the only side effect needed.
@@ -79,7 +84,11 @@ def main():
         log_debug(
             "Failed to update state file",
             hook_name="plan-mode-tracker",
-            parsed_data={"state_type": state_type, "state_file": state_filename, "cwd": cwd},
+            parsed_data={
+                "state_type": state_type,
+                "state_file": state_filename,
+                "cwd": cwd,
+            },
         )
         # Warn on stderr (doesn't interfere with hook output parsing)
         print(

@@ -3,6 +3,7 @@
 UserPromptSubmit hook - triggers documentation reading when user says "read the docs".
 Also suggests relevant docs based on keywords in the user's message.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,7 +38,10 @@ DOC_KEYWORDS = {
     "match": ["entities/example_data/match.json", "pauwels_match.json"],
     "placement": ["entities/example_data/placement.json", "pauwels_placement.json"],
     "time": ["entities/example_data/time.json", "pauwels_time.json"],
-    "appointment": ["entities/example_data/appointment.json", "pauwels_appointment.json"],
+    "appointment": [
+        "entities/example_data/appointment.json",
+        "pauwels_appointment.json",
+    ],
     "note": ["entities/example_data/note.json", "pauwels_note.json"],
 }
 

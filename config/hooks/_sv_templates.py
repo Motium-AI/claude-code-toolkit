@@ -5,6 +5,7 @@ Stop Validator Templates - Blocking message templates and functions.
 This module contains the user-facing messages displayed when the stop hook
 blocks execution due to missing or invalid completion checkpoints.
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,7 +21,7 @@ from _common import get_code_version, get_worktree_info
 # Template Constants
 # ============================================================================
 
-CHECKPOINT_SCHEMA_TEMPLATE = '''{version_note}
+CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
 {{
   "self_report": {{
     "code_changes_made": true,              // Did you modify any code files?
@@ -71,7 +72,7 @@ CHECKPOINT_SCHEMA_TEMPLATE = '''{version_note}
     "urls_tested": [],                      // URLs you actually tested
     "console_clean": false                  // Was browser console clean?
   }}
-}}'''
+}}"""
 
 VERSION_TRACKING_GUIDANCE = """
 VERSION TRACKING:
@@ -165,6 +166,7 @@ If what_remains is not empty:
 # Blocking Functions
 # ============================================================================
 
+
 def block_no_checkpoint(cwd: str) -> None:
     """Block stop - no checkpoint file exists.
 
@@ -175,18 +177,19 @@ def block_no_checkpoint(cwd: str) -> None:
     """
     checkpoint_path = (
         Path(cwd) / ".claude" / "completion-checkpoint.json"
-        if cwd else ".claude/completion-checkpoint.json"
+        if cwd
+        else ".claude/completion-checkpoint.json"
     )
 
     current_version = get_code_version(cwd)
     version_note = (
-        f"// Current version: {current_version}"
-        if current_version != "unknown" else ""
+        f"// Current version: {current_version}" if current_version != "unknown" else ""
     )
 
     schema = CHECKPOINT_SCHEMA_TEMPLATE.format(version_note=version_note)
 
-    print(f"""
+    print(
+        f"""
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║  ❌ COMPLETION CHECKPOINT REQUIRED                                            ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
@@ -202,7 +205,9 @@ If you answer "false" to required fields and try to stop, you'll be blocked.
 The only way to stop is to actually do the work OR have a genuine blocker.
 
 Create this file, answer honestly, then stop again.
-""", file=sys.stderr)
+""",
+        file=sys.stderr,
+    )
     sys.exit(2)
 
 
@@ -228,8 +233,8 @@ def block_with_continuation(failures: list[str], cwd: str = "") -> None:
     worktree_info = get_worktree_info(cwd)
     worktree_banner = ""
     if worktree_info and worktree_info.get("is_claude_worktree"):
-        agent_id = worktree_info.get('agent_id', 'unknown')
-        branch = worktree_info.get('branch', 'unknown')
+        agent_id = worktree_info.get("agent_id", "unknown")
+        branch = worktree_info.get("branch", "unknown")
         worktree_banner = f"""
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  WORKTREE: {agent_id:<20} BRANCH: {branch:<30}│
@@ -238,7 +243,8 @@ def block_with_continuation(failures: list[str], cwd: str = "") -> None:
 
     stale_guidance = CONTINUATION_STALE_GUIDANCE.format(version_info=version_info)
 
-    print(f"""
+    print(
+        f"""
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║  ❌ COMPLETION CHECKPOINT FAILED - CONTINUE WORKING                           ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
@@ -252,5 +258,7 @@ REQUIRED ACTION: Complete the remaining work.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {stale_guidance}{CONTINUATION_WEB_TESTING_GUIDANCE}{CONTINUATION_DEPLOYED_GUIDANCE}{CONTINUATION_LINTERS_GUIDANCE}{CONTINUATION_DOCS_GUIDANCE}{CONTINUATION_INFRA_GUIDANCE}{CONTINUATION_VALIDATION_TESTS_GUIDANCE}{CONTINUATION_COMPLETION_GUIDANCE}
 Update .claude/completion-checkpoint.json, then stop again.
-""", file=sys.stderr)
+""",
+        file=sys.stderr,
+    )
     sys.exit(2)

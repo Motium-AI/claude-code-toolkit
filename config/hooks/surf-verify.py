@@ -20,6 +20,7 @@ Exit codes:
     1 - Verification failed (errors found)
     2 - Setup error (Surf not installed, missing URLs, etc.)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,7 +93,12 @@ def read_urls_from_topology() -> list[str]:
     """Read URLs from service-topology.md if it exists."""
     topology_paths = [
         ".claude/skills/appfix/references/service-topology.md",
-        Path.home() / ".claude" / "skills" / "appfix" / "references" / "service-topology.md",
+        Path.home()
+        / ".claude"
+        / "skills"
+        / "appfix"
+        / "references"
+        / "service-topology.md",
     ]
 
     for path in topology_paths:
@@ -102,7 +108,9 @@ def read_urls_from_topology() -> list[str]:
 
         content = path.read_text()
         # Look for web_smoke_urls section
-        match = re.search(r"web_smoke_urls:\s*\n((?:\s*-\s*https?://[^\n]+\n?)+)", content)
+        match = re.search(
+            r"web_smoke_urls:\s*\n((?:\s*-\s*https?://[^\n]+\n?)+)", content
+        )
         if match:
             urls_block = match.group(1)
             urls = re.findall(r"-\s*(https?://[^\s]+)", urls_block)
@@ -153,7 +161,7 @@ def run_surf_workflow(urls: list[str]) -> dict:
     all_content_errors = []
 
     for i, url in enumerate(urls):
-        print(f"[{i+1}/{len(urls)}] Testing: {url}")
+        print(f"[{i + 1}/{len(urls)}] Testing: {url}")
 
         # Navigate to URL (tab.new creates tab AND navigates)
         try:
@@ -174,7 +182,9 @@ def run_surf_workflow(urls: list[str]) -> dict:
             results["passed"] = False
             continue
         except FileNotFoundError:
-            print("ERROR: surf command not found. Install with: npm install -g @nicobailon/surf-cli")
+            print(
+                "ERROR: surf command not found. Install with: npm install -g @nicobailon/surf-cli"
+            )
             sys.exit(2)
 
         # Take screenshot (Surf CLI requires absolute paths)
@@ -276,7 +286,11 @@ def run_surf_workflow(urls: list[str]) -> dict:
         results["content_errors_found"] = all_content_errors
 
     # Determine pass/fail
-    if results["console_errors"] > 0 or results["network_errors"] > 0 or results["content_errors"] > 0:
+    if (
+        results["console_errors"] > 0
+        or results["network_errors"] > 0
+        or results["content_errors"] > 0
+    ):
         results["passed"] = False
 
     if results["screenshot_count"] == 0:
@@ -294,9 +308,9 @@ def print_summary(results: dict) -> None:
     status = "PASSED" if results["passed"] else "FAILED"
     status_emoji = "✓" if results["passed"] else "✗"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {status_emoji} Web Smoke Verification: {status}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  URLs tested:       {len(results['urls_tested'])}")
     print(f"  Screenshots:       {results['screenshot_count']}")
     print(f"  Console errors:    {results['console_errors']}")
@@ -305,7 +319,7 @@ def print_summary(results: dict) -> None:
     print(f"  Waivers applied:   {results['waivers_applied']}")
     print(f"  Version:           {results['tested_at_version']}")
     print(f"  Artifacts:         {ARTIFACT_DIR}/")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 def main():

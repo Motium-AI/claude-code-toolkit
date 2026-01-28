@@ -14,6 +14,7 @@ Matcher: ExitPlanMode
 Exit codes:
   0 - Decision made (allow or deny via hookSpecificOutput)
 """
+
 from __future__ import annotations
 
 import json
@@ -58,9 +59,7 @@ def main():
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PermissionRequest",
-            "decision": {
-                "behavior": "allow"
-            }
+            "decision": {"behavior": "allow"},
         }
     }
 

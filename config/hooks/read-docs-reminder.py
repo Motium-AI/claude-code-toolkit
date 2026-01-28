@@ -5,6 +5,7 @@ Outputs DIFFERENT messages based on event source:
 - compact: Strong warning about incomplete memory
 - startup/resume/clear: Standard doc reading reminder
 """
+
 from __future__ import annotations
 
 import json

@@ -5,6 +5,7 @@ with completion checkpoint requirement.
 
 Also handles appfix mode with enhanced autonomy context.
 """
+
 from __future__ import annotations
 
 import json
@@ -161,7 +162,7 @@ The user trusted you to work AUTONOMOUSLY. Honor that trust.
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": context
+            "additionalContext": context,
         }
     }
 

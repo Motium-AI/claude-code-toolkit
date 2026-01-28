@@ -11,6 +11,7 @@ helping prevent wasted effort from setting invalid checkpoint values.
 Exit codes:
   0 - Always (warnings only, never blocks)
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,9 @@ def get_code_version(cwd: str = "") -> str:
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         head_hash = head.stdout.strip()
@@ -44,7 +47,9 @@ def get_code_version(cwd: str = "") -> str:
 
         diff = subprocess.run(
             ["git", "diff", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         # Return stable version - no hash suffix for dirty state
@@ -76,8 +81,17 @@ def is_autonomous_mode(cwd: str = "") -> bool:
 
 # Health endpoint patterns that don't count as real app pages
 HEALTH_URL_PATTERNS = [
-    '/health', '/healthz', '/api/health', '/ping', '/ready', '/live',
-    '/readiness', '/liveness', '/_health', '/status', '/api/status'
+    "/health",
+    "/healthz",
+    "/api/health",
+    "/ping",
+    "/ready",
+    "/live",
+    "/readiness",
+    "/liveness",
+    "/_health",
+    "/status",
+    "/api/status",
 ]
 
 
@@ -124,7 +138,10 @@ def main():
     try:
         checkpoint = json.loads(content)
     except json.JSONDecodeError:
-        print("WARNING: completion-checkpoint.json content is not valid JSON", file=sys.stderr)
+        print(
+            "WARNING: completion-checkpoint.json content is not valid JSON",
+            file=sys.stderr,
+        )
         sys.exit(0)
 
     report = checkpoint.get("self_report", {})
@@ -133,7 +150,9 @@ def main():
 
     # Check 1: web_testing_done=true without Surf artifacts
     if report.get("web_testing_done", False):
-        artifact_dir = Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+        artifact_dir = (
+            Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+        )
         summary_path = artifact_dir / "summary.json"
 
         if not summary_path.exists():
@@ -148,7 +167,11 @@ def main():
                 summary = json.loads(summary_path.read_text())
                 tested_version = summary.get("tested_at_version", "")
                 current_version = get_code_version(cwd)
-                if tested_version and current_version != "unknown" and tested_version != current_version:
+                if (
+                    tested_version
+                    and current_version != "unknown"
+                    and tested_version != current_version
+                ):
                     warnings.append(
                         f"web_testing_done: true but Surf artifacts are STALE!\n"
                         f"Artifacts from version '{tested_version}', current is '{current_version}'.\n"
@@ -161,11 +184,15 @@ def main():
                         "Fix the issues identified in the summary, then re-run Surf CLI."
                     )
             except (json.JSONDecodeError, IOError):
-                warnings.append("Cannot parse .claude/web-smoke/summary.json - verify it's valid JSON")
+                warnings.append(
+                    "Cannot parse .claude/web-smoke/summary.json - verify it's valid JSON"
+                )
 
     # Check 2: console_errors_checked=true without artifacts
     if report.get("console_errors_checked", False):
-        artifact_dir = Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+        artifact_dir = (
+            Path(cwd) / ".claude" / "web-smoke" if cwd else Path(".claude/web-smoke")
+        )
         summary_path = artifact_dir / "summary.json"
 
         if not summary_path.exists():
@@ -194,12 +221,17 @@ def main():
     # Output warnings
     if warnings:
         print("\n" + "=" * 70, file=sys.stderr)
-        print("CHECKPOINT WRITE WARNINGS (stop hook will likely BLOCK):", file=sys.stderr)
+        print(
+            "CHECKPOINT WRITE WARNINGS (stop hook will likely BLOCK):", file=sys.stderr
+        )
         print("=" * 70, file=sys.stderr)
         for i, warning in enumerate(warnings, 1):
             print(f"\n{i}. {warning}", file=sys.stderr)
         print("\n" + "=" * 70, file=sys.stderr)
-        print("Fix these issues NOW rather than waiting for the stop hook to block you.", file=sys.stderr)
+        print(
+            "Fix these issues NOW rather than waiting for the stop hook to block you.",
+            file=sys.stderr,
+        )
         print("=" * 70 + "\n", file=sys.stderr)
 
     # Always exit 0 - this is a warning hook, not a blocker

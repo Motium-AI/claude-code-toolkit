@@ -19,6 +19,7 @@ Output (stdout):
   - Update notification if pulled
   - STRONG restart warning if settings.json changed
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -51,6 +52,7 @@ def log_debug(message: str) -> None:
 # ============================================================================
 # Toolkit Path Resolution
 # ============================================================================
+
 
 def get_toolkit_repo_path() -> Path | None:
     """
@@ -90,6 +92,7 @@ def get_toolkit_repo_path() -> Path | None:
 # ============================================================================
 # State Management
 # ============================================================================
+
 
 def load_state() -> dict:
     """Load update state file, return empty dict if missing/invalid."""
@@ -137,7 +140,9 @@ def should_check_for_updates(state: dict) -> bool:
         now = datetime.now(timezone.utc)
         elapsed = now - last_check_time
         should_check = elapsed > timedelta(minutes=CHECK_INTERVAL_MINUTES)
-        log_debug(f"last check: {last_check}, elapsed: {elapsed}, should_check: {should_check}")
+        log_debug(
+            f"last check: {last_check}, elapsed: {elapsed}, should_check: {should_check}"
+        )
         return should_check
     except (ValueError, TypeError) as e:
         log_debug(f"error parsing last_check_timestamp: {e}")
@@ -147,6 +152,7 @@ def should_check_for_updates(state: dict) -> bool:
 # ============================================================================
 # Git Operations
 # ============================================================================
+
 
 def get_local_head(repo_path: Path) -> str | None:
     """Get local HEAD commit hash."""
@@ -251,6 +257,7 @@ def get_commit_summary(repo_path: Path, from_commit: str, to_commit: str) -> str
 # ============================================================================
 # Main Logic
 # ============================================================================
+
 
 def main():
     # Check for disable flag
@@ -376,12 +383,15 @@ Manual update: cd {repo_path} && git pull
 
     # Update history
     history = state.get("update_history", [])
-    history.insert(0, {
-        "timestamp": now,
-        "from_commit": local_head[:7],
-        "to_commit": remote_head[:7],
-        "settings_changed": settings_changed,
-    })
+    history.insert(
+        0,
+        {
+            "timestamp": now,
+            "from_commit": local_head[:7],
+            "to_commit": remote_head[:7],
+            "settings_changed": settings_changed,
+        },
+    )
     state["update_history"] = history[:5]  # Keep last 5
 
     # Update state
@@ -393,7 +403,9 @@ Manual update: cd {repo_path} && git pull
 
     if settings_changed:
         # Settings changed - require restart
-        state["pending_restart_reason"] = f"settings.json changed in update {local_head[:7]} -> {remote_head[:7]}"
+        state["pending_restart_reason"] = (
+            f"settings.json changed in update {local_head[:7]} -> {remote_head[:7]}"
+        )
         save_state(state)
 
         print(f"""

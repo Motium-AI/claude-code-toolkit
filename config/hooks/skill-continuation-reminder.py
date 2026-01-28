@@ -8,6 +8,7 @@ in an autonomous fix-verify loop and should continue.
 
 Hook event: PostToolUse (matcher: Skill)
 """
+
 from __future__ import annotations
 
 import json
@@ -67,7 +68,7 @@ Do NOT stop here. The {loop_type} loop continues until verification is complete.
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": context
+            "additionalContext": context,
         }
     }
 

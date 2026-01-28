@@ -20,6 +20,7 @@ Worktree Support:
 Exit codes:
   0 - Success (always exits 0, this is informational only)
 """
+
 from __future__ import annotations
 
 import json
@@ -31,17 +32,22 @@ from pathlib import Path
 # Worktree Detection
 # ============================================================================
 
+
 def is_worktree(cwd: str = "") -> bool:
     """Check if the current directory is a git worktree (not the main repo)."""
     try:
         git_dir = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         git_common = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         # If git-dir != git-common-dir, this is a linked worktree
@@ -58,10 +64,14 @@ def get_worktree_agent_id(cwd: str = "") -> str | None:
         # Check for agent state file
         worktree_root = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
-        state_file = Path(worktree_root.stdout.strip()) / ".claude" / "worktree-agent-state.json"
+        state_file = (
+            Path(worktree_root.stdout.strip()) / ".claude" / "worktree-agent-state.json"
+        )
         if state_file.exists():
             state = json.loads(state_file.read_text())
             return state.get("agent_id")
@@ -77,15 +87,28 @@ def get_worktree_agent_id(cwd: str = "") -> str | None:
 # Code file extensions that trigger checkpoint invalidation
 CODE_EXTENSIONS = {
     # Application code
-    '.py', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs',
-    '.java', '.rb', '.php', '.vue', '.svelte',
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".rb",
+    ".php",
+    ".vue",
+    ".svelte",
     # Infrastructure as Code
-    '.tf', '.tfvars',       # Terraform
-    '.bicep',               # Azure Bicep
-    '.yaml', '.yml',        # K8s, CI/CD, CloudFormation
+    ".tf",
+    ".tfvars",  # Terraform
+    ".bicep",  # Azure Bicep
+    ".yaml",
+    ".yml",  # K8s, CI/CD, CloudFormation
     # Database and scripts
-    '.sql',                 # Database migrations/changes
-    '.sh', '.bash',         # Shell scripts
+    ".sql",  # Database migrations/changes
+    ".sh",
+    ".bash",  # Shell scripts
 }
 
 # Files/patterns excluded from version tracking (dirty calculation)
@@ -164,7 +187,9 @@ def get_code_version(cwd: str = "") -> str:
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         head_hash = head.stdout.strip()
@@ -173,7 +198,9 @@ def get_code_version(cwd: str = "") -> str:
 
         diff = subprocess.run(
             ["git", "diff", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=cwd or None,
         )
         # Return stable version - no hash suffix for dirty state
@@ -259,7 +286,9 @@ def normalize_version(version: str) -> str:
     return version
 
 
-def invalidate_stale_fields(checkpoint: dict, current_version: str) -> tuple[dict, list[str]]:
+def invalidate_stale_fields(
+    checkpoint: dict, current_version: str
+) -> tuple[dict, list[str]]:
     """
     Check all version-dependent fields and invalidate stale ones.
     Returns (modified_checkpoint, list_of_invalidated_fields).
@@ -341,7 +370,9 @@ def main():
 
         # Check for worktree context
         agent_id = get_worktree_agent_id(cwd)
-        worktree_note = f"\nWorktree Agent: {agent_id} (isolated branch)" if agent_id else ""
+        worktree_note = (
+            f"\nWorktree Agent: {agent_id} (isolated branch)" if agent_id else ""
+        )
 
         # Output reminder to Claude
         fields_str = ", ".join(invalidated)
@@ -352,7 +383,7 @@ You edited ({file_type}): {file_path}
 Current version: {current_version}{worktree_note}
 
 These fields were reset to false because the code/config changed since they were set:
-{chr(10).join(f'  • {f}: now requires re-verification' for f in invalidated)}
+{chr(10).join(f"  • {f}: now requires re-verification" for f in invalidated)}
 
 IMPORTANT: These fields are now FALSE in the checkpoint file. You MUST:
 1. Re-run linters if linters_pass was reset
