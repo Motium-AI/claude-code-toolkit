@@ -129,6 +129,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/skill-continuation-reminder.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [],
