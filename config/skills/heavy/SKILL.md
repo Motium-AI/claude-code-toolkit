@@ -163,9 +163,17 @@ Deliver (max 250 words):
 After all 6 agents return, synthesize their outputs:
 
 1. **Consensus points** - Where do 3+ perspectives agree?
-2. **Tensions** - Where do they disagree? What's the core conflict?
+2. **Structured Disagreements** - For each tension, explicitly surface:
+   ```
+   DISAGREEMENT: [topic]
+   - Agent [X] claims: [position P] because [reasoning A]
+   - Agent [Y] claims: [position Q] because [reasoning B]
+   - The crux: [what would need to be true for one side to be right]
+   - Resolution path: [what evidence/analysis would resolve this]
+   ```
+   Do NOT smooth over disagreements. The structured conflict IS the insight.
 3. **Gaps** - What's missing? What assumptions weren't challenged?
-4. **Select 2-3 threads** for Round 2 deep-dive (pick the most contested or impactful)
+4. **Select 2-3 threads** for Round 2 deep-dive (pick the most contested disagreements)
 
 ---
 
@@ -239,8 +247,20 @@ After Round 2 completes, generate the final answer:
 ## Consensus
 [What all/most perspectives agree on - bullet points]
 
-## Tensions & Disagreements
-[Where perspectives conflict and why - be specific about the nature of each disagreement]
+## Structured Disagreements
+[For each major tension, use this format:]
+
+### Disagreement 1: [Topic]
+| Position A | Position B |
+|------------|------------|
+| **Claimed by**: [Agent(s)] | **Claimed by**: [Agent(s)] |
+| **Argument**: [Core claim] | **Argument**: [Core claim] |
+| **Because**: [Reasoning] | **Because**: [Reasoning] |
+
+**The crux**: [What would need to be true for one side to be right]
+**Resolution**: [How this was resolved, or why it remains unresolved]
+
+[Repeat for each major disagreement. Do NOT smooth over conflicts.]
 
 ## Practical Guidance
 [Actionable recommendations based on the analysis]
@@ -267,8 +287,15 @@ After Round 2 completes, generate the final answer:
 - Let agents reason freely within their lens
 - Synthesis merges insights, not scores
 
+**Structured disagreement is the insight:**
+- Explicit "A claims X because P, B claims Y because Q" beats vague "there are tradeoffs"
+- The crux (what would make one side right) is often more valuable than the resolution
+- Unresolved tensions are valid outputs — don't force false consensus
+- Depth comes from confronting conflicts, not spawning more agents
+
 **Avoid:**
 - Point-based rubrics that narrow reasoning
 - Overly deterministic formats
 - Forcing agents into identical output structures
 - Premature consensus (honor real disagreements)
+- Smoothing over disagreements in synthesis
