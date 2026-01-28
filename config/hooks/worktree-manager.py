@@ -30,6 +30,7 @@ Exit codes:
     1 - Error (message on stderr)
     2 - Conflict detected (for merge command)
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,9 @@ BRANCH_PREFIX = "claude-agent"
 STATE_FILE = Path.home() / ".claude" / "worktree-state.json"
 
 
-def run_git(args: list[str], cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+def run_git(
+    args: list[str], cwd: str | None = None, check: bool = True
+) -> subprocess.CompletedProcess:
     """Run a git command and return the result."""
     result = subprocess.run(
         ["git"] + args,
@@ -112,7 +115,7 @@ def get_worktree_info(cwd: str | None = None) -> dict | None:
         # Extract agent ID from branch name if it matches our pattern
         agent_id = None
         if branch_name.startswith(f"{BRANCH_PREFIX}/"):
-            agent_id = branch_name[len(f"{BRANCH_PREFIX}/"):]
+            agent_id = branch_name[len(f"{BRANCH_PREFIX}/") :]
 
         # Get worktree path
         worktree_path = run_git(["rev-parse", "--show-toplevel"], cwd=cwd)
@@ -180,7 +183,9 @@ def create_worktree(agent_id: str, main_repo: str | None = None) -> Path:
     run_git(["branch", branch_name, head_commit], cwd=str(main_repo_root))
 
     # Create worktree
-    run_git(["worktree", "add", str(worktree_path), branch_name], cwd=str(main_repo_root))
+    run_git(
+        ["worktree", "add", str(worktree_path), branch_name], cwd=str(main_repo_root)
+    )
 
     # Create .claude directory in worktree for checkpoint isolation
     worktree_claude_dir = worktree_path / ".claude"
@@ -240,7 +245,11 @@ def cleanup_worktree(agent_id: str, main_repo: str | None = None) -> bool:
     # Remove worktree
     if worktree_path.exists():
         try:
-            run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=main_repo, check=False)
+            run_git(
+                ["worktree", "remove", "--force", str(worktree_path)],
+                cwd=main_repo,
+                check=False,
+            )
         except (RuntimeError, subprocess.TimeoutExpired):
             pass
 
@@ -310,7 +319,10 @@ def merge_worktree(agent_id: str, main_repo: str | None = None) -> tuple[bool, s
 
     # Conflict detected - abort
     run_git(["merge", "--abort"], cwd=main_repo, check=False)
-    return False, f"Merge conflict detected between {branch_name} and {current_branch}. Aborting."
+    return (
+        False,
+        f"Merge conflict detected between {branch_name} and {current_branch}. Aborting.",
+    )
 
 
 def list_worktrees() -> list[dict]:
@@ -322,14 +334,16 @@ def list_worktrees() -> list[dict]:
         worktree_path = Path(info.get("path", ""))
         exists = worktree_path.exists()
 
-        worktrees.append({
-            "agent_id": agent_id,
-            "path": str(worktree_path),
-            "branch": info.get("branch"),
-            "main_repo": info.get("main_repo"),
-            "created_at": info.get("created_at"),
-            "exists": exists,
-        })
+        worktrees.append(
+            {
+                "agent_id": agent_id,
+                "path": str(worktree_path),
+                "branch": info.get("branch"),
+                "main_repo": info.get("main_repo"),
+                "created_at": info.get("created_at"),
+                "exists": exists,
+            }
+        )
 
     return worktrees
 
@@ -345,10 +359,106 @@ def get_worktree_path(agent_id: str) -> Path | None:
     return None
 
 
+def gc_worktrees(ttl_hours: int = 8, dry_run: bool = False) -> list[str]:
+    """
+    Garbage collect stale worktrees older than TTL.
+
+    Coordinator crash recovery: Cleans up orphaned worktrees that exceed TTL.
+
+    Cleans up:
+    1. State file entries older than TTL
+    2. Orphaned directories in WORKTREE_BASE not tracked in state
+    3. Git worktree metadata (via git worktree prune)
+
+    Args:
+        ttl_hours: Hours before worktree is considered stale (default: 8, matches SESSION_TTL)
+        dry_run: If True, only report what would be cleaned
+
+    Returns:
+        List of cleaned up agent IDs and orphan paths
+    """
+    from datetime import timedelta
+
+    cleaned = []
+    state = load_state()
+    now = datetime.now(timezone.utc)
+
+    def _is_expired(timestamp_str: str) -> bool:
+        """Check if timestamp is older than TTL."""
+        if not timestamp_str:
+            return True
+        try:
+            ts_str = timestamp_str
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return (now - ts) > timedelta(hours=ttl_hours)
+        except (ValueError, TypeError):
+            return True
+
+    # 1. Clean stale entries from state file
+    stale_agents = []
+    for agent_id, info in state.get("worktrees", {}).items():
+        if _is_expired(info.get("created_at", "")):
+            stale_agents.append((agent_id, info.get("main_repo")))
+
+    for agent_id, main_repo in stale_agents:
+        if not dry_run:
+            cleanup_worktree(agent_id, main_repo)
+        cleaned.append(agent_id)
+
+    # 2. Clean orphaned directories not in state file
+    if WORKTREE_BASE.exists():
+        current_agents = set(state.get("worktrees", {}).keys())
+        for entry in WORKTREE_BASE.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name in current_agents:
+                continue  # Tracked in state, skip (already handled above if stale)
+
+            # Check worktree's own state file for TTL
+            agent_state_file = entry / ".claude" / "worktree-agent-state.json"
+            should_clean = True
+
+            if agent_state_file.exists():
+                try:
+                    agent_state = json.loads(agent_state_file.read_text())
+                    if not _is_expired(agent_state.get("created_at", "")):
+                        should_clean = False
+                except (json.JSONDecodeError, IOError):
+                    pass  # Corrupted file - clean it
+
+            if should_clean:
+                if not dry_run:
+                    shutil.rmtree(entry, ignore_errors=True)
+                cleaned.append(f"orphan:{entry.name}")
+
+    # 3. Prune git worktree metadata for known repos
+    main_repos = {
+        info["main_repo"]
+        for info in state.get("worktrees", {}).values()
+        if info.get("main_repo")
+    }
+
+    for repo in main_repos:
+        if Path(repo).exists():
+            try:
+                run_git(["worktree", "prune"], cwd=repo, check=False)
+            except (RuntimeError, subprocess.TimeoutExpired):
+                pass
+
+    return cleaned
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: worktree-manager.py <command> [args]", file=sys.stderr)
-        print("Commands: create, cleanup, merge, list, path, is-worktree", file=sys.stderr)
+        print(
+            "Commands: create, cleanup, merge, list, path, is-worktree, gc",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     command = sys.argv[1]
@@ -413,6 +523,22 @@ def main():
             else:
                 print("Not a worktree")
                 sys.exit(1)
+
+        elif command == "gc":
+            # gc [ttl_hours] [--dry-run]
+            ttl = 8  # default
+            dry_run = "--dry-run" in sys.argv
+            for arg in sys.argv[2:]:
+                if arg.isdigit():
+                    ttl = int(arg)
+            cleaned = gc_worktrees(ttl_hours=ttl, dry_run=dry_run)
+            if cleaned:
+                prefix = "Would clean" if dry_run else "Cleaned"
+                print(f"{prefix} {len(cleaned)} stale worktree(s):")
+                for item in cleaned:
+                    print(f"  - {item}")
+            else:
+                print("No stale worktrees found")
 
         else:
             print(f"Unknown command: {command}", file=sys.stderr)

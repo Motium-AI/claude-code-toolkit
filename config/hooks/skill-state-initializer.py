@@ -15,6 +15,7 @@ Why this hook exists:
   to execute via Bash - but by then, EnterPlanMode's PermissionRequest had already fired
 - This hook creates the file BEFORE Claude processes anything, fixing the race condition
 """
+
 from __future__ import annotations
 
 import json
@@ -24,12 +25,32 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Add hooks directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from _common import (
+    cleanup_autonomous_state,
+    is_state_expired,
+    is_state_for_session,
+    load_state_file,
+    log_debug,
+)
+
+# Deactivation patterns - checked BEFORE activation
+DEACTIVATION_PATTERNS = [
+    r"(?:^|\s)/appfix\s+off\b",
+    r"(?:^|\s)/godo\s+off\b",
+    r"\bstop autonomous mode\b",
+    r"\bdisable auto[- ]?approval\b",
+    r"\bturn off (appfix|godo)\b",
+]
+
 # Trigger patterns for each skill
 # These should match the triggers defined in the respective SKILL.md files
 SKILL_TRIGGERS = {
     "appfix": [
-        r"(?:^|\s)/appfix\b",    # Slash command (at start or after whitespace)
-        r"\bfix the app\b",      # Natural language
+        r"(?:^|\s)/appfix\b",  # Slash command (at start or after whitespace)
+        r"\bfix the app\b",  # Natural language
         r"\bdebug production\b",
         r"\bcheck staging\b",
         r"\bwhy is it broken\b",
@@ -40,13 +61,25 @@ SKILL_TRIGGERS = {
         r"\bstaging (is )?(down|broken|failing)\b",
     ],
     "godo": [
-        r"(?:^|\s)/godo\b",      # Slash command (at start or after whitespace)
-        r"\bgo do\b",            # Natural language
+        r"(?:^|\s)/godo\b",  # Slash command (at start or after whitespace)
+        r"\bgo do\b",  # Natural language
         r"\bjust do it\b",
         r"\bexecute this\b",
         r"\bmake it happen\b",
     ],
 }
+
+
+def detect_deactivation(prompt: str) -> bool:
+    """Detect if the prompt is requesting deactivation of autonomous mode.
+
+    Returns True if deactivation is requested.
+    """
+    prompt_lower = prompt.lower().strip()
+    for pattern in DEACTIVATION_PATTERNS:
+        if re.search(pattern, prompt_lower, re.IGNORECASE):
+            return True
+    return False
 
 
 def detect_skill(prompt: str) -> str | None:
@@ -64,25 +97,81 @@ def detect_skill(prompt: str) -> str | None:
     return None
 
 
-def create_state_file(cwd: str, skill_name: str) -> bool:
+def _has_valid_existing_state(cwd: str, skill_name: str, session_id: str) -> bool:
+    """Check if a valid (same session, not expired) state file already exists.
+
+    Used to skip re-creation when autonomous mode is already active
+    for the current session (sticky session reuse).
+
+    Args:
+        cwd: Working directory
+        skill_name: 'appfix' or 'godo'
+        session_id: Current session ID
+
+    Returns:
+        True if valid state exists for this session
+    """
+    state = load_state_file(cwd, f"{skill_name}-state.json")
+    if state is None:
+        return False
+    if is_state_expired(state):
+        return False
+    if not is_state_for_session(state, session_id):
+        return False
+    return True
+
+
+def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
+    """Detect if running in a worktree and extract agent info.
+
+    Returns:
+        (is_coordinator, agent_id, worktree_path)
+        - is_coordinator: True if main repo, False if in worktree
+        - agent_id: Agent ID if in worktree, None otherwise
+        - worktree_path: Worktree path if in worktree, None otherwise
+    """
+    try:
+        from worktree_manager import is_worktree, get_worktree_info
+
+        if is_worktree(cwd):
+            info = get_worktree_info(cwd)
+            if info and info.get("is_claude_worktree"):
+                return False, info.get("agent_id"), info.get("path")
+            return False, None, cwd  # Worktree but not Claude-created
+        return True, None, None  # Main repo - coordinator
+    except ImportError:
+        return True, None, None  # Can't detect, assume coordinator
+
+
+def create_state_file(cwd: str, skill_name: str, session_id: str = "") -> bool:
     """Create the state file for the given skill.
 
     Creates both project-level (.claude/) and user-level (~/.claude/) state files.
+    Includes session_id and last_activity_at for sticky session support.
+
+    Detects if running in a worktree (subagent) vs main repo (coordinator):
+    - Coordinator: Can deploy, runs in main repo
+    - Subagent: Cannot deploy, runs in worktree
 
     Returns True if successful.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     state_filename = f"{skill_name}-state.json"
 
+    # Detect if we're in a worktree (subagent) or main repo (coordinator)
+    is_coordinator, agent_id, worktree_path = _detect_worktree_context(cwd)
+
     # Project-level state (in cwd/.claude/)
     project_state = {
         "iteration": 1,
         "started_at": now,
+        "last_activity_at": now,
+        "session_id": session_id,
         "plan_mode_completed": False,
-        "parallel_mode": False,
-        "agent_id": None,
-        "worktree_path": None,
-        "coordinator": True,
+        "parallel_mode": not is_coordinator,  # True if in worktree
+        "agent_id": agent_id,
+        "worktree_path": worktree_path,
+        "coordinator": is_coordinator,
         "services": {},
         "fixes_applied": [],
         "verification_evidence": None,
@@ -95,6 +184,8 @@ def create_state_file(cwd: str, skill_name: str) -> bool:
     # User-level state (for cross-repo detection)
     user_state = {
         "started_at": now,
+        "last_activity_at": now,
+        "session_id": session_id,
         "origin_project": cwd,
     }
 
@@ -131,18 +222,49 @@ def main():
 
     prompt = input_data.get("prompt", "")
     cwd = input_data.get("cwd", os.getcwd())
+    session_id = input_data.get("session_id", "")
 
     if not prompt:
         sys.exit(0)
 
-    # Detect if this prompt triggers an autonomous skill
+    # 1. Check deactivation FIRST
+    if detect_deactivation(prompt):
+        deleted = cleanup_autonomous_state(cwd)
+        if deleted:
+            print("[skill-state-initializer] Autonomous mode deactivated.")
+            print(f"Cleaned up {len(deleted)} state file(s).")
+            print("Auto-approval hooks are now disabled.")
+            log_debug(
+                "Autonomous mode deactivated by user",
+                hook_name="skill-state-initializer",
+                parsed_data={"deleted": deleted},
+            )
+        else:
+            print("[skill-state-initializer] No autonomous mode was active.")
+        sys.exit(0)
+
+    # 2. Detect if this prompt triggers an autonomous skill
     skill_name = detect_skill(prompt)
 
     if not skill_name:
         sys.exit(0)  # No autonomous skill detected
 
-    # Create the state file
-    success = create_state_file(cwd, skill_name)
+    # 3. Check for existing valid state (sticky session reuse)
+    if _has_valid_existing_state(cwd, skill_name, session_id):
+        print(
+            f"[skill-state-initializer] Autonomous mode already active: {skill_name} "
+            f"(reusing existing session state)"
+        )
+        print("Auto-approval hooks remain active.")
+        log_debug(
+            f"Reusing existing {skill_name} state for session",
+            hook_name="skill-state-initializer",
+            parsed_data={"skill": skill_name, "session_id": session_id},
+        )
+        sys.exit(0)
+
+    # 4. Create new state file with session binding
+    success = create_state_file(cwd, skill_name, session_id)
 
     if success:
         # Output message (added to context for Claude)

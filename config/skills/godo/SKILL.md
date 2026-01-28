@@ -519,6 +519,62 @@ When a merge conflict is detected:
 
 This maintains autonomous execution without requiring human intervention for conflict resolution.
 
+### Coordinator Deploy Pattern (CRITICAL for 10+ Parallel Agents)
+
+**ONLY the coordinator deploys. Subagents NEVER deploy.**
+
+This prevents deployment race conditions where Agent A deploys, then Agent B deploys over it, losing Agent A's changes.
+
+```
+COORDINATOR WORKFLOW:
+1. Create worktrees:
+   for agent_id in task_ids:
+     path = python3 ~/.claude/hooks/worktree-manager.py create {agent_id}
+
+2. Spawn Tasks (each gets worktree path in prompt):
+   Task(prompt="... WORKING_DIRECTORY: /tmp/claude-worktrees/{agent_id} ...")
+
+3. Wait for all Tasks
+
+4. Sequential merge:
+   for agent_id in task_ids:
+     success, msg = python3 ~/.claude/hooks/worktree-manager.py merge {agent_id}
+     if not success: ABORT parallel, fall back to sequential
+
+5. SINGLE deploy (coordinator only):
+   git push
+   gh workflow run deploy.yml
+   gh run watch --exit-status
+
+6. Cleanup:
+   for agent_id in task_ids:
+     python3 ~/.claude/hooks/worktree-manager.py cleanup {agent_id}
+```
+
+**SUBAGENT RULES (enforced by state file):**
+- Check state file: if `coordinator: false`, NEVER run `gh workflow run` or `git push`
+- Commit locally in worktree only
+- Mark `needs_deploy: true` in checkpoint
+- Exit after local commit (coordinator handles push/deploy)
+
+**How coordination state is detected:**
+- `skill-state-initializer.py` automatically detects worktree context
+- Sets `coordinator: false`, `parallel_mode: true` when in worktree
+- Subagents can check `.claude/appfix-state.json` or `.claude/godo-state.json`
+
+### Garbage Collection for Stale Worktrees
+
+If a coordinator crashes, worktrees become orphaned. The `session-snapshot.py` hook automatically cleans up stale worktrees at session start:
+
+```bash
+# Automatic cleanup: worktrees older than 8 hours are removed at session start
+
+# Manual cleanup:
+python3 ~/.claude/hooks/worktree-manager.py gc           # Default 8-hour TTL
+python3 ~/.claude/hooks/worktree-manager.py gc 4         # Custom 4-hour TTL
+python3 ~/.claude/hooks/worktree-manager.py gc --dry-run # Preview what would be cleaned
+```
+
 ## Philosophy: Honest Self-Reflection
 
 This system works because:
