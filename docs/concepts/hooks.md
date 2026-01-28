@@ -4,15 +4,16 @@ Reference documentation for implementing global Claude Code hooks that inject co
 
 ## Overview
 
-Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers seven event types:
+Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers eight event types:
 
 1. **SessionStart (Context Injection)**: Force Claude to read project documentation before beginning work
 2. **Stop (Compliance Blocking)**: Block Claude from stopping until compliance checks are addressed
 3. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
 4. **PreToolUse (Tool Interception)**: Auto-answer questions during autonomous execution
 5. **PermissionRequest (Permission Handling)**: Auto-approve tool permissions during appfix
-6. **PostToolUse (Post-Action Context)**: Inject execution context after plan approval
+6. **PostToolUse (Post-Action Context)**: Inject execution context after plan approval or skill completion
 7. **SubagentStop (Agent Validation)**: Validate subagent output quality before accepting
+8. **PostToolUse (Skill Continuation)**: Continue autonomous loop after skill delegation
 
 > **Note**: Status file hooks were removed in January 2025. Anthropic's native Tasks feature now provides better session tracking and coordination. See [Tasks Deprecation Note](#tasks-deprecation-note) below.
 
@@ -349,6 +350,55 @@ THEN your edit will be allowed.
 ```
 
 **Why this exists**: The plan-mode-enforcer blocks Edit/Write tools on the first iteration of godo/appfix to ensure Claude explores the codebase before making changes. This hook marks when that exploration is complete.
+
+### PostToolUse Hook: Skill Continuation Reminder
+
+**File**: `~/.claude/hooks/skill-continuation-reminder.py`
+
+**Purpose**: Reminds Claude to continue the autonomous fix-verify loop after delegating to a skill like `/heavy`.
+
+**Problem this solves**: When `/appfix` delegates to `/heavy` via the Skill tool, after `/heavy` completes, Claude loses context that it's still in an appfix loop and should continue. This hook re-injects that context.
+
+**Trigger**: Fires after `Skill` tool use during godo/appfix workflows.
+
+**How it works**:
+1. Receives PostToolUse event with `tool_name: "Skill"`
+2. Checks if godo or appfix mode is active via `is_autonomous_mode_active(cwd)`
+3. If active, outputs JSON with `hookSpecificOutput.additionalContext` containing continuation instructions
+4. If not active, exits silently (no output)
+
+**Configuration**:
+```json
+"PostToolUse": [
+  {
+    "matcher": "Skill",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/hooks/skill-continuation-reminder.py",
+        "timeout": 5
+      }
+    ]
+  }
+]
+```
+
+**Injected Context** (when active):
+```
+APPFIX MODE STILL ACTIVE - SKILL COMPLETED
+
+The skill you invoked has completed. You are STILL in APPFIX autonomous mode.
+
+CONTINUE THE FIX-VERIFY LOOP:
+1. Apply any insights from the completed skill
+2. Execute the planned changes (Edit tool)
+3. Commit and push changes
+4. Deploy if required
+5. Verify in browser
+6. Update completion checkpoint
+
+Do NOT stop here. The fix-verify loop continues until verification is complete.
+```
 
 ### Stop Hook (Blocking)
 
