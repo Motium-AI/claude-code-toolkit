@@ -193,3 +193,4 @@ claude-code-toolkit/
 ## License
 
 MIT License - see [LICENSE](LICENSE)
+# E2E test marker - Thu Jan 29 15:36:27 CET 2026
