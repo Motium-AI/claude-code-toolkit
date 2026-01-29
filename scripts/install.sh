@@ -242,6 +242,53 @@ verify_optional_tools() {
     return 0
 }
 
+add_to_parent_gitignore() {
+    echo -e "${BLUE}Checking parent repository .gitignore...${NC}"
+
+    # Get the parent directory (where the toolkit is cloned)
+    local PARENT_DIR="$(dirname "$REPO_DIR")"
+    local TOOLKIT_DIRNAME="$(basename "$REPO_DIR")"
+    local GITIGNORE_PATH="$PARENT_DIR/.gitignore"
+
+    # Check if parent is a git repository
+    if [ ! -d "$PARENT_DIR/.git" ]; then
+        echo -e "  ${YELLOW}⚠ Parent directory is not a git repository${NC}"
+        echo "    Skipping .gitignore update"
+        return 0
+    fi
+
+    # Check if .gitignore exists, create if not
+    if [ ! -f "$GITIGNORE_PATH" ]; then
+        echo -e "  ${YELLOW}⚠ No .gitignore in parent repo${NC}"
+        echo "    Skipping .gitignore update"
+        return 0
+    fi
+
+    # Check if toolkit is already in .gitignore
+    if grep -qE "^/?${TOOLKIT_DIRNAME}/?$" "$GITIGNORE_PATH" 2>/dev/null; then
+        echo -e "  ${GREEN}✓ Already in parent .gitignore${NC}"
+        return 0
+    fi
+
+    # Add toolkit to .gitignore
+    echo "" >> "$GITIGNORE_PATH"
+    echo "# Claude Code Toolkit (separate git repo)" >> "$GITIGNORE_PATH"
+    echo "/${TOOLKIT_DIRNAME}/" >> "$GITIGNORE_PATH"
+
+    echo -e "  ${GREEN}✓ Added /${TOOLKIT_DIRNAME}/ to parent .gitignore${NC}"
+
+    # Remove from git tracking if it's already tracked
+    cd "$PARENT_DIR" 2>/dev/null || return 0
+    if git ls-files --error-unmatch "$TOOLKIT_DIRNAME" &>/dev/null; then
+        echo -e "  ${BLUE}Removing from git tracking...${NC}"
+        git rm -r --cached "$TOOLKIT_DIRNAME" &>/dev/null || true
+        echo -e "  ${GREEN}✓ Removed from git tracking${NC}"
+        echo -e "  ${YELLOW}→ You'll need to commit this change to .gitignore${NC}"
+    fi
+
+    return 0
+}
+
 run_full_verification() {
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
@@ -604,6 +651,10 @@ fi
 
 echo ""
 echo -e "${GREEN}Symlinks created!${NC}"
+echo ""
+
+# Add toolkit to parent repo's .gitignore
+add_to_parent_gitignore
 echo ""
 
 # Run verification
