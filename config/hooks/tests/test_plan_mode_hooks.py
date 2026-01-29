@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Hook scripts directory
@@ -92,7 +93,7 @@ class TestPlanModeEnforcer:
         self.tmpdir = tempfile.mkdtemp(prefix="test-enforcer-")
         self.base_state = {
             "iteration": 1,
-            "started_at": "2026-01-27T10:00:00Z",
+            "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "plan_mode_completed": False,
         }
 
@@ -224,7 +225,7 @@ class TestPlanModeTracker:
         self.tmpdir = tempfile.mkdtemp(prefix="test-tracker-")
         self.base_state = {
             "iteration": 1,
-            "started_at": "2026-01-27T10:00:00Z",
+            "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "plan_mode_completed": False,
         }
 

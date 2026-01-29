@@ -370,7 +370,13 @@ class TestWebTestingBypassPrevention:
     def test_backend_only_still_requires_verification(
         self, mock_artifacts, mock_autonomous
     ):
-        """Backend-only changes (code_changes_made=true) still need Surf verification."""
+        """Backend-only changes (has_app_code=true) still need Surf verification.
+
+        Note: has_app_code must be True to test actual backend code changes.
+        When has_app_code=False AND has_infra_changes=False, changes are
+        considered infrastructure-only (hooks, skills, docs) and don't
+        require web smoke verification by design.
+        """
         mock_autonomous.return_value = True
         mock_artifacts.return_value = (False, ["No summary.json found"])
 
@@ -382,11 +388,12 @@ class TestWebTestingBypassPrevention:
             "evidence": {"urls_tested": []},
         }
 
+        # has_app_code=True indicates actual backend code was changed
         failures, modified = validate_web_testing(
-            checkpoint, has_app_code=False, has_infra_changes=False, cwd="/tmp"
+            checkpoint, has_app_code=True, has_infra_changes=False, cwd="/tmp"
         )
 
-        # Should still require web smoke verification
+        # Should require web smoke verification
         assert any("WEB SMOKE VERIFICATION REQUIRED" in f for f in failures)
 
     @patch("_sv_validators.is_autonomous_mode_active")

@@ -276,6 +276,73 @@ def validate_web_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     return True, []
 
 
+def validate_deployment_artifacts(cwd: str) -> tuple[bool, list[str]]:
+    """Check if deployment artifacts exist and pass conditions.
+
+    Looks for .claude/deployment/summary.json produced by deploy-verify.py.
+
+    Returns (is_valid, list_of_errors)
+    """
+    errors = []
+    artifact_dir = (
+        Path(cwd) / ".claude" / "deployment" if cwd else Path(".claude/deployment")
+    )
+    summary_path = artifact_dir / "summary.json"
+
+    if not summary_path.exists():
+        errors.append(
+            "deployment: No summary.json found. Run deploy-verify.py after deployment:\n"
+            "  python3 ~/.claude/hooks/deploy-verify.py --run-id <workflow-run-id>\n"
+            "Or wait for gh run watch to complete and re-run verification."
+        )
+        return False, errors
+
+    try:
+        summary = json.loads(summary_path.read_text())
+    except (json.JSONDecodeError, IOError) as e:
+        errors.append(f"deployment: Cannot parse summary.json: {e}")
+        return False, errors
+
+    # Check version freshness - deployed version should match current code
+    current_version = get_code_version(cwd)
+    deployed_version = summary.get("deployed_version", "")
+    if (
+        deployed_version
+        and current_version != "unknown"
+        and deployed_version != current_version
+    ):
+        errors.append(
+            f"deployment: Artifacts are STALE - deployed at version '{deployed_version}', "
+            f"but code is now at '{current_version}'. Code changed since deployment.\n"
+            "Re-deploy and re-verify."
+        )
+        return False, errors
+
+    # Check pass status
+    if not summary.get("passed", False):
+        conclusion = summary.get("conclusion", "unknown")
+        run_id = summary.get("run_id", "unknown")
+        deploy_errors = summary.get("errors", [])
+        error_msg = f"deployment: Workflow FAILED (conclusion: {conclusion}, run_id: {run_id})"
+        if deploy_errors:
+            error_msg += f"\n  Errors: {deploy_errors[:3]}"
+            if len(deploy_errors) > 3:
+                error_msg += f" ... and {len(deploy_errors) - 3} more"
+        errors.append(error_msg)
+        return False, errors
+
+    # Check version_match flag if present
+    if summary.get("version_match") is False:
+        tested_version = summary.get("tested_at_version", "unknown")
+        errors.append(
+            f"deployment: Version match is false - deployed_version '{deployed_version}' "
+            f"!= tested_at_version '{tested_version}'"
+        )
+        return False, errors
+
+    return True, []
+
+
 def validate_fix_specific_tests(cwd: str, checkpoint: dict) -> tuple[bool, list[str]]:
     """Validate that fix-specific validation tests were defined and passed.
 
