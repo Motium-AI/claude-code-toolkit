@@ -120,6 +120,16 @@ verify_hook_imports() {
         fi
     done
 
+    # Test Azure guard hook (bash script)
+    if [ -f "$HOOKS_DIR/azure-command-guard.sh" ]; then
+        if bash -n "$HOOKS_DIR/azure-command-guard.sh" 2>/dev/null; then
+            echo -e "  ${GREEN}✓ azure-command-guard.sh syntax OK${NC}"
+        else
+            echo -e "  ${RED}✗ azure-command-guard.sh has syntax errors${NC}"
+            return 1
+        fi
+    fi
+
     return 0
 }
 
@@ -216,6 +226,47 @@ EOF
     fi
 }
 
+verify_azure_guard() {
+    echo -e "${BLUE}Testing Azure command guard hook...${NC}"
+
+    local HOOKS_DIR="$HOME/.claude/hooks"
+    local AZURE_GUARD="$HOOKS_DIR/azure-command-guard.sh"
+
+    if [ ! -f "$AZURE_GUARD" ]; then
+        echo -e "  ${YELLOW}⚠ azure-command-guard.sh not found (optional)${NC}"
+        return 0
+    fi
+
+    # Test 1: Safe command should be allowed
+    local SAFE_INPUT='{"tool_name": "Bash", "tool_input": {"command": "az account show"}}'
+    if echo "$SAFE_INPUT" | "$AZURE_GUARD" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓ Allows safe commands (az account show)${NC}"
+    else
+        echo -e "  ${RED}✗ Incorrectly blocks safe commands${NC}"
+        return 1
+    fi
+
+    # Test 2: Dangerous command should be blocked
+    local DANGEROUS_INPUT='{"tool_name": "Bash", "tool_input": {"command": "az group delete --name test"}}'
+    if echo "$DANGEROUS_INPUT" | "$AZURE_GUARD" >/dev/null 2>&1; then
+        echo -e "  ${RED}✗ Fails to block dangerous commands${NC}"
+        return 1
+    else
+        echo -e "  ${GREEN}✓ Blocks dangerous commands (az group delete)${NC}"
+    fi
+
+    # Test 3: Allowed write (KeyVault secret) should be allowed
+    local ALLOWED_WRITE='{"tool_name": "Bash", "tool_input": {"command": "az keyvault secret set --vault-name test --name key --value val"}}'
+    if echo "$ALLOWED_WRITE" | "$AZURE_GUARD" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓ Allows KeyVault secret operations${NC}"
+    else
+        echo -e "  ${RED}✗ Incorrectly blocks KeyVault secret operations${NC}"
+        return 1
+    fi
+
+    return 0
+}
+
 verify_optional_tools() {
     echo -e "${BLUE}Checking optional tools...${NC}"
 
@@ -303,6 +354,7 @@ run_full_verification() {
     verify_hook_imports || FAILED=1
     verify_state_detection || FAILED=1
     verify_auto_approval || FAILED=1
+    verify_azure_guard || FAILED=1
     verify_optional_tools
 
     echo ""
