@@ -39,7 +39,11 @@ fi
 
 # Extract ALL az commands (handle chained commands with &&, ||, ;)
 # We need to check each one independently
-readarray -t AZ_COMMANDS < <(echo "$COMMAND" | grep -oE 'az\s+[^|>&;]+' || echo "")
+# Note: Using while loop for bash 3.x compatibility (macOS default)
+AZ_COMMANDS=()
+while IFS= read -r line; do
+    [ -n "$line" ] && AZ_COMMANDS+=("$line")
+done < <(echo "$COMMAND" | grep -oE 'az[[:space:]]+[^|>&;]+' || true)
 
 if [ ${#AZ_COMMANDS[@]} -eq 0 ]; then
     exit 0  # Couldn't extract az commands, allow
