@@ -112,14 +112,21 @@ Search queries should reflect this. "AI best practices" returns stale content; "
 - LinkedIn AI influencer posts
 - Generic "AI best practices" content without code
 
-### Search Tool Preference
+### Search Tool Policy: Exa MCP Required
 
-If Exa AI MCP is available (tools like `web_search_exa`, `get_code_context_exa`), prefer it over generic WebSearch for:
-- **Code search**: `get_code_context_exa` finds GitHub, StackOverflow, docs directly
-- **Technical research**: `web_search_exa` returns cleaner, more technical content
-- **Company research**: `company_research_exa` for competitor/vendor analysis
+**When Exa AI MCP is available, agents MUST use it instead of WebSearch.**
 
-Configure Exa MCP: `claude mcp add --transport http exa https://mcp.exa.ai/mcp`
+| Task | Required Tool | Fallback (only if Exa unavailable) |
+|------|--------------|-------------------------------------|
+| Code patterns, GitHub repos | `get_code_context_exa` | WebSearch with `site:github.com` |
+| Technical research | `web_search_exa` | WebSearch |
+| Company/vendor research | `company_research_exa` | WebSearch |
+
+**Why**: Exa returns higher-quality, more technical results with less SEO noise. WebSearch returns mainstream media, business press, and tutorial farms that pollute agent reasoning with stale "AI = ML" content.
+
+**Setup**: `claude mcp add --transport http exa https://mcp.exa.ai/mcp`
+
+**A PreToolUse hook (`exa-search-enforcer.py`) warns when WebSearch is used while Exa is available.**
 
 ### Search Query Patterns That Work
 
@@ -140,7 +147,7 @@ Configure Exa MCP: `claude mcp add --transport http exa https://mcp.exa.ai/mcp`
 4. **Target GitHub**: `site:github.com [topic]` or use Exa's `get_code_context_exa`
 5. **Add "production" or "example"**: Filters out tutorial slop
 
-**If using Exa MCP**: Use `get_code_context_exa` for code patterns - it searches GitHub, StackOverflow, and docs directly with better signal-to-noise than generic web search.
+**Exa MCP is the default search tool.** Use `get_code_context_exa` for code patterns - it searches GitHub, StackOverflow, and docs directly with better signal-to-noise than WebSearch. Only fall back to WebSearch if Exa is unavailable.
 
 ## Execution Strategy
 
@@ -230,7 +237,7 @@ You have FULL TOOL ACCESS. Use it.
    - **Tier 1 (prefer)**: anthropics/*, pydantic/pydantic-ai, openai/*, docs.anthropic.com, Simon Willison, Hamel Husain
    - **AVOID**: Forbes, TechCrunch, VentureBeat, LinkedIn, academic papers >6mo, SEO farms (Analytics Vidhya, GeeksforGeeks)
    - **Query pattern**: "Claude agent patterns 2026" not "AI best practices" — add year, specific tech, site:github.com
-   - **If Exa available**: Use `get_code_context_exa` for GitHub/code search, `web_search_exa` for practitioner content
+   - **Search tools**: Use `get_code_context_exa` for GitHub/code search, `web_search_exa` for practitioner content. Only fall back to WebSearch if Exa MCP is unavailable.
 3. **Search vendor docs** in the repo (PydanticAI, Logfire, TanStack, Clerk)
 
 **CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3, DeepSeek-V3), NOT traditional ML/sklearn.
@@ -414,7 +421,7 @@ You have FULL TOOL ACCESS. Find the shortcuts.
 2. **Find the minimal viable version**: What can we cut and still learn?
 3. **Research practical guidance**: WebSearch for "[topic] example site:github.com 2025", check anthropics/*, pydantic/* repos
 
-**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash). Search "Claude tool calling example" not "AI implementation guide". Use Exa `get_code_context_exa` if available.
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash). Search "Claude tool calling example" not "AI implementation guide". Use `get_code_context_exa` for code search (falls back to WebSearch only if Exa unavailable).
 
 Theory is nice. Shipping matters.
 

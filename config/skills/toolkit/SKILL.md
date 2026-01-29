@@ -1,6 +1,6 @@
 ---
 name: toolkit
-description: Claude Code Toolkit management and information. Use when asked about "/toolkit", "how does the toolkit work", "update toolkit", "toolkit status", "auto-update", or "how to install".
+description: Claude Code Toolkit management, information, and CLAUDE.md optimization. Use when asked about "/toolkit", "how does the toolkit work", "update toolkit", "toolkit status", "auto-update", "how to install", "optimize CLAUDE.md", "improve CLAUDE.md", or "audit CLAUDE.md".
 ---
 
 # Claude Code Toolkit
@@ -14,6 +14,9 @@ This skill explains how the Claude Code Toolkit works, including installation, a
 - "update toolkit"
 - "toolkit status"
 - "how to install"
+- "optimize CLAUDE.md"
+- "improve CLAUDE.md"
+- "audit CLAUDE.md"
 
 ## What is the Toolkit?
 
@@ -203,6 +206,56 @@ chmod +x ~/claude-code-toolkit/config/hooks/*.py
 ```bash
 cd ~/claude-code-toolkit && ./scripts/install.sh --force
 ```
+
+## CLAUDE.md Optimization
+
+When asked to "optimize CLAUDE.md", "improve CLAUDE.md", or "audit CLAUDE.md", follow this workflow:
+
+### What It Does
+
+Analyzes and optimizes a project's `CLAUDE.md` file using best practices extracted from production Claude Code hooks, skills, and agent workflows. The goal: maximize Claude's effectiveness while minimizing token waste.
+
+### Workflow
+
+1. **Read the rubric**: `references/claude-md-optimizer.md` contains the full optimization rubric with section checklists, priority levels, anti-patterns, and templates.
+
+2. **Audit current state**:
+   - Read the project's CLAUDE.md (or note its absence)
+   - Score each section against the rubric checklist
+   - Identify missing P0/P1 sections
+
+3. **Scan project context**:
+   - Glob for config files (`.eslintrc*`, `.prettierrc*`, `tsconfig.json`, `pyproject.toml`) to find conventions already enforced by tooling
+   - Read `package.json` or `pyproject.toml` for available scripts
+   - Check for toolkit installation (`~/.claude/hooks/`, `~/.claude/skills/`)
+   - Grep for import patterns, error handling conventions
+
+4. **Apply optimizations** in priority order:
+   - **P0**: Autonomous Execution Policy (highest impact on productivity)
+   - **P1**: Repository Purpose, Validation Commands, Architecture, Hook/Skill docs
+   - **P2**: Style Conventions, Scripts Reference
+
+5. **Validate**:
+   - Token budget: target < 2000 words for medium projects
+   - Behavioral test: every line should change Claude's behavior
+   - Discovery test: remove anything Claude can find via Glob/Grep
+
+### Key Principles
+
+- **Token efficiency**: CLAUDE.md loads on every session. Waste here multiplies across all conversations.
+- **Behavioral impact**: Only include information that changes how Claude operates. If removing a line wouldn't change behavior, delete it.
+- **Don't duplicate tooling**: If prettier/eslint/ruff enforces a convention, don't document it in CLAUDE.md.
+- **Don't duplicate discovery**: If Claude can find something via Glob/Grep in 2 seconds, don't hardcode it.
+- **Autonomous policy is P0**: The single highest-impact section. Derived from stop-validator.py behavior.
+
+### Reference
+
+See `references/claude-md-optimizer.md` for the complete rubric with:
+- Section-by-section checklists with priority levels
+- Anti-pattern examples and fixes
+- Token optimization rules
+- Size guidelines by project size
+- Common optimization patterns
 
 ## Related Commands
 

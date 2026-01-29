@@ -97,7 +97,7 @@ Claude cannot stop until the job is actually done. A completion checkpoint enfor
 
 If `is_job_complete: false` → Claude is **blocked** and must continue working.
 
-### Hook System (15 registered)
+### Hook System (19 registered)
 
 | Hook | Event | Purpose |
 |------|-------|---------|
@@ -106,11 +106,15 @@ If `is_job_complete: false` → Claude is **blocked** and must continue working.
 | `read-docs-reminder.py` | SessionStart | Forces reading docs on start |
 | `skill-state-initializer.py` | UserPromptSubmit | Creates state files on `/godo` or `/appfix` |
 | `read-docs-trigger.py` | UserPromptSubmit | Suggests reading relevant docs |
+| `pretooluse-auto-approve.py` | PreToolUse (*) | Auto-approves during autonomous mode |
 | `plan-mode-enforcer.py` | PreToolUse (Edit/Write) | Blocks Edit/Write until plan mode completes |
 | `deploy-enforcer.py` | PreToolUse (Bash) | Blocks subagent/production deploys |
+| `azure-command-guard.sh` | PreToolUse (Bash) | Guards Azure CLI commands |
+| `exa-search-enforcer.py` | PreToolUse (WebSearch) | Reminds to use Exa MCP instead |
 | `checkpoint-invalidator.py` | PostToolUse (Edit/Write) | Resets checkpoint when code changes |
 | `checkpoint-write-validator.py` | PostToolUse (Write) | Warns on claims without evidence |
 | `bash-version-tracker.py` | PostToolUse (Bash) | Tracks version changes after commits |
+| `doc-updater-async.py` | PostToolUse (Bash) | Suggests doc updates after commits |
 | `plan-mode-tracker.py` | PostToolUse (ExitPlanMode) | Marks plan mode completed |
 | `plan-execution-reminder.py` | PostToolUse (ExitPlanMode) | Injects autonomous execution context |
 | `skill-continuation-reminder.py` | PostToolUse (Skill) | Continues loop after skill delegation |
@@ -158,6 +162,7 @@ If `is_job_complete: false` → Claude is **blocked** and must continue working.
 | `design-improver` | UI review, design audit |
 | `ux-improver` | UX review, usability audit |
 | `docs-navigator` | Documentation, "read the docs" |
+| `revonc-eas-deploy` | /eas, "deploy to testflight", "build ios/android" |
 
 ---
 
@@ -186,6 +191,7 @@ claude-code-toolkit/
 | [QUICKSTART.md](QUICKSTART.md) | Installation guide |
 | [docs/index.md](docs/index.md) | Full reference |
 | [docs/skills/appfix-guide.md](docs/skills/appfix-guide.md) | Complete appfix guide |
+| [docs/skills/godo-guide.md](docs/skills/godo-guide.md) | Autonomous task execution guide |
 | [docs/concepts/hooks.md](docs/concepts/hooks.md) | Hook system deep dive |
 
 ---

@@ -247,6 +247,136 @@ webapp-testing/
 - Design tokens
 - Responsive behavior specs
 
+### 7. godo
+
+**Location**: `~/.claude/skills/godo/`
+
+**Triggers**: /godo, "go do", "just do it", "execute this"
+
+**Coverage**:
+- Task-agnostic autonomous execution with completion checkpoint
+- Mandatory plan mode before implementation
+- Full fix-verify loop: implement → lint → commit → deploy → browser verify
+- Cannot stop until checkpoint passes
+
+**Guide**: [Godo Guide](../skills/godo-guide.md)
+
+### 8. appfix
+
+**Location**: `~/.claude/skills/appfix/`
+
+**Triggers**: /appfix, "fix the app", "debug production", "check staging"
+
+**Coverage**:
+- Autonomous debugging with completion checkpoint (extends godo)
+- Health check all services
+- Collect logs (Azure Container Apps, browser console, LogFire)
+- Diagnose → fix → commit → deploy → verify loop
+
+**Guide**: [Appfix Guide](../skills/appfix-guide.md)
+
+### 9. heavy
+
+**Location**: `~/.claude/skills/heavy/`
+
+**Triggers**: /heavy, "heavy analysis", "multiple perspectives", "debate this"
+
+**Coverage**:
+- Multi-perspective analysis with 6 parallel Opus agents
+- 3 dynamic + 3 fixed perspectives (Critical Reviewer, Architecture Advisor, Shipping Engineer)
+- Self-educating agents via codebase + web + vendor docs
+- Structured disagreements and adversarial dialogue
+
+### 10. deploy-pipeline
+
+**Location**: `~/.claude/skills/deploy-pipeline/`
+
+**Triggers**: /deploy, deployment questions, environment promotion
+
+**Coverage**:
+- Motium deployment pipeline guide (local → dev → test → prod)
+- Azure Container Apps deployment
+- GitHub Actions workflows
+- Environment promotion strategy
+
+### 11. mobileappfix
+
+**Location**: `~/.claude/skills/mobileappfix/`
+
+**Triggers**: Mobile app debugging, Maestro tests, React Native issues
+
+**Coverage**:
+- Mobile app debugging with Maestro E2E tests
+- React Native / Expo diagnostics
+- iOS and Android platform-specific debugging
+
+### 12. skill-sandbox
+
+**Location**: `~/.claude/skills/skill-sandbox/`
+
+**Triggers**: /skill-sandbox, "test skill", "sandbox test"
+
+**Coverage**:
+- Test Claude Code skills in isolated tmux sandboxes
+- Spawn multiple sessions, verify hook behavior
+- Run integration tests for skills
+
+### 13. toolkit
+
+**Location**: `~/.claude/skills/toolkit/`
+
+**Triggers**: /toolkit, "update toolkit", "toolkit status", "optimize CLAUDE.md"
+
+**Coverage**:
+- Toolkit management and information
+- CLAUDE.md optimization and auditing
+- Auto-update status and configuration
+
+### 14. design-improver
+
+**Location**: `~/.claude/skills/design-improver/`
+
+**Triggers**: "improve design", "audit UI", "fix styling", "grade the interface"
+
+**Coverage**:
+- Recursively improve web UI design via vision-based screenshot analysis
+- Design grading and targeted fix suggestions
+- Iterative improvement loop
+
+### 15. ux-improver
+
+**Location**: `~/.claude/skills/ux-improver/`
+
+**Triggers**: "improve UX", "fix usability", "audit user experience"
+
+**Coverage**:
+- Recursively improve web application UX via vision-based analysis
+- User flow analysis and interaction audit
+- Iterative usability improvement loop
+
+### 16. docs-navigator
+
+**Location**: `~/.claude/skills/docs-navigator/`
+
+**Triggers**: "read the docs", "check documentation", unfamiliar codebase tasks
+
+**Coverage**:
+- Navigate project documentation efficiently
+- Identify relevant docs before starting unfamiliar tasks
+- Documentation discovery and orientation
+
+### 17. revonc-eas-deploy
+
+**Location**: `~/.claude/skills/revonc-eas-deploy/`
+
+**Triggers**: /eas, "deploy to testflight", "push ota update", "build ios/android"
+
+**Coverage**:
+- RevOnc mobile app EAS deployment guide
+- Build, deploy, and publish OTA updates via Expo Application Services
+- iOS (TestFlight) and Android deployment workflows
+- Build profiles and environment configuration
+
 ## Creating Custom Skills
 
 ### Step 1: Identify the Domain

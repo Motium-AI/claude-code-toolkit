@@ -467,24 +467,5 @@ class TestHookChain:
                 f"BLOCKED write to {path}: {result.stdout[:100]}"
             )
 
-    def test_auto_approval_during_appfix(self):
-        """Auto-approval hook should return allow when appfix state exists."""
-        make_state_dir(self.tmpdir, {"iteration": 1, "plan_mode_completed": False})
-
-        # appfix-auto-approve may receive empty stdin for PermissionRequest
-        result = subprocess.run(
-            [sys.executable, str(HOOKS_DIR / "appfix-auto-approve.py")],
-            input="",
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=self.tmpdir,
-        )
-        assert result.returncode == 0
-        if result.stdout.strip():
-            output = json.loads(result.stdout)
-            decision = output.get("hookSpecificOutput", {}).get(
-                "decision", output.get("hookSpecificOutput", {})
-            )
-            behavior = decision.get("behavior", "")
-            assert behavior == "allow", f"Expected allow, got: {behavior}"
+    # test_auto_approval_during_appfix removed: appfix-auto-approve.py was deleted
+    # in favor of pretooluse-auto-approve.py (PreToolUse:*)

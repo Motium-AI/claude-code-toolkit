@@ -26,47 +26,16 @@ CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
   "self_report": {{
     "code_changes_made": true,              // Did you modify any code files?
     "web_testing_done": false,              // Did you verify in browser/Surf?
-    "web_testing_done_at_version": "",      // Version when web testing was done
-    "api_testing_done": false,              // Did you test API endpoints?
-    "api_testing_done_at_version": "",      // Version when API testing was done
+    "web_testing_done_at_version": "",      // Git version when tested
     "deployed": false,                      // Did you deploy the changes?
-    "deployed_at_version": "",              // Version when deployed
-    "console_errors_checked": false,        // Did you check browser console?
-    "console_errors_checked_at_version": "",// Version when console was checked
-    "linters_pass": false,                  // Did all linters pass with zero errors?
-    "linters_pass_at_version": "",          // Version when linters passed
-    "docs_updated": false,                  // Did you update relevant docs?
-    "docs_read_at_start": false,            // Did you read project docs first? (appfix)
-    "preexisting_issues_fixed": true,       // Did you fix ALL issues (no "not my code")?
-    "az_cli_changes_made": false,           // Did you run az CLI infrastructure commands?
-    "infra_pr_created": false,              // Did you create PR to infra repo? (if az CLI used)
-    "validation_tests_defined": false,      // Did you define fix-specific tests? (if code changed)
-    "validation_tests_passed": false,       // Did ALL validation tests pass?
-    "validation_tests_passed_at_version": "",// Version when validation tests passed
+    "deployed_at_version": "",              // Git version when deployed
+    "linters_pass": false,                  // Did all linters pass?
+    "linters_pass_at_version": "",          // Git version when linted
     "is_job_complete": false                // Is the job ACTUALLY done?
-  }},
-  "validation_tests": {{                    // Fix-specific tests (REQUIRED if code changed)
-    "tests": [
-      {{
-        "id": "example_test",
-        "description": "What would PROVE this fix worked?",
-        "type": "database_query|api_response|page_content",
-        "expected": "NOT NULL|status=200|CONTAINS text",
-        "actual": "",                       // Fill after executing
-        "passed": false
-      }}
-    ],
-    "summary": {{
-      "total": 1,
-      "passed": 0,
-      "failed": 1,
-      "last_run_version": ""
-    }}
   }},
   "reflection": {{
     "what_was_done": "...",                 // Honest summary of work completed
-    "what_remains": "none",                 // Must be empty to allow stop
-    "blockers": null                        // Any genuine blockers
+    "what_remains": "none"                  // Must be empty to allow stop
   }},
   "evidence": {{
     "urls_tested": [],                      // URLs you actually tested
@@ -76,90 +45,42 @@ CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
 
 VERSION_TRACKING_GUIDANCE = """
 VERSION TRACKING:
-- Version-dependent fields (deployed, linters_pass, web_testing_done, etc.)
+- Version-dependent fields (deployed, linters_pass, web_testing_done)
   must include a matching *_at_version field with the git commit hash
 - If you make code changes AFTER setting a checkpoint, it becomes STALE
 - Get current version: git rev-parse --short HEAD
 """
 
-DOCUMENTATION_GUIDANCE = """
-DOCUMENTATION REQUIREMENTS (docs_updated):
-- docs/TECHNICAL_OVERVIEW.md - Update for architectural changes
-- Module docs in docs/ directory - Update for feature changes
-- .claude/skills/*/references/ - Update service topology, patterns
-- .claude/MEMORIES.md - Significant learnings only (not changelog)
-"""
-
-CONTINUATION_STALE_GUIDANCE = """
-If a checkpoint is marked "STALE":
+# Guidance blocks keyed by failure keyword for selective display
+GUIDANCE_BLOCKS = {
+    "STALE": """
   → The code changed since that checkpoint was set
-  → Re-run that step (deploy, test, lint, etc.) with the current code
+  → Re-run that step (deploy, test, lint) with the current code
   → {version_info}
   → Update checkpoint: "field": true, "field_at_version": "<version>"
-"""
-
-CONTINUATION_WEB_TESTING_GUIDANCE = """
-If web_testing_done is false:
-  → Run /webtest or use Chrome MCP to verify in browser
+""",
+    "web_testing_done": """
+  → Run Surf CLI or Chrome MCP to verify in browser
   → Check browser console for errors
   → Update checkpoint with results and version
-"""
-
-CONTINUATION_DEPLOYED_GUIDANCE = """
-If deployed is false (and code was changed):
+""",
+    "deployed": """
   → Commit and push: git add <files> && git commit -m "fix: ..." && git push
   → Deploy: gh workflow run deploy.yml && gh run watch --exit-status
   → Update checkpoint: deployed: true, deployed_at_version: "<version>"
-"""
-
-CONTINUATION_LINTERS_GUIDANCE = """
-If linters_pass is false:
-  → Auto-detect linters: package.json → npm run lint / eslint
-                         pyproject.toml → ruff check --fix
-                         tsconfig.json → tsc --noEmit
-  → Fix ALL errors - including pre-existing ones
-  → "These errors aren't related to our code" is NOT acceptable
+""",
+    "linters_pass": """
+  → Auto-detect linters: package.json → npm run lint, pyproject.toml → ruff check --fix
+  → Fix ALL errors including pre-existing ones
   → Update checkpoint: linters_pass: true, linters_pass_at_version: "<version>"
-"""
-
-CONTINUATION_DOCS_GUIDANCE = """
-If docs_read_at_start is false (appfix mode):
-  → Read docs/index.md and docs/TECHNICAL_OVERVIEW.md
-  → Update checkpoint: docs_read_at_start: true
-"""
-
-CONTINUATION_INFRA_GUIDANCE = """
-If infra_pr_created is false (but az_cli_changes_made is true):
-  → Document az CLI changes in .claude/infra-changes.md
-  → Clone infra repo (see service-topology.md for location)
-  → Update Terraform/Bicep/ARM templates to match
-  → Create PR: gh pr create --title "Sync infra changes from appfix"
-  → Update checkpoint: infra_pr_created: true
-"""
-
-CONTINUATION_VALIDATION_TESTS_GUIDANCE = """
-If validation_tests_defined is false (and you made code changes):
-  → Ask: "What would PROVE this specific fix worked?"
-  → Define tests in checkpoint → validation_tests.tests array
-  → Test types: database_query, api_response, page_content
-  → Each test needs: id, description, type, expected
-
-If validation_tests_passed is false:
-  → Execute each test and record actual results
-  → If tests FAIL → The fix didn't work! Fix the root cause.
-  → Re-run tests until ALL pass
-  → Save artifacts to .claude/validation-tests/summary.json
-  → Update checkpoint: validation_tests_passed: true, version
-"""
-
-CONTINUATION_COMPLETION_GUIDANCE = """
-If is_job_complete is false:
-  → You honestly answered that the job isn't done
-  → Complete the remaining work, then update checkpoint
-
-If what_remains is not empty:
-  → You listed remaining work: do it!
-"""
+""",
+    "is_job_complete": """
+  → You said the job isn't done. Complete the remaining work, then update checkpoint.
+""",
+    "what_remains": """
+  → You listed remaining work — do it!
+""",
+}
 
 
 # ============================================================================
@@ -200,7 +121,6 @@ This file requires HONEST self-reporting of what you've done:
 
 {schema}
 {VERSION_TRACKING_GUIDANCE}
-{DOCUMENTATION_GUIDANCE}
 If you answer "false" to required fields and try to stop, you'll be blocked.
 The only way to stop is to actually do the work OR have a genuine blocker.
 
@@ -214,7 +134,7 @@ Create this file, answer honestly, then stop again.
 def block_with_continuation(failures: list[str], cwd: str = "") -> None:
     """Block stop with specific continuation instructions.
 
-    Displays failure list and guidance for resolving each issue type.
+    Shows only guidance relevant to the actual failures (not all guidance).
 
     Args:
         failures: List of validation failure messages
@@ -241,7 +161,15 @@ def block_with_continuation(failures: list[str], cwd: str = "") -> None:
 └─────────────────────────────────────────────────────────────────────────────┘
 """
 
-    stale_guidance = CONTINUATION_STALE_GUIDANCE.format(version_info=version_info)
+    # Build guidance section: only show blocks relevant to actual failures
+    failure_text = " ".join(failures).lower()
+    guidance_parts = []
+    for keyword, block in GUIDANCE_BLOCKS.items():
+        if keyword.lower() in failure_text:
+            formatted = block.format(version_info=version_info) if "{version_info}" in block else block
+            guidance_parts.append(formatted)
+
+    guidance = "\n".join(guidance_parts) if guidance_parts else ""
 
     print(
         f"""
@@ -256,7 +184,7 @@ Your self-report indicates incomplete work:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REQUIRED ACTION: Complete the remaining work.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{stale_guidance}{CONTINUATION_WEB_TESTING_GUIDANCE}{CONTINUATION_DEPLOYED_GUIDANCE}{CONTINUATION_LINTERS_GUIDANCE}{CONTINUATION_DOCS_GUIDANCE}{CONTINUATION_INFRA_GUIDANCE}{CONTINUATION_VALIDATION_TESTS_GUIDANCE}{CONTINUATION_COMPLETION_GUIDANCE}
+{guidance}
 Update .claude/completion-checkpoint.json, then stop again.
 """,
         file=sys.stderr,

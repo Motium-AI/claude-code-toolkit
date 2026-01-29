@@ -613,49 +613,8 @@ class TestSessionSnapshot:
         )
 
 
-class TestAppfixAutoApprove:
-    """Tests for appfix-auto-approve.py TTL defense."""
-
-    def setup_method(self):
-        self.tmpdir = tempfile.mkdtemp(prefix="test-autoapprove-")
-
-    def teardown_method(self):
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
-    def test_approves_fresh_state(self):
-        """Should auto-approve with fresh state."""
-        state = {"last_activity_at": now_iso(), "iteration": 1}
-        make_state_dir(self.tmpdir, state)
-
-        result = run_hook(
-            "appfix-auto-approve.py",
-            {"cwd": self.tmpdir},
-        )
-
-        assert "allow" in result.stdout.lower()
-
-    def test_rejects_expired_state(self):
-        """Should NOT auto-approve with expired state (TTL defense)."""
-        state = {"last_activity_at": hours_ago_iso(10), "iteration": 1}
-        make_state_dir(self.tmpdir, state)
-
-        result = run_hook(
-            "appfix-auto-approve.py",
-            {"cwd": self.tmpdir},
-        )
-
-        # Should be silent passthrough (no auto-approval)
-        assert "allow" not in result.stdout.lower()
-
-    def test_silent_passthrough_no_state(self):
-        """Should silently pass through when no state exists."""
-        result = run_hook(
-            "appfix-auto-approve.py",
-            {"cwd": self.tmpdir},
-        )
-
-        # No output = passthrough
-        assert result.stdout.strip() == "" or "allow" not in result.stdout.lower()
+# TestAppfixAutoApprove removed: appfix-auto-approve.py was deleted
+# in favor of pretooluse-auto-approve.py (PreToolUse:*)
 
 
 # ============================================================================

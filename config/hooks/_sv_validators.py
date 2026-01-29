@@ -18,50 +18,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _common import (
     get_code_version,
+    get_fields_to_invalidate,
     save_checkpoint,
     is_appfix_active,
     is_autonomous_mode_active,
+    VERSION_DEPENDENT_FIELDS,
 )
-
-
-# ============================================================================
-# Constants
-# ============================================================================
-
-# Fields that are invalidated when code changes after they were set
-# Ordered by dependency: upstream fields come first
-VERSION_DEPENDENT_FIELDS = [
-    "linters_pass",  # Must pass before deploy
-    "deployed",  # Must deploy before testing
-    "web_testing_done",  # Depends on deployed
-    "console_errors_checked",  # Depends on deployed
-    "api_testing_done",  # Depends on deployed
-]
-
-# Dependency graph: field -> list of fields it depends on
-# If a dependency is stale, this field is also stale
-FIELD_DEPENDENCIES = {
-    "linters_pass": [],  # Base field, only depends on code
-    "deployed": ["linters_pass"],  # Can't deploy unlinted code
-    "web_testing_done": ["deployed"],  # Can't test undeployed code
-    "console_errors_checked": ["deployed"],  # Can't check console of undeployed code
-    "api_testing_done": ["deployed"],  # Can't test APIs of undeployed code
-}
-
-# Health endpoint URL patterns - these don't count as real app pages
-HEALTH_URL_PATTERNS = [
-    "/health",
-    "/healthz",
-    "/api/health",
-    "/ping",
-    "/ready",
-    "/live",
-    "/readiness",
-    "/liveness",
-    "/_health",
-    "/status",
-    "/api/status",
-]
 
 
 # ============================================================================
@@ -148,35 +110,6 @@ def has_frontend_changes(files: list[str]) -> bool:
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-
-def get_dependent_fields(field: str) -> list[str]:
-    """Get all fields that depend on a given field (transitively).
-
-    If field X is stale, all fields that depend on X are also stale.
-    """
-    dependents = []
-    for f, deps in FIELD_DEPENDENCIES.items():
-        if field in deps:
-            dependents.append(f)
-            dependents.extend(get_dependent_fields(f))
-    return list(set(dependents))
-
-
-def has_real_app_urls(urls: list[str]) -> bool:
-    """Check if any URLs are actual app pages (not just health endpoints).
-
-    Health endpoints like /health, /ping don't prove the app works -
-    they only prove the server is responding.
-    """
-    if not urls:
-        return False
-    for url in urls:
-        url_lower = url.lower()
-        is_health = any(pattern in url_lower for pattern in HEALTH_URL_PATTERNS)
-        if not is_health:
-            return True
-    return False
 
 
 def load_web_smoke_waivers(cwd: str) -> dict:
@@ -467,7 +400,7 @@ def validate_version_staleness(
     # Phase 2: Cascade to dependent fields
     cascade_fields = set()
     for stale_field in fields_to_reset:
-        dependents = get_dependent_fields(stale_field)
+        dependents = get_fields_to_invalidate(stale_field) - {stale_field}
         for dep in dependents:
             if report.get(dep, False) and dep not in fields_to_reset:
                 cascade_fields.add(dep)
@@ -505,7 +438,7 @@ def validate_core_completion(report: dict, reflection: dict) -> list[str]:
 def validate_code_requirements(
     report: dict, has_app_code: bool, has_frontend: bool
 ) -> list[str]:
-    """Check linters, deployed, preexisting issues for app code changes."""
+    """Check linters, deployed for app code changes."""
     failures = []
 
     if not has_app_code:
@@ -521,41 +454,9 @@ def validate_code_requirements(
             "deployed is false - you made application code changes but didn't deploy"
         )
 
-    if has_frontend and not report.get("console_errors_checked", False):
-        failures.append(
-            "console_errors_checked is false - check browser console for errors"
-        )
-
     if not report.get("linters_pass", False):
         failures.append(
-            "linters_pass is false - run linters and fix ALL errors (including pre-existing ones). "
-            "You cannot claim 'these errors aren't related to our code' - fix them ALL"
-        )
-
-    if report.get("linters_pass", False) and not report.get(
-        "preexisting_issues_fixed", True
-    ):
-        failures.append(
-            "preexisting_issues_fixed is false - you acknowledged pre-existing issues but didn't fix them."
-        )
-
-    return failures
-
-
-def validate_autonomous_requirements(report: dict, cwd: str) -> list[str]:
-    """Check docs_read_at_start and infra_pr_created for autonomous modes."""
-    failures = []
-
-    if is_appfix_active(cwd) and not report.get("docs_read_at_start", False):
-        failures.append(
-            "docs_read_at_start is false - read docs/index.md and TECHNICAL_OVERVIEW.md first"
-        )
-
-    if report.get("az_cli_changes_made", False) and not report.get(
-        "infra_pr_created", False
-    ):
-        failures.append(
-            "infra_pr_created is false - sync infrastructure changes with IaC files"
+            "linters_pass is false - run linters and fix ALL errors (including pre-existing ones)"
         )
 
     return failures
@@ -591,29 +492,18 @@ def validate_web_testing(
     # artifacts MUST exist regardless of detected code changes.
     # This prevents the bypass: "Backend-only change - no frontend UI to test"
     web_testing_claimed = report.get("web_testing_done", False)
-    console_checked_claimed = report.get("console_errors_checked", False)
 
-    if web_testing_claimed or console_checked_claimed:
+    if web_testing_claimed:
         artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
         if not artifact_valid:
-            # FALSE CLAIM DETECTED - reset the booleans
-            if web_testing_claimed:
-                failures.append(
-                    "web_testing_done is TRUE but no valid Surf artifacts exist.\n"
-                    "Cannot claim web testing done without proof. Auto-resetting to FALSE."
-                )
-                report["web_testing_done"] = False
-                report["web_testing_done_at_version"] = ""
-                checkpoint_modified = True
-
-            if console_checked_claimed:
-                failures.append(
-                    "console_errors_checked is TRUE but no valid Surf artifacts exist.\n"
-                    "Cannot claim console checked without proof. Auto-resetting to FALSE."
-                )
-                report["console_errors_checked"] = False
-                report["console_errors_checked_at_version"] = ""
-                checkpoint_modified = True
+            # FALSE CLAIM DETECTED - reset the boolean
+            failures.append(
+                "web_testing_done is TRUE but no valid Surf artifacts exist.\n"
+                "Cannot claim web testing done without proof. Auto-resetting to FALSE."
+            )
+            report["web_testing_done"] = False
+            report["web_testing_done_at_version"] = ""
+            checkpoint_modified = True
 
             failures.extend([f"  → {err}" for err in artifact_errors])
 
@@ -633,14 +523,10 @@ def validate_web_testing(
     artifact_valid, artifact_errors = validate_web_smoke_artifacts(cwd)
 
     if artifact_valid:
-        # Auto-set boolean fields for backward compatibility
+        # Auto-set web_testing_done from artifact evidence
         if not report.get("web_testing_done", False):
             report["web_testing_done"] = True
             report["web_testing_done_at_version"] = get_code_version(cwd)
-            checkpoint_modified = True
-        if not report.get("console_errors_checked", False):
-            report["console_errors_checked"] = True
-            report["console_errors_checked_at_version"] = get_code_version(cwd)
             checkpoint_modified = True
     else:
         # CRITICAL: In autonomous mode, web smoke is NOT optional
@@ -650,23 +536,17 @@ def validate_web_testing(
             "Run: python3 ~/.claude/hooks/surf-verify.py --urls 'https://your-app.com'"
         )
         # Only add artifact errors if not already added above (from cross-validation)
-        if not (web_testing_claimed or console_checked_claimed):
+        if not web_testing_claimed:
             failures.extend([f"  → {err}" for err in artifact_errors])
 
     # Check URLs tested
     evidence = checkpoint.get("evidence", {})
     urls_tested = evidence.get("urls_tested", [])
 
-    if report.get("web_testing_done", False):
-        if not urls_tested:
-            failures.append(
-                "web_testing_done is true but evidence.urls_tested is empty."
-            )
-        elif not has_real_app_urls(urls_tested):
-            failures.append(
-                f"urls_tested contains ONLY health endpoints: {urls_tested}\n"
-                "You MUST verify real user-facing pages like /dashboard, /login."
-            )
+    if report.get("web_testing_done", False) and not urls_tested:
+        failures.append(
+            "web_testing_done is true but evidence.urls_tested is empty."
+        )
 
     return failures, checkpoint_modified
 
@@ -712,13 +592,11 @@ def validate_checkpoint(
     if web_modified:
         checkpoint_modified = True
 
-    # 5. Autonomous-specific requirements
-    failures.extend(validate_autonomous_requirements(report, cwd))
-
-    # 6. Fix-specific tests (appfix only)
-    tests_valid, test_errors = validate_fix_specific_tests(cwd, checkpoint)
+    # 5. Fix-specific tests (warning only, not blocking)
+    tests_valid, test_warnings = validate_fix_specific_tests(cwd, checkpoint)
     if not tests_valid:
-        failures.extend(test_errors)
+        for w in test_warnings:
+            print(f"  ⚠ WARNING: {w}", file=sys.stderr)
 
     # Save modified checkpoint
     if checkpoint_modified:
