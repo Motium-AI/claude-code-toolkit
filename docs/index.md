@@ -33,7 +33,7 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 
 ---
 
-## All Commands (11)
+## All Commands (14)
 
 | Command | Purpose |
 |---------|---------|
@@ -43,19 +43,23 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 | `/qa` | Architecture audit |
 | `/deslop` | AI slop detection |
 | `/docupdate` | Documentation gaps |
+| `/config-audit` | Environment variable analysis |
 | `/webtest` | Browser testing |
+| `/mobiletest` | Maestro E2E tests |
+| `/mobileaudit` | Vision-based UI audit |
 | `/interview` | Requirements Q&A |
 | `/weboptimizer` | Performance benchmarking |
 | `/designimprove` | UI improvement |
 | `/uximprove` | UX improvement |
 
-## All Skills (15 active, 2 deprecated)
+## All Skills (16 active, 2 deprecated)
 
 | Skill | Triggers |
 |-------|----------|
 | `godo` | /godo, "go do", "just do it" |
 | `appfix` | /appfix, "fix the app", "debug production" |
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives" |
+| `mobileappfix` | Mobile app debugging, Maestro tests |
 | `skill-sandbox` | /skill-sandbox, "test skill", "sandbox test" |
 | `toolkit` | /toolkit, "update toolkit" |
 | `deploy-pipeline` | /deploy, deployment questions |
@@ -76,18 +80,20 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 | `skill-tester` | Deprecated | → skill-sandbox |
 | `skilltest` | Deprecated | → skill-sandbox |
 
-## Hook Events (8)
+## Hook Events (10)
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | auto-update, session-snapshot, read-docs-reminder | Init |
-| UserPromptSubmit | skill-state-initializer, read-docs-trigger | State files |
+| SessionStart | auto-update, session-snapshot, read-docs-reminder | Init and toolkit update |
+| UserPromptSubmit | skill-state-initializer, read-docs-trigger | State files and doc suggestions |
 | PreToolUse (Edit/Write) | plan-mode-enforcer | Block until plan done |
+| PreToolUse (Bash) | deploy-enforcer | Block subagent/production deploys |
 | PostToolUse (Edit/Write) | checkpoint-invalidator | Reset stale flags |
-| PostToolUse (Bash) | bash-version-tracker | Track versions |
-| PostToolUse (ExitPlanMode) | plan-execution-reminder | Inject context |
+| PostToolUse (Write) | checkpoint-write-validator | Warn on claims without evidence |
+| PostToolUse (Bash) | bash-version-tracker | Track version changes |
+| PostToolUse (ExitPlanMode) | plan-mode-tracker, plan-execution-reminder | Mark plan done, inject context |
 | PostToolUse (Skill) | skill-continuation-reminder | Continue loop after skill |
-| PermissionRequest | appfix-auto-approve | Auto-approve |
+| PermissionRequest | appfix-auto-approve | Auto-approve all tools |
 | Stop | stop-validator | Validate checkpoint |
 
 ---
@@ -108,9 +114,9 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 prompts/
 ├── config/
 │   ├── settings.json      # Hook definitions
-│   ├── commands/          # 11 commands
-│   ├── hooks/             # Python hooks
-│   └── skills/            # 15 skills (+ 2 deprecated)
+│   ├── commands/          # 11 command files (+ 3 skill-commands)
+│   ├── hooks/             # Python hooks (15 registered)
+│   └── skills/            # 16 skills (+ 2 deprecated)
 ├── docs/                  # Documentation
 ├── scripts/               # install.sh, doctor.sh
 └── README.md

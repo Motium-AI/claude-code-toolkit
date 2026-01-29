@@ -97,17 +97,27 @@ Claude cannot stop until the job is actually done. A completion checkpoint enfor
 
 If `is_job_complete: false` → Claude is **blocked** and must continue working.
 
-### Hook System
+### Hook System (15 registered)
 
-| Hook | Purpose |
-|------|---------|
-| `skill-state-initializer.py` | Creates state files on `/godo` or `/appfix` |
-| `appfix-auto-approve.py` | Auto-approves ALL tools during autonomous mode |
-| `plan-mode-enforcer.py` | Blocks Edit/Write until plan mode completes |
-| `checkpoint-invalidator.py` | Resets checkpoint when code changes |
-| `stop-validator.py` | Validates checkpoint before allowing stop |
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `auto-update.py` | SessionStart | Auto-updates toolkit from git |
+| `session-snapshot.py` | SessionStart | Captures git diff hash |
+| `read-docs-reminder.py` | SessionStart | Forces reading docs on start |
+| `skill-state-initializer.py` | UserPromptSubmit | Creates state files on `/godo` or `/appfix` |
+| `read-docs-trigger.py` | UserPromptSubmit | Suggests reading relevant docs |
+| `plan-mode-enforcer.py` | PreToolUse (Edit/Write) | Blocks Edit/Write until plan mode completes |
+| `deploy-enforcer.py` | PreToolUse (Bash) | Blocks subagent/production deploys |
+| `checkpoint-invalidator.py` | PostToolUse (Edit/Write) | Resets checkpoint when code changes |
+| `checkpoint-write-validator.py` | PostToolUse (Write) | Warns on claims without evidence |
+| `bash-version-tracker.py` | PostToolUse (Bash) | Tracks version changes after commits |
+| `plan-mode-tracker.py` | PostToolUse (ExitPlanMode) | Marks plan mode completed |
+| `plan-execution-reminder.py` | PostToolUse (ExitPlanMode) | Injects autonomous execution context |
+| `skill-continuation-reminder.py` | PostToolUse (Skill) | Continues loop after skill delegation |
+| `appfix-auto-approve.py` | PermissionRequest | Auto-approves ALL tools during autonomous mode |
+| `stop-validator.py` | Stop | Validates checkpoint before allowing stop |
 
-**Security**: Auto-approval only activates when `.claude/godo-state.json` or `.claude/appfix-state.json` exists.
+**Security**: Auto-approval only activates when `.claude/godo-state.json` or `.claude/appfix-state.json` exists with a valid TTL.
 
 ---
 
@@ -121,20 +131,33 @@ If `is_job_complete: false` → Claude is **blocked** and must continue working.
 | `/qa` | Architecture audit |
 | `/deslop` | AI slop detection |
 | `/docupdate` | Documentation gaps |
+| `/config-audit` | Environment variable analysis |
 | `/webtest` | Browser testing |
+| `/mobiletest` | Maestro E2E tests |
+| `/mobileaudit` | Vision-based UI audit |
 | `/interview` | Requirements Q&A |
 | `/designimprove` | UI improvement |
 | `/uximprove` | UX improvement |
+| `/weboptimizer` | Performance benchmarking |
 
 ## All Skills (Auto-Triggered)
 
 | Skill | Triggers On |
 |-------|-------------|
+| `heavy` | Multi-perspective analysis, "debate this" |
+| `skill-sandbox` | Skill testing, sandbox test |
+| `toolkit` | Toolkit management, "update toolkit" |
+| `deploy-pipeline` | Deployment questions, environment promotion |
+| `mobileappfix` | Mobile app debugging, Maestro tests |
 | `webapp-testing` | Browser testing, Chrome automation |
 | `frontend-design` | Web UI development |
 | `async-python-patterns` | asyncio, concurrent programming |
 | `nextjs-tanstack-stack` | Next.js, TanStack, Zustand |
 | `prompt-engineering-patterns` | Prompt optimization |
+| `ux-designer` | UX design, user experience |
+| `design-improver` | UI review, design audit |
+| `ux-improver` | UX review, usability audit |
+| `docs-navigator` | Documentation, "read the docs" |
 
 ---
 

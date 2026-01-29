@@ -1264,6 +1264,37 @@ cat > .claude/appfix-state.json << 'EOF'
 EOF
 ```
 
+### Auto-Approval Not Working After Context Compaction
+
+**Symptom**: After plan phase, context compacts, and then you need to manually approve tool calls even though appfix/godo state file exists.
+
+**Root Cause**: `PermissionRequest` hooks only fire when Claude Code would show a permission dialog. After `ExitPlanMode` grants `allowedPrompts`, many tools are pre-approved via Claude Code's native permission system, so no dialog is shown and the PermissionRequest hook never fires. After context compaction, the in-memory `allowedPrompts` are lost, requiring manual approval again - but by then the model may have "forgotten" it's in appfix mode.
+
+**Solution**: Use `PreToolUse` hooks instead of (or in addition to) `PermissionRequest` hooks. PreToolUse hooks fire for EVERY tool call, allowing us to bypass the permission system entirely by returning `permissionDecision: "allow"`.
+
+The toolkit now includes `~/.claude/hooks/pretooluse-auto-approve.py` which handles this. Make sure it's configured in settings.json:
+
+```json
+"PreToolUse": [
+  {
+    "matcher": "*",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/hooks/pretooluse-auto-approve.py",
+        "timeout": 5
+      }
+    ]
+  }
+]
+```
+
+**Verification**: Check the invocation logs:
+```bash
+cat /tmp/pretooluse-auto-approve-invocations.log
+# Should show AUTO-APPROVED entries for each tool call
+```
+
 ### PermissionRequest Hook Empty Stdin
 
 **Symptom**: Auto-approval hook fails with JSONDecodeError.

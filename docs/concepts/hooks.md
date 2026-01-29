@@ -286,6 +286,23 @@ def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
     """Returns: (is_coordinator, agent_id, worktree_path)"""
 ```
 
+**Production Deployment Permission Detection**:
+
+The hook also scans the user's prompt for production deployment intent. If detected, it pre-populates `allowed_prompts` in the state file, which the `deploy-enforcer.py` hook checks before blocking.
+
+Recognized patterns:
+- `deploy to prod/production`
+- `push to prod`
+- `release to production`
+- `/deploy-pipeline ... prod`
+
+Example: `/godo deploy to prod` creates state with:
+```json
+{
+  "allowed_prompts": [{"tool": "Bash", "prompt": "deploy to production"}]
+}
+```
+
 **State file fields** (`.claude/appfix-state.json` or `.claude/godo-state.json`):
 ```json
 {
@@ -296,7 +313,8 @@ def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
   "parallel_mode": false,
   "agent_id": null,
   "worktree_path": null,
-  "coordinator": true
+  "coordinator": true,
+  "allowed_prompts": [{"tool": "Bash", "prompt": "deploy to production"}]
 }
 ```
 
@@ -306,6 +324,7 @@ def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
 | `parallel_mode` | boolean | True if running in a worktree |
 | `agent_id` | string\|null | Agent ID if in worktree |
 | `worktree_path` | string\|null | Worktree path if in worktree |
+| `allowed_prompts` | array\|null | Pre-populated permissions from prompt (for deploy-enforcer) |
 
 **Deploy restrictions**: Subagents (`coordinator: false`) should never deploy directly. Only the coordinator agent (in main repo) handles deployments after merging subagent work.
 
@@ -427,15 +446,17 @@ THEN your edit will be allowed.
 
 **File**: `~/.claude/hooks/plan-mode-tracker.py`
 
-**Purpose**: Marks plan mode as completed in godo/appfix state files after ExitPlanMode is called, enabling Edit/Write tools to proceed.
+**Purpose**: Marks plan mode as completed in godo/appfix state files after ExitPlanMode is called, enabling Edit/Write tools to proceed. Also stores `allowedPrompts` from the plan for permission-based bypasses in other hooks.
 
 **Trigger**: Fires after `ExitPlanMode` tool use during godo/appfix workflows.
 
 **How it works**:
 1. Receives PostToolUse event with `tool_name: "ExitPlanMode"`
-2. Checks if godo or appfix state file exists (`.claude/godo-state.json` or `.claude/appfix-state.json`)
-3. Updates the state file with `plan_mode_completed: true`
-4. The plan-mode-enforcer hook (PreToolUse) then allows Edit/Write tools
+2. Extracts `allowedPrompts` from `tool_input` (if present)
+3. Checks if godo or appfix state file exists (`.claude/godo-state.json` or `.claude/appfix-state.json`)
+4. Updates the state file with `plan_mode_completed: true` and `allowed_prompts`
+5. The plan-mode-enforcer hook (PreToolUse) then allows Edit/Write tools
+6. Other hooks (e.g., deploy-enforcer) can check `allowed_prompts` for permission bypasses
 
 **State file update**:
 ```json
@@ -443,11 +464,14 @@ THEN your edit will be allowed.
   "started_at": "2026-01-25T10:00:00Z",
   "task": "user's task",
   "iteration": 1,
-  "plan_mode_completed": true  // ← Set by this hook
+  "plan_mode_completed": true,  // ← Set by this hook
+  "allowed_prompts": [          // ← Stored from ExitPlanMode allowedPrompts
+    {"tool": "Bash", "prompt": "deploy to production"}
+  ]
 }
 ```
 
-**Why this exists**: The plan-mode-enforcer blocks Edit/Write tools on the first iteration of godo/appfix to ensure Claude explores the codebase before making changes. This hook marks when that exploration is complete.
+**Why this exists**: The plan-mode-enforcer blocks Edit/Write tools on the first iteration of godo/appfix to ensure Claude explores the codebase before making changes. This hook marks when that exploration is complete. The `allowed_prompts` storage enables other hooks (like deploy-enforcer) to respect permissions explicitly granted by the user in the plan.
 
 ### PostToolUse Hook: Skill Continuation Reminder
 
@@ -968,74 +992,106 @@ Stop hook error: JSON validation failed
 
 **Conclusion**: `type: "prompt"` hooks are unreliable. Use `type: "command"` with exit codes instead.
 
-## Appfix Autonomous Execution Hooks
+## Autonomous Execution Hook System
 
-The `/appfix` skill uses three specialized hooks to enforce fully autonomous execution. These hooks activate when appfix is detected via:
+The `/godo` and `/appfix` skills use a coordinated set of hooks to enforce fully autonomous execution. These hooks activate when autonomous mode is detected via:
 
-1. **Environment variable** (backwards compatibility): `APPFIX_ACTIVE=true`
-2. **State file existence** (primary): `.claude/appfix-state.json` exists in the project
+1. **State file existence** (primary): `.claude/godo-state.json` or `.claude/appfix-state.json` exists in the project
+2. **Environment variable** (legacy): `GODO_ACTIVE=true` or `APPFIX_ACTIVE=true`
 
-The state-file detection is the primary mechanism since the appfix workflow creates this file early in the process, before ExitPlanMode is called. Environment variable detection is retained for backwards compatibility.
-
-**CRITICAL**: The skill reads reference files from the PROJECT directory (`{project}/.claude/skills/appfix/references/`), NOT from global `~/.claude/`. If `service-topology.md` is missing, the skill MUST stop and create it before proceeding.
+The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state files automatically when `/godo` or `/appfix` is invoked. State files include a `started_at` timestamp and expire after a configurable TTL (checked by `is_state_expired()` in `_common.py`).
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         /appfix HOOK SYSTEM                                  │
+│                   AUTONOMOUS EXECUTION HOOK SYSTEM                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  PreToolUse(AskUserQuestion)                                                │
-│  └─→ appfix-auto-answer.py                                                  │
-│      └─→ If APPFIX_ACTIVE: Auto-select first option, inject continue msg   │
-│      └─→ If not active: Pass through (no output)                            │
-│                                                                              │
+│                                                                             │
+│  UserPromptSubmit                                                           │
+│  └─→ skill-state-initializer.py                                             │
+│      └─→ Creates .claude/godo-state.json or .claude/appfix-state.json      │
+│      └─→ Sets started_at timestamp for TTL expiry                          │
+│                                                                             │
+│  PreToolUse(Edit/Write)                                                     │
+│  └─→ plan-mode-enforcer.py                                                  │
+│      └─→ If autonomous + first iteration: DENY until plan mode completed   │
+│      └─→ If not active or plan done: Pass through                          │
+│                                                                             │
+│  PreToolUse(Bash)                                                           │
+│  └─→ deploy-enforcer.py                                                     │
+│      └─→ If autonomous + coordinator=false: DENY gh workflow run           │
+│      └─→ If production deploy detected: DENY with safety gate              │
+│                                                                             │
 │  PostToolUse(ExitPlanMode)                                                  │
-│  └─→ appfix-auto-approve.py                                                 │
-│      └─→ If APPFIX_ACTIVE: Inject aggressive fix-verify loop instructions  │
-│      └─→ If not active: Use standard plan-execution-reminder                │
-│                                                                              │
-│  Stop                                                                        │
-│  └─→ appfix-stop-validator.py                                               │
-│      └─→ If APPFIX_ACTIVE: Validate all services healthy before allowing   │
-│      └─→ If not active: Pass through (exit 0)                               │
-│                                                                              │
+│  └─→ plan-mode-tracker.py → marks plan mode completed in state file        │
+│  └─→ plan-execution-reminder.py → injects fix-verify loop instructions     │
+│                                                                             │
+│  PostToolUse(Edit/Write)                                                    │
+│  └─→ checkpoint-invalidator.py → resets stale checkpoint flags             │
+│  └─→ checkpoint-write-validator.py → warns on claims without evidence      │
+│                                                                             │
+│  PostToolUse(Bash)                                                          │
+│  └─→ bash-version-tracker.py → invalidates fields on version change        │
+│                                                                             │
+│  PostToolUse(Skill)                                                         │
+│  └─→ skill-continuation-reminder.py → continues loop after skill           │
+│                                                                             │
+│  PermissionRequest(*)                                                       │
+│  └─→ appfix-auto-approve.py                                                │
+│      └─→ If autonomous mode active: Auto-approve ALL tools                 │
+│      └─→ If not active: Silent pass-through (normal approval)              │
+│                                                                             │
+│  Stop                                                                       │
+│  └─→ stop-validator.py                                                      │
+│      └─→ Validates completion checkpoint (boolean self-report)             │
+│      └─→ Cross-validates web smoke artifacts and deploy artifacts          │
+│      └─→ Cascade invalidation on version mismatch                          │
+│      └─→ Blocks if is_job_complete=false or what_remains is non-empty      │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### PreToolUse Hook: Auto-Answer Questions
+### PreToolUse Hook: Auto-Approve All Tools (Primary)
 
-**File**: `~/.claude/hooks/appfix-auto-answer.py`
+**File**: `~/.claude/hooks/pretooluse-auto-approve.py`
 
-**Purpose**: Prevent Claude from asking user questions during autonomous debugging by auto-selecting the first option.
+**Purpose**: Auto-approve ALL tools during godo/appfix by intercepting at the PreToolUse stage, BEFORE the permission system decides whether to show a dialog.
+
+**Why PreToolUse instead of PermissionRequest?**
+
+`PermissionRequest` hooks only fire when Claude Code would show a permission dialog. However, after ExitPlanMode grants `allowedPrompts`, many tools are pre-approved and NO dialog is shown - so the PermissionRequest hook never fires. After context compaction, the in-memory `allowedPrompts` are lost, requiring manual approval again.
+
+`PreToolUse` hooks fire for EVERY tool call, allowing us to bypass the permission system entirely by returning `permissionDecision: "allow"`. This ensures auto-approval works both before AND after context compaction.
+
+**Detection**: Uses `is_autonomous_mode_active()` from `_common.py`, which checks for state files with TTL validation.
 
 **Behavior**:
-1. Receives tool input for `AskUserQuestion` calls
-2. If `APPFIX_ACTIVE=true`: Returns `autoAnswers` with first option selected
-3. If not active: Silent pass-through
+1. Reads stdin JSON for `cwd` and `tool_name`
+2. Checks if godo or appfix state file exists and is not expired
+3. If active: Returns `permissionDecision: "allow"` to bypass permission system
+4. If not active: Silent pass-through (exit 0, no output)
 
 **Hook Output Schema**:
 ```json
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "suppressToolOutput": true,
-    "additionalContext": "[instructions to continue]",
-    "autoAnswers": {"0": "First option label"}
+    "permissionDecision": "allow",
+    "permissionDecisionReason": "Auto-approved by appfix mode"
   }
 }
 ```
 
-**Configuration**:
+**Configuration** (wildcard matcher — matches all tools):
 ```json
 "PreToolUse": [
   {
-    "matcher": "AskUserQuestion",
+    "matcher": "*",
     "hooks": [
       {
         "type": "command",
-        "command": "python3 ~/.claude/hooks/appfix-auto-answer.py",
+        "command": "python3 ~/.claude/hooks/pretooluse-auto-approve.py",
         "timeout": 5
       }
     ]
@@ -1043,52 +1099,15 @@ The state-file detection is the primary mechanism since the appfix workflow crea
 ]
 ```
 
-### PostToolUse Hook: Plan Execution
+### PermissionRequest Hook: Auto-Approve Fallback
 
 **File**: `~/.claude/hooks/appfix-auto-approve.py`
 
-**Purpose**: Inject aggressive autonomous execution context after Claude exits plan mode.
+**Purpose**: Fallback auto-approval for any permission dialogs that still appear (defense in depth).
 
-**Injected Context** (when active):
-```
-APPFIX AUTONOMOUS EXECUTION MODE - FIX-VERIFY LOOP ACTIVE
+**Note**: This hook is largely superseded by the PreToolUse hook above, but remains as a backup for edge cases where a permission dialog is still shown.
 
-1. EXECUTE THE FIX IMMEDIATELY - No confirmation needed
-2. DEPLOY IF REQUIRED - Trigger GitHub Actions, wait for completion
-3. RE-RUN HEALTH CHECKS - Verify fix worked
-4. LOOP OR EXIT:
-   - If healthy: Report success, exit
-   - If still broken: Increment iteration, continue debugging
-   - If max iterations (5): Report all attempted fixes, exit
-
-DO NOT ask for confirmation. DO NOT wait for user input.
-The user invoked /appfix specifically for autonomous debugging.
-```
-
-### PermissionRequest Hook: Auto-Approve All Tools
-
-**File**: `~/.claude/hooks/appfix-auto-approve.py`
-
-**Purpose**: Auto-approve ALL tool permission dialogs during godo/appfix to enable truly autonomous execution.
-
-**Behavior**:
-1. Receives permission request for any tool
-2. If godo or appfix state file exists: Returns decision to allow the tool
-3. If not active: Silent pass-through (no output)
-
-**Hook Output Schema**:
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PermissionRequest",
-    "decision": {
-      "behavior": "allow"
-    }
-  }
-}
-```
-
-**Configuration**:
+**Configuration** (catch-all matcher — no `matcher` field):
 ```json
 "PermissionRequest": [
   {
@@ -1103,137 +1122,160 @@ The user invoked /appfix specifically for autonomous debugging.
 ]
 ```
 
-**Why this matters**: Without this hook, Claude would pause at permission dialogs for various tools (Read, Bash, Edit, etc.), requiring manual user approval. During `/godo` or `/appfix`, this breaks autonomous execution flow. The catch-all matcher (no `matcher` field) ensures ALL tools are auto-approved.
+### PreToolUse Hook: Plan Mode Enforcement
 
-### SubagentStop Hook: Validate Agent Output
+**File**: `~/.claude/hooks/plan-mode-enforcer.py`
 
-**File**: `~/.claude/hooks/appfix-subagent-validator.py`
-
-**Purpose**: Validate task agent output before accepting results during appfix to catch incomplete or placeholder responses.
+**Purpose**: Block Edit/Write tools on the first iteration of godo/appfix until plan mode is completed. This ensures Claude explores the codebase before making changes.
 
 **Behavior**:
-1. Receives subagent completion output
-2. If `APPFIX_ACTIVE=true`: Validates the output meets quality criteria
-3. If validation fails: Blocks with instructions to continue
-4. If not active: Silent pass-through
-
-**Validation Criteria**:
-- Output must be substantive (not too short)
-- No placeholder patterns in verification claims (e.g., `[placeholder]`, `TODO`, `TBD`)
-- URLs must be real app URLs (not just `/health` endpoints)
-- `verification_evidence` values must contain actual content, not empty strings
-
-**Hook Output Schema** (when blocking):
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SubagentStop",
-    "additionalContext": "[validation failure message with instructions]"
-  }
-}
-```
+1. Checks if autonomous mode is active
+2. If plan mode not yet completed (tracked by `plan-mode-tracker.py`): Returns `permissionDecision: "deny"` with message instructing Claude to enter plan mode first
+3. After plan mode completed: Silent pass-through
 
 **Configuration**:
 ```json
-"SubagentStop": [
+"PreToolUse": [
   {
-    "hooks": [
-      {
-        "type": "command",
-        "command": "python3 ~/.claude/hooks/appfix-subagent-validator.py",
-        "timeout": 10
-      }
-    ]
+    "matcher": "Edit",
+    "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5 }]
+  },
+  {
+    "matcher": "Write",
+    "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5 }]
   }
 ]
 ```
 
-**Common validation failures**:
-- Agent reports success but doesn't provide concrete evidence
-- Agent includes placeholder URLs instead of actual deployed endpoints
-- Agent claims tests passed but doesn't show actual test output
-- Verification evidence fields are empty or contain only whitespace
+### PreToolUse Hook: Deploy Enforcement
 
-### Stop Hook: Completion Validation with Work-Detection Loop
+**File**: `~/.claude/hooks/deploy-enforcer.py`
 
-**File**: `~/.claude/hooks/appfix-stop-validator.py`
+**Purpose**: Prevents subagents from deploying and blocks production deploys in autonomous mode, unless explicitly permitted in the plan.
 
-**Purpose**: Prevent Claude from stopping until the fix-verify loop completes. Uses git-diff work detection to keep Claude working if it made changes but didn't verify them.
+**Behavior**:
+1. Parses Bash command from stdin JSON
+2. **Subagent blocking**: If autonomous mode active AND state has `coordinator: false`, blocks `gh workflow run` commands
+3. **Production gate**: If command targets `environment=production`:
+   - Checks if production deployment was explicitly allowed via `allowedPrompts` in the plan
+   - If allowed → permits the command
+   - If not allowed → blocks with safety message
 
-**Work-Detection Logic**:
+**Plan-Based Permission Bypass**:
 
+When ExitPlanMode is called with `allowedPrompts`, the `plan-mode-tracker.py` hook stores these in the state file. The deploy-enforcer then checks for Bash permissions mentioning production:
+
+```json
+// In ExitPlanMode call:
+{
+  "allowedPrompts": [
+    {"tool": "Bash", "prompt": "deploy to production"}
+  ]
+}
+
+// Stored in state file by plan-mode-tracker.py:
+{
+  "allowed_prompts": [
+    {"tool": "Bash", "prompt": "deploy to production"}
+  ]
+}
 ```
-On Stop (APPFIX_ACTIVE=true):
-│
-├─► Load stop-state file (session-specific)
-├─► Compute current git diff hash
-├─► Compare to last saved hash
-│   │
-│   ├─► DIFFERENT (Claude did work)
-│   │   └─► Reset consecutive_no_work_stops = 0
-│   │   └─► Block: "WORK DETECTED - CONTINUE WORKING"
-│   │
-│   └─► SAME (Claude did no work)
-│       └─► Increment consecutive_no_work_stops
-│       │
-│       ├─► If consecutive_no_work_stops >= 2
-│       │   └─► Allow stop (Claude confirmed completion twice)
-│       │
-│       └─► If consecutive_no_work_stops < 2
-│           └─► Block: "COMPLETION CHECK - verify or stop again"
+
+Permission patterns recognized: `prod`, `production`, `deploy to prod`, `push to prod`.
+
+**Configuration**:
+```json
+"PreToolUse": [
+  {
+    "matcher": "Bash",
+    "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/deploy-enforcer.py", "timeout": 5 }]
+  }
+]
 ```
 
-**State File**: `.claude/appfix-stop-state.{session_id}.json`
+### Stop Hook: Completion Checkpoint Validation
+
+**File**: `~/.claude/hooks/stop-validator.py`
+
+**Purpose**: Prevent Claude from stopping until the job is actually done. Validates a deterministic boolean checkpoint.
+
+**Checkpoint Schema** (`.claude/completion-checkpoint.json`):
 ```json
 {
-  "last_git_diff_hash": "abc123...",
-  "consecutive_no_work_stops": 0,
-  "last_stop_timestamp": "2026-01-24T12:00:00Z"
+  "self_report": {
+    "is_job_complete": true,
+    "code_changes_made": true,
+    "linters_pass": true,
+    "deployed": true,
+    "web_testing_done": true,
+    "console_errors_checked": true,
+    "api_testing_done": false,
+    "docs_updated": true
+  },
+  "reflection": {
+    "what_was_done": "Fixed CORS config, deployed, verified login works",
+    "what_remains": "none"
+  },
+  "evidence": {
+    "urls_tested": ["https://app.example.com/dashboard"],
+    "console_clean": true
+  }
 }
 ```
 
 **Blocking Conditions**:
-- Services still unhealthy (from appfix-state.json)
-- Tests haven't passed
-- Work detected since last stop (git diff changed)
-- Less than 2 consecutive no-work stops
-- Missing `verification_evidence` when `tests_passed: true`
+- `is_job_complete: false` → BLOCKED
+- `what_remains` is non-empty → BLOCKED
+- Version-dependent fields stale (field version != current git version) → cascade reset + BLOCKED
+- Web smoke artifacts missing/failed (cross-validation) → reset `web_testing_done` + BLOCKED
+- Deployment artifacts missing/failed (cross-validation) → reset `deployed` + cascade
 
-**Allowing Stop**:
-- All services healthy + tests pass + verification evidence present (immediate)
-- Max iterations (5) reached
-- 2 consecutive stop attempts without any git changes (confirms completion)
+**Cascade Invalidation**: When a field is reset, all downstream fields are also reset:
+- `linters_pass` → resets `deployed` → resets `web_testing_done`, `console_errors_checked`, `api_testing_done`
+- `deployed` → resets `web_testing_done`, `console_errors_checked`, `api_testing_done`
 
-### Phase 0: Pre-Flight Check
+### PostToolUse Hooks: Version Tracking and Checkpoint Management
 
-**CRITICAL**: Before any health checks, appfix MUST:
+**bash-version-tracker.py** (PostToolUse/Bash): Detects version-changing commands (git commit, az CLI, gh workflow run) and invalidates stale checkpoint fields. Prevents the scenario where code changes go undetected.
 
-1. Check if `.claude/skills/appfix/references/service-topology.md` exists in the **PROJECT** directory
-2. If missing: STOP and ask user for service URLs, create file, then proceed
-3. **Never** read from `~/.claude/skills/appfix/` (global) - always use project-local path
+**checkpoint-invalidator.py** (PostToolUse/Edit/Write): Proactively resets stale checkpoint flags when code is edited, before the stop hook checks. Prevents false checkpoint claims.
 
-**Why Two Consecutive Stops?**
-- First no-work stop: Claude might have forgotten something
-- Second no-work stop: Claude confirmed it's genuinely complete
-- Prevents infinite loops while ensuring thorough verification
+**checkpoint-write-validator.py** (PostToolUse/Write): Warns (does not block) when writing checkpoint claims without evidence. Catches issues early before the stop hook rejects them.
+
+**plan-execution-reminder.py** (PostToolUse/ExitPlanMode): Injects aggressive autonomous execution context after plan mode completes — the fix-verify loop instructions.
+
+**plan-mode-tracker.py** (PostToolUse/ExitPlanMode): Marks plan mode as completed in the state file so `plan-mode-enforcer.py` stops blocking Edit/Write.
+
+**skill-continuation-reminder.py** (PostToolUse/Skill): After a skill (like `/heavy`) completes within a godo/appfix loop, reminds Claude to continue the autonomous loop.
 
 ### Testing the Hooks
 
 ```bash
-# Method 1: Test with environment variable
-echo '{"tool_name":"AskUserQuestion","cwd":"/tmp","tool_input":{"questions":[{"question":"Test?","options":[{"label":"Yes"},{"label":"No"}]}]}}' | APPFIX_ACTIVE=true python3 ~/.claude/hooks/appfix-auto-answer.py
-# Expected: JSON with autoAnswers selecting "Yes"
-
-# Method 2: Test with state file (primary detection mechanism)
+# Test auto-approve with state file
 mkdir -p /tmp/test-project/.claude
-echo '{"iteration": 1}' > /tmp/test-project/.claude/appfix-state.json
+echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /tmp/test-project/.claude/appfix-state.json
 echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/appfix-auto-approve.py
-# Expected: JSON with decision: allow
+# Expected: JSON with decision.behavior: "allow"
 
-# Test without appfix active (should pass through)
+# Test auto-approve without state (should pass through)
 rm -rf /tmp/test-project/.claude
 echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/appfix-auto-approve.py
 # Expected: No output (pass through)
+
+# Test deploy-enforcer blocking subagent deploy
+mkdir -p /tmp/test-project/.claude
+echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "coordinator": false}' > /tmp/test-project/.claude/godo-state.json
+echo '{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml"},"cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/deploy-enforcer.py
+# Expected: JSON with permissionDecision: "deny"
+
+# Test plan-mode-enforcer blocking Edit before plan mode
+mkdir -p /tmp/test-project/.claude
+echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "plan_mode_completed": false}' > /tmp/test-project/.claude/godo-state.json
+echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test.py"},"cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/plan-mode-enforcer.py
+# Expected: JSON with permissionDecision: "deny"
+
+# Cleanup
+rm -rf /tmp/test-project/.claude
 ```
 
 ---

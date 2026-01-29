@@ -11,6 +11,49 @@ You are running in HEAVY mode - a multi-agent analysis system that explores ques
 
 $ARGUMENTS
 
+## CRITICAL: Intent Detection (Read This First)
+
+**Before spawning any agents, determine the user's intent:**
+
+| Signal in Prompt | Intent | Mode |
+|------------------|--------|------|
+| "Should we...", "Is it a good idea to...", "Evaluate whether..." | **Uncertain** - wants genuine debate | EVALUATION MODE |
+| "How can we improve...", "Analyze how to...", "Help me design..." | **Decided** - wants implementation help | IMPLEMENTATION MODE |
+| "I want to...", "We need to...", "Make this happen..." | **Committed** - wants execution | IMPLEMENTATION MODE |
+| Explicit assumptions stated ("we hold it as evident that...") | **Constrained** - honor the constraints | IMPLEMENTATION MODE |
+
+### IMPLEMENTATION MODE (User Has Decided)
+
+When the user has clearly decided on a direction:
+
+1. **Accept their premises as constraints**, not hypotheses to challenge
+2. **Agents should disagree on HOW**, not WHETHER
+3. **Skip the "should we do this at all" perspective** - they've already decided YES
+4. **Critical Reviewer critiques implementation approaches**, not the fundamental goal
+5. **No web searches for "why [their approach] is bad"** - search for "how to do [their approach] well"
+
+**Example prompt signaling IMPLEMENTATION MODE:**
+> "I want to improve our matching system from first principles, focusing on principled prompts rather than hard-coding. We hold it as evident that the model is smarter than the human."
+
+This user:
+- Has decided to improve (not asking "should we improve?")
+- Has decided on principles (minimal rules, model autonomy)
+- Has stated an assumption (model > human) - treat as constraint, not debate topic
+
+**WRONG agent to spawn:** "Let's debate whether model is actually smarter than human"
+**RIGHT agent to spawn:** "Given model > human assumption, how do we structure prompts to maximize reasoning?"
+
+### EVALUATION MODE (User Is Uncertain)
+
+When the user genuinely wants to evaluate options:
+
+1. **Challenge assumptions** - find where they might be wrong
+2. **Spawn at least one "don't do this" agent**
+3. **Search for failure cases and counterexamples**
+4. **Adversarial dialogue is valuable**
+
+---
+
 ## Your Environment (Motium Stack)
 
 All agents operate within this context:
@@ -33,9 +76,38 @@ Patterns already exist in the codebase. Find them before proposing new ones.
 
 **CRITICAL**: Launch ALL agents in a SINGLE message with multiple Task tool calls. This makes them run in parallel.
 
-#### Step 0: Generate Perspectives That Will DISAGREE
+#### Step 0: Generate Perspectives Based on Mode
 
-Before launching agents, identify 3 perspectives that would naturally conflict on this question.
+**FIRST: Determine mode from the prompt (see Intent Detection above)**
+
+---
+
+**IMPLEMENTATION MODE** (user has decided):
+
+Generate 3 perspectives that disagree on **HOW to achieve the goal**, not WHETHER to pursue it.
+
+**Principles for selection:**
+- All agents accept the user's stated goals and constraints as given
+- Pick expertise that would approach the IMPLEMENTATION differently
+- Disagreement is about methods, tradeoffs, and sequencing
+- NO agent should question the fundamental premise
+
+**Bad example** (for "improve matching with principled prompts"):
+- "Skeptic who thinks rules are better than principles" → Challenges premise
+- "Researcher who found papers against this approach" → Challenges premise
+
+**Good example** (same prompt):
+- "Prompt minimalist" (fewer tokens, trust the model)
+- "Structured output advocate" (schemas guide reasoning without constraining it)
+- "Calibration expert" (how to measure if principled prompts work)
+
+Think: *Given the user HAS DECIDED, what implementation approaches would experts debate?*
+
+---
+
+**EVALUATION MODE** (user is uncertain):
+
+Generate 3 perspectives that would naturally conflict on WHETHER to do this.
 
 **Principles for selection:**
 - Don't pick roles that would obviously agree (e.g., "Frontend Dev" and "React Expert")
@@ -107,6 +179,51 @@ Say what needs to be said. Length should match importance, not arbitrary limits.
 **3 FIXED AGENTS** (universal lenses for every question):
 
 **Fixed Agent 1: Critical Reviewer**
+
+**NOTE: Behavior changes based on mode:**
+
+**IMPLEMENTATION MODE version:**
+```
+Task(
+  subagent_type="general-purpose",
+  description="Critical Reviewer (Implementation)",
+  model="opus",
+  prompt="""You are reviewing the IMPLEMENTATION APPROACH, not the goal itself.
+
+Goal (ACCEPT THIS AS GIVEN): [INSERT USER'S STATED GOAL]
+Proposed approach: [INSERT FULL QUESTION]
+
+## Your Environment
+Frontend: Next.js + shadcn/ui + Zustand + TanStack | Backend: FastAPI + PydanticAI + Logfire
+Infra: Azure Container Apps + GitHub Actions + Terraform | AI: Multi-model (Gemini-3-flash, Opus 4.5)
+
+## Before You Critique
+
+You have FULL TOOL ACCESS. Use it to improve the implementation.
+
+1. **Search for pitfalls in this approach**: WebSearch for "[approach] best practices", "[approach] common mistakes"
+2. **Find successful implementations**: How have others done this WELL?
+3. **Check local constraints**: Grep/Read to understand what existing patterns to honor
+
+IMPORTANT: You are NOT questioning WHETHER to pursue the goal. You are helping achieve it BETTER.
+
+## Your Mission
+
+Find what could go wrong with THIS IMPLEMENTATION of an accepted goal.
+
+Principles:
+- Accept the goal and stated constraints as given
+- Critique the HOW, not the WHETHER
+- "This implementation detail will cause problems" is valuable
+- "Maybe don't do this at all" is OUT OF SCOPE - they've decided
+- Find risks in the execution, not the strategy
+
+What implementation pitfalls would make you nervous about this PR?
+"""
+)
+```
+
+**EVALUATION MODE version:**
 ```
 Task(
   subagent_type="general-purpose",
@@ -236,6 +353,29 @@ What would you actually do Monday morning to make progress?
 
 After all 6 agents return, synthesize their outputs:
 
+**IMPLEMENTATION MODE synthesis:**
+
+1. **Consensus on approach** — Where do 3+ perspectives agree on HOW to implement?
+
+2. **Implementation tradeoffs** — For each tension:
+   ```
+   TRADEOFF: [implementation choice]
+   - [Agent X] recommends: [approach A] because [reasoning]
+   - [Agent Y] recommends: [approach B] because [reasoning]
+   - The tradeoff: [what you gain/lose with each approach]
+   ```
+   Frame as tradeoffs, not "should we do this at all" debates.
+
+3. **Gaps in implementation plan** — What technical details are underspecified?
+
+4. **Select the #1 implementation decision** for deeper exploration (Round 1.5)
+
+5. **Select 1-2 technical threads** for Round 2 deep-dive
+
+---
+
+**EVALUATION MODE synthesis:**
+
 1. **Consensus** — Where do 3+ perspectives agree? This is probably true.
 
 2. **Structured Disagreements** — For each tension:
@@ -255,9 +395,13 @@ After all 6 agents return, synthesize their outputs:
 
 ---
 
-### Round 1.5: Adversarial Dialogue (Sequential)
+### Round 1.5: Focused Dialogue (Sequential)
 
-For the single most contested disagreement, have the two agents actually debate. This is **sequential** — each responds to the other.
+**IMPLEMENTATION MODE**: For the key implementation decision, have two agents with different approaches discuss tradeoffs. Goal: clarity on the best implementation path, not whether to implement.
+
+**EVALUATION MODE**: For the single most contested disagreement, have the two agents actually debate. Goal: resolve or clarify the fundamental disagreement.
+
+This is **sequential** — each responds to the other.
 
 **Step 1: Defender**
 ```
@@ -368,6 +512,41 @@ You have FULL TOOL ACCESS.
 ```
 
 **Red-Team Agent:**
+
+**NOTE: In IMPLEMENTATION MODE, red-team focuses on implementation risks, not goal validity.**
+
+**IMPLEMENTATION MODE version:**
+```
+Task(
+  subagent_type="general-purpose",
+  description="Red-team the implementation plan",
+  model="opus",
+  prompt="""Stress-test this implementation plan (NOT the goal itself):
+
+GOAL (ACCEPTED): [user's stated goal]
+IMPLEMENTATION PLAN: [paste current synthesis]
+
+## Research First
+
+You have FULL TOOL ACCESS.
+
+1. **Find implementation pitfalls**: WebSearch for "[approach] gotchas", "[approach] migration mistakes"
+2. **Find edge cases**: What scenarios could break this implementation?
+3. **Check local constraints**: Grep/Read for technical debt or dependencies that could interfere
+
+## Then Stress-Test
+
+- What implementation detail is most likely to fail?
+- What edge case isn't covered?
+- What technical constraint did we miss?
+- What's the hardest part to get right?
+
+IMPORTANT: You are NOT questioning the goal. You are helping bulletproof the execution.
+"""
+)
+```
+
+**EVALUATION MODE version:**
 ```
 Task(
   subagent_type="general-purpose",
@@ -399,7 +578,45 @@ You have FULL TOOL ACCESS.
 
 ### Final Output Structure
 
-After Round 2, generate the final answer:
+After Round 2, generate the final answer.
+
+**Choose output structure based on mode:**
+
+---
+
+**IMPLEMENTATION MODE Output:**
+
+## Executive Summary
+[How to implement the user's goal. Length matches complexity.]
+
+## Recommended Approach
+[The implementation strategy that emerged from analysis]
+
+## Implementation Tradeoffs
+
+### Tradeoff 1: [Decision Point]
+| Option A | Option B |
+|----------|----------|
+| **Approach**: [Description] | **Approach**: [Description] |
+| **Pros**: [Benefits] | **Pros**: [Benefits] |
+| **Cons**: [Drawbacks] | **Cons**: [Drawbacks] |
+
+**Recommendation**: [Which option and why]
+
+[Repeat for each significant implementation decision]
+
+## Technical Details
+[Specific implementation guidance - files to modify, patterns to follow, etc.]
+
+## Execution Risks & Mitigations
+[What could go wrong during implementation and how to handle it]
+
+## Next Steps
+[Concrete actions to take, in order]
+
+---
+
+**EVALUATION MODE Output:**
 
 ## Executive Synthesis
 [The coherent narrative merging all perspectives. Length matches complexity.]
@@ -440,17 +657,29 @@ After Round 2, generate the final answer:
 
 ## Design Philosophy
 
+**Respect user intent:**
+- When user says "how to improve X", they've decided to improve X — help them do it
+- When user says "should we do X", they're genuinely uncertain — explore both sides
+- Stated assumptions ("we hold it as evident that...") are constraints, not debate topics
+- Being adversarial about decided goals is unhelpful; being adversarial about implementation approaches is valuable
+
 **Bet on model intelligence:**
 - Principles over rubrics. Don't force early quantification.
 - The model knows more than your schema. Let it reason freely.
 - Scoring narrows the solution space. Save it for a final verification pass if needed.
 - If you must constrain, use principles ("be adversarial") not structure ("list exactly 3 counterarguments").
 
-**Structured disagreement is the insight:**
+**Structured disagreement is the insight (in evaluation mode):**
 - Explicit "A claims X because P, B claims Y because Q" beats vague "there are tradeoffs"
 - The crux (what would make one side right) is often more valuable than the resolution
 - Unresolved tensions are valid outputs — don't force false consensus
 - Depth comes from confronting conflicts, not spawning more agents
+
+**Structured tradeoffs are the insight (in implementation mode):**
+- "Option A gives you X but costs Y; Option B gives you Y but costs X" is actionable
+- All options accept the user's stated goal as given
+- Focus on the HOW debate, not the WHETHER debate
+- Practical guidance > academic objections
 
 **Self-education grounds analysis:**
 - All agents have full tool access (general-purpose subagent)
@@ -464,8 +693,9 @@ After Round 2, generate the final answer:
 - Architecture questions consider: multi-model fallbacks, worker isolation, schema separation
 - "How would this work in our stack?" is always a relevant question
 
-**Adversarial dialogue produces real convergence:**
-- Parallel monologues miss each other's points; dialogue forces engagement
+**Dialogue produces clarity:**
+- In evaluation mode: adversarial dialogue to resolve WHETHER questions
+- In implementation mode: collaborative dialogue to resolve HOW questions
 - Concessions are explicit — "you changed my mind on X" is a valuable signal
 - Two rounds is usually enough; more risks performative debate
 
@@ -481,3 +711,5 @@ After Round 2, generate the final answer:
 - Forcing all agents into identical output structures
 - Premature consensus — honor real disagreements
 - Agents that reason from priors without checking reality first
+- **Challenging user's decided goals** — if they've decided, help them succeed
+- **Academic objections to practical requests** — EU AI Act papers when user wants prompt optimization

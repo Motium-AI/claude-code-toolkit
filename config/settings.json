@@ -59,6 +59,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/pretooluse-auto-approve.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Edit",
         "hooks": [
           {
@@ -81,6 +91,11 @@
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/deploy-enforcer.py",
+            "timeout": 5
+          },
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/azure-command-guard.sh",

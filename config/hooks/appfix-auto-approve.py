@@ -30,8 +30,30 @@ from _common import (
 
 
 def main():
+    # ALWAYS log that we were invoked - this is critical for debugging
+    # Also write to a separate file to prove invocation
+    try:
+        with open("/tmp/appfix-auto-approve-invocations.log", "a") as f:
+            import datetime
+            f.write(f"{datetime.datetime.now().isoformat()} - Hook invoked, pid={os.getpid()}, cwd={os.getcwd()}\n")
+    except Exception:
+        pass
+
+    log_debug(
+        "Hook invoked",
+        hook_name="appfix-auto-approve",
+        parsed_data={"pid": os.getpid(), "cwd_from_os": os.getcwd()},
+    )
+
     # Try to read stdin, but handle empty input
     stdin_data = sys.stdin.read()
+
+    # Log what we received
+    log_debug(
+        f"Stdin received: {len(stdin_data)} bytes",
+        hook_name="appfix-auto-approve",
+        raw_input=stdin_data[:500] if stdin_data else "(empty)",
+    )
 
     if stdin_data.strip():
         try:
