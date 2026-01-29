@@ -9,8 +9,6 @@
 # - Blocks unrecognized patterns (fail-safe)
 #
 
-set -e
-
 HOOK_SCRIPT="$(dirname "$0")/azure-command-guard.sh"
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -39,12 +37,14 @@ EOF
 )
 
     # Run the hook
-    if echo "$input" | "$HOOK_SCRIPT" >/dev/null 2>&1; then
+    echo "$input" | "$HOOK_SCRIPT" >/dev/null 2>&1
+    local exit_code=$?
+    if [ $exit_code -eq 0 ]; then
         local actual="ALLOW"
-        local exit_code=0
-    else
+    elif [ $exit_code -eq 2 ]; then
         local actual="BLOCK"
-        local exit_code=1
+    else
+        local actual="ERROR($exit_code)"
     fi
 
     # Check result
