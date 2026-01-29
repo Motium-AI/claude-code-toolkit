@@ -59,6 +59,22 @@ def matches_any_pattern(command: str, patterns: list[str]) -> bool:
     return False
 
 
+def has_actual_git_command(command: str, patterns: list[str]) -> bool:
+    """Check if any command segment is actually a git operation matching patterns.
+
+    Splits the command by shell operators (&&, ||, ;, |) and only matches
+    segments that start with 'git'. This prevents false positives from
+    commands like: echo '...git commit...' | python3 hook.py
+    """
+    segments = re.split(r'\s*(?:&&|\|\||;|\|)\s*', command)
+    for segment in segments:
+        segment = segment.strip()
+        if segment.startswith("git ") or segment == "git":
+            if matches_any_pattern(segment, patterns):
+                return True
+    return False
+
+
 def get_recent_commit_diff(cwd: str) -> tuple[str, str]:
     """Get the diff from the most recent commit.
 
@@ -236,8 +252,9 @@ def main():
     if not command:
         sys.exit(0)
 
-    # Check if this was a git commit
-    if not matches_any_pattern(command, GIT_COMMIT_PATTERNS):
+    # Check if this was a git commit (must be an actual git command segment,
+    # not just the string "git commit" inside echo/pipe arguments)
+    if not has_actual_git_command(command, GIT_COMMIT_PATTERNS):
         sys.exit(0)
 
     log_debug(f"[doc-updater-async] Git commit detected: {command[:80]}")

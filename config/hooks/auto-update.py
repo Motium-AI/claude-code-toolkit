@@ -27,6 +27,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,7 +37,7 @@ from pathlib import Path
 
 CHECK_INTERVAL_MINUTES = 5
 STATE_FILE = Path.home() / ".claude" / "toolkit-update-state.json"
-DEBUG_LOG = Path("/tmp/claude-hooks-debug.log")
+DEBUG_LOG = Path(tempfile.gettempdir()) / "claude-hooks-debug.log"
 
 
 def log_debug(message: str) -> None:
