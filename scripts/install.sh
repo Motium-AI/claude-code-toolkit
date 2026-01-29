@@ -131,7 +131,13 @@ verify_state_detection() {
 
     # Create a test state file
     mkdir -p "$TEST_DIR/.claude"
-    echo '{"iteration": 1, "plan_mode_completed": true}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": true,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     # Test detection
     local RESULT=$(python3 -c "
@@ -185,7 +191,13 @@ verify_auto_approval() {
 
     # Create a test state file
     mkdir -p "$TEST_DIR/.claude"
-    echo '{"iteration": 1, "plan_mode_completed": true}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": true,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     # Run the auto-approval hook with empty stdin (simulating PermissionRequest)
     local RESULT=$(cd "$TEST_DIR" && echo "" | python3 "$HOOKS_DIR/appfix-auto-approve.py" 2>&1)
@@ -353,11 +365,15 @@ except Exception as e:
     sys.exit(1)
 
 print(\"Checking state detection...\")
-import tempfile, json
+import tempfile, json, datetime
 test_dir = tempfile.mkdtemp()
 os.makedirs(f\"{test_dir}/.claude\", exist_ok=True)
 with open(f\"{test_dir}/.claude/appfix-state.json\", \"w\") as f:
-    json.dump({\"iteration\": 1, \"plan_mode_completed\": True}, f)
+    json.dump({
+        \"iteration\": 1,
+        \"plan_mode_completed\": True,
+        \"started_at\": datetime.datetime.now(datetime.timezone.utc).strftime(\"%Y-%m-%dT%H:%M:%SZ\")
+    }, f)
 
 if is_appfix_active(test_dir):
     print(\"  ✓ State file detection works\")
@@ -373,7 +389,11 @@ import subprocess
 test_dir = tempfile.mkdtemp()
 os.makedirs(f\"{test_dir}/.claude\", exist_ok=True)
 with open(f\"{test_dir}/.claude/appfix-state.json\", \"w\") as f:
-    json.dump({\"iteration\": 1, \"plan_mode_completed\": True}, f)
+    json.dump({
+        \"iteration\": 1,
+        \"plan_mode_completed\": True,
+        \"started_at\": datetime.datetime.now(datetime.timezone.utc).strftime(\"%Y-%m-%dT%H:%M:%SZ\")
+    }, f)
 
 hook_path = os.path.join(hooks_dir, \"appfix-auto-approve.py\")
 result = subprocess.run(

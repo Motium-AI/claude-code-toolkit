@@ -327,7 +327,13 @@ echo -n "  Detection test: "
 if [ -d "$HOOKS_DIR" ]; then
     TEST_DIR=$(mktemp -d)
     mkdir -p "$TEST_DIR/.claude"
-    echo '{"iteration": 1, "plan_mode_completed": true}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": true,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     RESULT=$(python3 -c "
 import sys
@@ -364,7 +370,13 @@ else
     # Test with state file present
     TEST_DIR=$(mktemp -d)
     mkdir -p "$TEST_DIR/.claude"
-    echo '{"iteration": 1, "plan_mode_completed": true}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": true,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     echo -n "  With state file (empty stdin): "
     RESULT=$(cd "$TEST_DIR" && echo "" | python3 "$AUTO_APPROVE" 2>&1)
@@ -415,18 +427,30 @@ else
     # Test with plan_mode_completed: false
     TEST_DIR=$(mktemp -d)
     mkdir -p "$TEST_DIR/.claude"
-    echo '{"iteration": 1, "plan_mode_completed": false}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": false,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     echo -n "  With plan_mode_completed=false: "
     RESULT=$(echo '{"tool_name": "Edit", "cwd": "'$TEST_DIR'"}' | python3 "$PLAN_ENFORCER" 2>&1)
-    if echo "$RESULT" | grep -q '"decision"'; then
+    if echo "$RESULT" | grep -q 'permissionDecision'; then
         echo -e "${GREEN}BLOCKS (as expected)${NC}"
     else
         echo -e "${YELLOW}ALLOWS (unexpected for iteration 1)${NC}"
     fi
 
     # Test with plan_mode_completed: true
-    echo '{"iteration": 1, "plan_mode_completed": true}' > "$TEST_DIR/.claude/appfix-state.json"
+    cat > "$TEST_DIR/.claude/appfix-state.json" <<EOF
+{
+  "iteration": 1,
+  "plan_mode_completed": true,
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
 
     echo -n "  With plan_mode_completed=true: "
     RESULT=$(echo '{"tool_name": "Edit", "cwd": "'$TEST_DIR'"}' | python3 "$PLAN_ENFORCER" 2>&1)
