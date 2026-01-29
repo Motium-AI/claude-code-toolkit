@@ -1,0 +1,12 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/gh/anthropics/claude-code@main/schema/settings-schema.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "~/.claude/hooks/azure-command-guard.sh",
+        "description": "Blocks dangerous Azure CLI commands while allowing safe reads and permitted writes (KeyVault secrets, Storage uploads)"
+      }
+    ]
+  }
+}
