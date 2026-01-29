@@ -70,6 +70,78 @@ Vendor documentation lives in the repo. Search for it before inventing approache
 Patterns already exist in the codebase. Find them before proposing new ones.
 ```
 
+## Research Context (CRITICAL for All Agents)
+
+### Terminology: "AI" Means Frontier Generative AI
+
+When the user says "AI" in this context, they mean:
+- **Frontier models**: Claude Opus 4.5, GPT-5.2, Gemini-3-Flash, o3, DeepSeek-V3, etc.
+- **Agentic systems**: Tool-using LLMs, multi-agent orchestration, MCP
+- **Production LLM patterns**: Structured outputs, prompt engineering, evals
+- **NOT**: Traditional ML, sklearn, statistical models, 2020-era chatbots
+
+Search queries should reflect this. "AI best practices" returns stale content; "Claude agent patterns 2025" returns current content.
+
+### Source Authority Hierarchy
+
+**Tier 1 - Most Authoritative (prefer these):**
+- GitHub repos with working code:
+  - `anthropics/*` (Claude patterns, agent SDK, MCP)
+  - `pydantic/pydantic-ai` (structured outputs, multi-model)
+  - `openai/*` (agents SDK, swarm, evals)
+  - `langchain-ai/langgraph` (agentic workflows)
+  - `vercel/ai` (AI SDK patterns)
+  - `run-llama/llama_index` (RAG, agents)
+- Official docs: docs.anthropic.com, ai.google.dev, platform.openai.com
+- Practitioner blogs with code: Simon Willison, Hamel Husain, Eugene Yan, swyx
+
+**Tier 2 - Good for Patterns:**
+- GitHub trending: 500+ stars, updated in last 6 months, has working examples
+- Substacks: Latent Space, The Batch, AI Engineer newsletter
+- X/Twitter: Only practitioners who ship (check for linked repos)
+
+**Tier 3 - Use with Caution:**
+- Hacker News (signal in comments, filter for links to code)
+- Medium/dev.to (verify author has GitHub repos)
+
+**AVOID - Likely Stale or Slop:**
+- Business press (Forbes AI, TechCrunch think pieces, VentureBeat)
+- Academic papers older than 6 months (field moves too fast now)
+- SEO tutorial farms (Analytics Vidhya, GeeksforGeeks AI sections)
+- "Top 10 AI tools" listicles
+- LinkedIn AI influencer posts
+- Generic "AI best practices" content without code
+
+### Search Tool Preference
+
+If Exa AI MCP is available (tools like `web_search_exa`, `get_code_context_exa`), prefer it over generic WebSearch for:
+- **Code search**: `get_code_context_exa` finds GitHub, StackOverflow, docs directly
+- **Technical research**: `web_search_exa` returns cleaner, more technical content
+- **Company research**: `company_research_exa` for competitor/vendor analysis
+
+Configure Exa MCP: `claude mcp add --transport http exa https://mcp.exa.ai/mcp`
+
+### Search Query Patterns That Work
+
+| Bad Query (stale results) | Good Query (current results) |
+|---------------------------|------------------------------|
+| "AI best practices" | "Claude Opus agent patterns 2026" |
+| "LLM implementation" | "PydanticAI production site:github.com" |
+| "AI architecture" | "multi-agent MCP orchestration example" |
+| "machine learning ops" | "LLM observability Logfire tracing" |
+| "chatbot development" | "structured outputs tool calling Claude" |
+| "AI agents" | "agentic workflows langgraph anthropic" |
+| "prompt engineering" | "Claude prompt optimization evals" |
+
+**Query construction rules:**
+1. **Use current year**: "2026" or "2025" (never older)
+2. **Name specific models**: "Opus 4.5", "GPT-5.2", "Gemini-3-Flash" not generic "AI"
+3. **Name specific frameworks**: "PydanticAI", "LangGraph", "Claude Agent SDK"
+4. **Target GitHub**: `site:github.com [topic]` or use Exa's `get_code_context_exa`
+5. **Add "production" or "example"**: Filters out tutorial slop
+
+**If using Exa MCP**: Use `get_code_context_exa` for code patterns - it searches GitHub, StackOverflow, and docs directly with better signal-to-noise than generic web search.
+
 ## Execution Strategy
 
 ### Round 1: Breadth (Launch 6 Parallel Agents)
@@ -154,8 +226,14 @@ Infra: Azure Container Apps + GitHub Actions + Terraform | AI: Multi-model (Gemi
 You have FULL TOOL ACCESS. Use it.
 
 1. **Search the codebase** for existing patterns (Glob for files, Grep for code, Read for details)
-2. **Search the web** for current best practices and failure cases
+2. **Search the web** following these source rules:
+   - **Tier 1 (prefer)**: anthropics/*, pydantic/pydantic-ai, openai/*, docs.anthropic.com, Simon Willison, Hamel Husain
+   - **AVOID**: Forbes, TechCrunch, VentureBeat, LinkedIn, academic papers >6mo, SEO farms (Analytics Vidhya, GeeksforGeeks)
+   - **Query pattern**: "Claude agent patterns 2026" not "AI best practices" — add year, specific tech, site:github.com
+   - **If Exa available**: Use `get_code_context_exa` for GitHub/code search, `web_search_exa` for practitioner content
 3. **Search vendor docs** in the repo (PydanticAI, Logfire, TanStack, Clerk)
+
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3, DeepSeek-V3), NOT traditional ML/sklearn.
 
 Don't reason from priors. Find evidence.
 
@@ -201,9 +279,11 @@ Infra: Azure Container Apps + GitHub Actions + Terraform | AI: Multi-model (Gemi
 
 You have FULL TOOL ACCESS. Use it to improve the implementation.
 
-1. **Search for pitfalls in this approach**: WebSearch for "[approach] best practices", "[approach] common mistakes"
-2. **Find successful implementations**: How have others done this WELL?
+1. **Search for pitfalls**: WebSearch for "[approach] gotchas 2025", "site:github.com [approach] issues"
+2. **Find successful implementations**: Search Tier 1 sources (anthropics/*, pydantic/pydantic-ai repos)
 3. **Check local constraints**: Grep/Read to understand what existing patterns to honor
+
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3). Search for specific patterns not generic "AI best practices".
 
 IMPORTANT: You are NOT questioning WHETHER to pursue the goal. You are helping achieve it BETTER.
 
@@ -241,9 +321,11 @@ Infra: Azure Container Apps + GitHub Actions + Terraform | AI: Multi-model (Gemi
 
 You have FULL TOOL ACCESS. Use it to build your case.
 
-1. **Search for failure cases**: WebSearch for "[topic] failures", "[topic] post-mortem", "why [topic] failed"
-2. **Find counterexamples**: Where did the opposite approach succeed?
+1. **Search for failure cases**: WebSearch for "[topic] failures 2025 site:github.com", "[topic] post-mortem"
+2. **Find counterexamples**: Search practitioner blogs (Simon Willison, Hamel Husain) for real-world failures
 3. **Check local context**: Grep/Read to understand this specific codebase's constraints
+
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3). Avoid stale academic papers and business press - find GitHub issues, production postmortems.
 
 "It might not work" is weak. "Here's where it failed: [citation]" is strong.
 
@@ -287,7 +369,9 @@ You have FULL TOOL ACCESS. Map the actual system.
 
 1. **Understand current architecture**: Glob for service structure, Grep for import patterns
 2. **Find existing patterns**: What similar problems have we already solved?
-3. **Research at-scale issues**: WebSearch for "[topic] at scale", "[topic] architecture patterns"
+3. **Research at-scale issues**: WebSearch for "[topic] at scale 2025 site:github.com", production patterns from anthropics/*, pydantic/*
+
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3). Search for "PydanticAI multi-model" not generic "AI architecture". AVOID: Forbes, TechCrunch, LinkedIn, papers >6mo.
 
 Don't propose in a vacuum. Understand what exists.
 
@@ -328,7 +412,9 @@ You have FULL TOOL ACCESS. Find the shortcuts.
 
 1. **Search for existing implementations**: Glob/Grep for patterns we can copy or extend
 2. **Find the minimal viable version**: What can we cut and still learn?
-3. **Research practical guidance**: WebSearch for "[topic] implementation guide", "[topic] migration path"
+3. **Research practical guidance**: WebSearch for "[topic] example site:github.com 2025", check anthropics/*, pydantic/* repos
+
+**CRITICAL**: "AI" means frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash). Search "Claude tool calling example" not "AI implementation guide". Use Exa `get_code_context_exa` if available.
 
 Theory is nice. Shipping matters.
 
@@ -421,9 +507,11 @@ Their evidence: [Y's reasoning]
 
 You have FULL TOOL ACCESS. Find new evidence.
 
-1. **Support your position**: WebSearch for data, case studies, expert opinions
-2. **Challenge their claims**: Find evidence that undermines their reasoning
-3. **Look for resolution**: Search for "[topic A] vs [topic B]" comparisons
+1. **Support your position**: Search Tier 1 sources (GitHub issues, practitioner blogs), not generic "AI articles"
+2. **Challenge their claims**: Find GitHub issues, production postmortems that undermine their reasoning
+3. **Look for resolution**: Search for "[topic A] vs [topic B] 2025 site:github.com"
+
+**Remember**: "AI" = frontier generative AI (Opus 4.5, GPT-5.2, Gemini-3-Flash, o3), not traditional ML.
 
 ## Then Defend
 
@@ -497,9 +585,9 @@ CONTEXT: [relevant excerpts from Round 1]
 
 You have FULL TOOL ACCESS.
 
-1. **Find root causes**: WebSearch for academic/industry analysis on this tension
+1. **Find root causes**: Search practitioner blogs, GitHub discussions (not stale academic papers)
 2. **Check local constraints**: Glob/Grep for codebase factors that inform this
-3. **Find resolution patterns**: How have others navigated this tradeoff?
+3. **Find resolution patterns**: Search "[topic] tradeoffs site:github.com 2025", check how anthropics/* resolved it
 
 ## Then Analyze
 
@@ -530,7 +618,7 @@ IMPLEMENTATION PLAN: [paste current synthesis]
 
 You have FULL TOOL ACCESS.
 
-1. **Find implementation pitfalls**: WebSearch for "[approach] gotchas", "[approach] migration mistakes"
+1. **Find implementation pitfalls**: Search "[approach] gotchas site:github.com 2025", check issues in anthropics/*, pydantic/* repos
 2. **Find edge cases**: What scenarios could break this implementation?
 3. **Check local constraints**: Grep/Read for technical debt or dependencies that could interfere
 
@@ -560,7 +648,7 @@ SYNTHESIS: [paste current synthesis]
 
 You have FULL TOOL ACCESS.
 
-1. **Find similar failures**: WebSearch for when this type of recommendation failed
+1. **Find similar failures**: Search production postmortems, GitHub issues - not generic "AI failures" articles
 2. **Find missing perspectives**: Who isn't represented? What edge cases break this?
 3. **Check local reality**: Grep/Read for constraints the synthesis missed
 
