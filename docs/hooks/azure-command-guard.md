@@ -102,7 +102,6 @@ Failed: 0
 
 ### Auth & Identity
 ```bash
-❌ az login
 ❌ az account set
 ❌ az role assignment create
 ❌ az ad ...
@@ -128,6 +127,11 @@ Failed: 0
 ```
 
 ## What's Allowed
+
+### Authentication
+```bash
+✅ az login
+```
 
 ### Read Operations
 ```bash

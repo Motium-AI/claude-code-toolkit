@@ -157,8 +157,8 @@ test_command "BLOCK" "az storage blob delete --account-name stmotiumdev --contai
 test_command "BLOCK" "az network vnet create --name vnet-new --resource-group rg-motium-dev" \
     "VNet creation"
 
-test_command "BLOCK" "az login" \
-    "Azure login (auth change)"
+test_command "ALLOW" "az login" \
+    "Azure login (authentication needed)"
 
 test_command "BLOCK" "az account set --subscription 'Production'" \
     "Subscription change (auth change)"
