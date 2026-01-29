@@ -27,9 +27,63 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Get the directory where this script lives
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Handle both direct execution and sourced/piped scenarios
+if [ -n "${BASH_SOURCE[0]}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # BASH_SOURCE is empty (piped execution) or invalid
+    # Try to find the toolkit in common locations
+    POSSIBLE_LOCATIONS=(
+        "$PWD"
+        "$PWD/claude-code-toolkit"
+        "$HOME/claude-code-toolkit"
+        "$(dirname "$PWD")/claude-code-toolkit"
+    )
+
+    SCRIPT_DIR=""
+    for loc in "${POSSIBLE_LOCATIONS[@]}"; do
+        if [ -f "$loc/scripts/install.sh" ] && [ -d "$loc/config" ]; then
+            SCRIPT_DIR="$loc/scripts"
+            break
+        fi
+    done
+
+    if [ -z "$SCRIPT_DIR" ]; then
+        echo -e "${RED}ERROR: Cannot determine toolkit location.${NC}" >&2
+        echo "" >&2
+        echo "This happens when the script is run via piping (curl | bash) or from" >&2
+        echo "a directory that doesn't contain the toolkit." >&2
+        echo "" >&2
+        echo "Solutions:" >&2
+        echo "  1. Clone the repo first, then run install.sh directly:" >&2
+        echo "     git clone <repo-url> ~/claude-code-toolkit" >&2
+        echo "     cd ~/claude-code-toolkit && ./scripts/install.sh" >&2
+        echo "" >&2
+        echo "  2. Or run from inside the toolkit directory:" >&2
+        echo "     cd /path/to/claude-code-toolkit && ./scripts/install.sh" >&2
+        echo "" >&2
+        exit 1
+    fi
+fi
+
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_DIR="$REPO_DIR/config"
+
+# Validate that CONFIG_DIR exists and has expected structure
+if [ ! -d "$CONFIG_DIR" ] || [ ! -f "$CONFIG_DIR/settings.json" ]; then
+    echo -e "${RED}ERROR: Invalid toolkit structure at $REPO_DIR${NC}" >&2
+    echo "Expected to find $CONFIG_DIR/settings.json" >&2
+    echo "" >&2
+    echo "Make sure you're running from inside the claude-code-toolkit directory." >&2
+    exit 1
+fi
+
+# On WSL, convert Windows paths to proper format if needed
+if [[ "$REPO_DIR" =~ ^/mnt/[a-z]/ ]]; then
+    # Normalize path by resolving it through readlink
+    REPO_DIR="$(cd "$REPO_DIR" && pwd -P)"
+    CONFIG_DIR="$REPO_DIR/config"
+fi
 
 # Parse arguments
 FORCE=false
@@ -703,6 +757,34 @@ fi
 
 echo ""
 echo -e "${GREEN}Symlinks created!${NC}"
+echo ""
+
+# Verify symlinks point to valid targets
+echo -e "${BLUE}Verifying symlink targets...${NC}"
+SYMLINK_VALID=true
+for ITEM in settings.json hooks commands skills; do
+    SPATH="$HOME/.claude/$ITEM"
+    if [ -L "$SPATH" ]; then
+        TARGET=$(readlink "$SPATH" 2>/dev/null || echo "UNKNOWN")
+        if [ -e "$SPATH" ]; then
+            echo -e "  ${GREEN}✓${NC} $ITEM → $TARGET"
+        else
+            echo -e "  ${RED}✗ BROKEN${NC} $ITEM → $TARGET"
+            SYMLINK_VALID=false
+        fi
+    fi
+done
+
+if [ "$SYMLINK_VALID" = false ]; then
+    echo ""
+    echo -e "${RED}ERROR: Some symlinks are broken!${NC}"
+    echo "This usually happens when the script was run from a temporary directory."
+    echo ""
+    echo "To fix:"
+    echo "  1. cd to the permanent toolkit location"
+    echo "  2. Run ./scripts/install.sh again"
+    exit 1
+fi
 echo ""
 
 # Add toolkit to parent repo's .gitignore
