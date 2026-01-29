@@ -32,6 +32,59 @@ if [ -z "$COMMAND" ]; then
     exit 0
 fi
 
+# ============================================================================
+# TERRAFORM STATE COMMANDS - ALWAYS BLOCKED
+# ============================================================================
+# These commands modify Terraform state and must NEVER be run locally.
+# State is managed by CI/CD only.
+#
+# Skip checking git commit messages (they can contain any text)
+if [[ ! "$COMMAND" =~ "git commit" ]]; then
+    TERRAFORM_STATE_PATTERNS=(
+        '^terraform import'
+        '&& terraform import'
+        '; terraform import'
+        '^terraform state'
+        '&& terraform state'
+        '; terraform state'
+        '^terraform force-unlock'
+        '&& terraform force-unlock'
+        '; terraform force-unlock'
+        '^terraform taint'
+        '&& terraform taint'
+        '^terraform untaint'
+        '&& terraform untaint'
+    )
+
+    for pattern in "${TERRAFORM_STATE_PATTERNS[@]}"; do
+        if [[ "$COMMAND" =~ $pattern ]]; then
+            cat >&2 <<EOF
+
+╔════════════════════════════════════════════════════════════════╗
+║  ⛔ BLOCKED: Terraform State Modification Detected             ║
+╚════════════════════════════════════════════════════════════════╝
+
+Command: $COMMAND
+
+Pattern matched: $pattern
+
+NEVER modify Terraform state locally. State is managed by CI/CD only.
+
+If you encountered a "resource already exists" error:
+  1. Ask the user to DELETE the resource manually in Azure Portal/CLI
+  2. Then re-run CI/CD to create it fresh under Terraform management
+
+Example for role assignments:
+  az role assignment delete --ids "/subscriptions/.../roleAssignments/..."
+
+DO NOT use terraform import or import blocks.
+
+EOF
+            exit 2
+        fi
+    done
+fi
+
 # Only check commands that contain 'az ' (Azure CLI)
 if [[ ! "$COMMAND" =~ [[:space:]]az[[:space:]] ]] && [[ ! "$COMMAND" =~ ^az[[:space:]] ]]; then
     exit 0  # Not an az command, allow
