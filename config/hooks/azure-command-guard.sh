@@ -5,9 +5,9 @@
 # Blocks dangerous Azure CLI commands while allowing safe read operations
 # and explicitly permitted write operations (KeyVault secrets, Storage uploads).
 #
-# Exit codes:
+# Exit codes (Claude Code PreToolUse convention):
 #   0 = Allow command execution
-#   1 = Block command execution
+#   2 = Block command execution (shows stderr to Claude)
 #
 # Usage: Called automatically by Claude Code PreToolUse hook
 #
@@ -58,6 +58,10 @@ SAFE_PATTERNS=(
     # Account/subscription queries
     '^az account show'
     '^az account list'
+    '^az account get-access-token'
+
+    # Authentication (needed to work with Azure)
+    '^az login'
 
     # Monitoring & diagnostics (read-only)
     '^az monitor log-analytics query'
@@ -194,8 +198,7 @@ DANGEROUS_PATTERNS=(
     '^az .* upgrade'
     '^az .* scale'
 
-    # Auth & identity
-    '^az login'
+    # Auth & identity (az login is allowed - see SAFE_PATTERNS)
     '^az logout'
     '^az account set'
     '^az configure'
@@ -292,7 +295,7 @@ To execute this command:
   3. Or use Claude Code's approval flow if available
 
 EOF
-            exit 1
+            exit 2
         fi
     done
 
@@ -323,7 +326,7 @@ To allow this operation:
   3. Or run it manually in your terminal
 
 EOF
-    exit 1
+    exit 2
 done
 
 # All az commands passed checks, allow execution
