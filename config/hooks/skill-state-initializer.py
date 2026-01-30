@@ -48,6 +48,18 @@ DEACTIVATION_PATTERNS = [
 
 # Trigger patterns for each skill
 # These should match the triggers defined in the respective SKILL.md files
+# Patterns that indicate mobile app vs web app
+MOBILE_APPFIX_PATTERNS = [
+    r"(?:^|\s)/mobileappfix\b",
+    r"\bfix the mobile app\b",
+    r"\bmaestro (tests? )?(failing|broken|not working)\b",
+    r"\bsimulator (crash|fail|not working)\b",
+    r"\breact native\b",
+    r"\bexpo\b.*\b(crash|fail|broken|fix)\b",
+    r"\bios (app|build|crash|fail)\b",
+    r"\bandroid (app|build|crash|fail)\b",
+]
+
 SKILL_TRIGGERS = {
     "appfix": [
         r"(?:^|\s)/appfix\b",  # Slash command (at start or after whitespace)
@@ -102,6 +114,18 @@ def detect_skill(prompt: str) -> str | None:
     return None
 
 
+def detect_mobile_mode(prompt: str) -> bool:
+    """Detect if this is a mobile app fix (vs web app fix).
+
+    Returns True if any mobile-specific patterns match.
+    """
+    prompt_lower = prompt.lower().strip()
+    for pattern in MOBILE_APPFIX_PATTERNS:
+        if re.search(pattern, prompt_lower, re.IGNORECASE):
+            return True
+    return False
+
+
 def _has_valid_existing_state(cwd: str, skill_name: str, session_id: str) -> bool:
     """Check if a valid (same session, not expired) state file already exists.
 
@@ -148,7 +172,7 @@ def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
         return True, None, None  # Can't detect, assume coordinator
 
 
-def create_state_file(cwd: str, skill_name: str, session_id: str = "") -> bool:
+def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile: bool = False) -> bool:
     """Create the state file for the given skill.
 
     Creates both project-level (.claude/) and user-level (~/.claude/) state files.
@@ -172,6 +196,7 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "") -> bool:
         "started_at": now,
         "last_activity_at": now,
         "session_id": session_id,
+        "skill_type": "mobile" if is_mobile else "web",
         "plan_mode_completed": False,
         "parallel_mode": not is_coordinator,  # True if in worktree
         "agent_id": agent_id,
@@ -186,12 +211,15 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "") -> bool:
     if skill_name == "godo":
         project_state["task"] = "Detected from user prompt"
 
-    # User-level state (for cross-repo detection)
+    # User-level state (for cross-repo detection and cross-directory session continuity)
+    # Includes plan_mode_completed so sessions can move to new directories
+    # and still track whether plan mode was completed
     user_state = {
         "started_at": now,
         "last_activity_at": now,
         "session_id": session_id,
         "origin_project": cwd,
+        "plan_mode_completed": False,  # Mirrored from project-level by plan-mode-tracker
     }
 
     success = True
@@ -268,8 +296,11 @@ def main():
         )
         sys.exit(0)
 
-    # 4. Create new state file with session binding
-    success = create_state_file(cwd, skill_name, session_id)
+    # 4. Detect if mobile mode for appfix
+    is_mobile = skill_name == "appfix" and detect_mobile_mode(prompt)
+
+    # 5. Create new state file with session binding
+    success = create_state_file(cwd, skill_name, session_id, is_mobile)
 
     if success:
         # Output message (added to context for Claude)

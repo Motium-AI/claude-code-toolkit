@@ -184,6 +184,7 @@ def main():
     tool_input = input_data.get("tool_input", {})
     command = tool_input.get("command", "")
     cwd = input_data.get("cwd", os.getcwd())
+    session_id = input_data.get("session_id", "")
 
     if not command:
         sys.exit(0)  # No command, pass through
@@ -195,11 +196,12 @@ def main():
     log_debug(f"Deploy command detected: {command[:100]}")
 
     # Check if autonomous mode is active
-    if not is_autonomous_mode_active(cwd):
+    # Pass session_id to enable cross-directory trust for same session
+    if not is_autonomous_mode_active(cwd, session_id):
         sys.exit(0)  # Not in autonomous mode, pass through
 
     # Get the state to check coordinator status and permissions
-    state, state_type = get_autonomous_state(cwd)
+    state, state_type = get_autonomous_state(cwd, session_id)
     if not state:
         sys.exit(0)  # No state file, pass through
 

@@ -87,6 +87,7 @@ def main():
     # PreToolUse uses tool_name (not toolName)
     cwd = input_data.get("cwd", "") or os.getcwd()
     tool_name = input_data.get("tool_name", "")
+    session_id = input_data.get("session_id", "")
     tool_input = input_data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
@@ -111,11 +112,12 @@ def main():
         sys.exit(0)  # Allow .claude/ writes
 
     # Only process if autonomous mode is active (godo or appfix)
-    if not is_autonomous_mode_active(cwd):
+    # Pass session_id to enable cross-directory trust for same session
+    if not is_autonomous_mode_active(cwd, session_id):
         sys.exit(0)  # Not in godo/appfix mode, no enforcement
 
     # Check if plan mode has been completed
-    state, state_type = get_autonomous_state(cwd)
+    state, state_type = get_autonomous_state(cwd, session_id)
     if not state:
         sys.exit(0)  # No state file, passthrough
 

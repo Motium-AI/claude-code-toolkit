@@ -56,6 +56,7 @@ def main():
             input_data = json.loads(stdin_data)
             cwd = input_data.get("cwd", os.getcwd())
             tool_name = input_data.get("tool_name", "unknown")
+            session_id = input_data.get("session_id", "")
         except json.JSONDecodeError as e:
             log_debug(
                 "Failed to parse JSON input, using getcwd()",
@@ -64,10 +65,12 @@ def main():
             )
             cwd = os.getcwd()
             tool_name = "unknown"
+            session_id = ""
     else:
         # No stdin input - use current working directory
         cwd = os.getcwd()
         tool_name = "unknown"
+        session_id = ""
         log_debug(
             "No stdin input, using getcwd()", hook_name="permissionrequest-auto-approve"
         )
@@ -75,7 +78,8 @@ def main():
     log_invocation(f"Hook invoked for tool={tool_name}", cwd=cwd, tool_name=tool_name)
 
     # Only process if autonomous mode is active (godo or appfix)
-    if not is_autonomous_mode_active(cwd):
+    # Pass session_id to enable cross-directory trust for same session
+    if not is_autonomous_mode_active(cwd, session_id):
         log_debug(
             f"Autonomous mode not active for cwd={cwd}",
             hook_name="permissionrequest-auto-approve",
@@ -84,7 +88,7 @@ def main():
         sys.exit(0)  # Silent passthrough - show normal permission dialog
 
     # Defense-in-depth: verify state is not expired (TTL check)
-    state, state_type = get_autonomous_state(cwd)
+    state, state_type = get_autonomous_state(cwd, session_id)
     if state is None or is_state_expired(state):
         log_debug(
             f"State expired or missing (defense-in-depth TTL check), cwd={cwd}",

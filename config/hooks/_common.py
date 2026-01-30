@@ -217,7 +217,48 @@ def _check_state_file(cwd: str, filename: str) -> bool:
     return False
 
 
-def is_appfix_active(cwd: str) -> bool:
+
+def _is_cwd_under_origin(cwd: str, user_state: dict, session_id: str = "") -> bool:
+    """Check if cwd is under the origin_project directory from user-level state.
+
+    User-level state files store an origin_project field indicating which project
+    created the state. This function checks if the current working directory is
+    the same as or a subdirectory of that origin project.
+
+    This prevents user-level state from one project affecting unrelated projects.
+
+    EXCEPTION: If session_id is provided and matches the state's session_id,
+    trust the session regardless of directory. This allows a session to work
+    across directories (e.g., navigating to a test directory during appfix).
+
+    Args:
+        cwd: Current working directory path
+        user_state: Parsed user-level state file dict
+        session_id: Current session ID (optional, for cross-directory trust)
+
+    Returns:
+        True if cwd is under origin_project (or origin_project not set), False otherwise
+    """
+    # Trust matching session - same session can work anywhere
+    # This enables cross-directory workflows (e.g., appfix navigating to test dirs)
+    if session_id and user_state.get("session_id") == session_id:
+        return True
+
+    origin = user_state.get("origin_project")
+    if not origin:
+        # No origin recorded - backward compatibility, allow it
+        return True
+
+    try:
+        cwd_resolved = Path(cwd).resolve()
+        origin_resolved = Path(origin).resolve()
+        # Check if cwd is origin or a subdirectory of origin
+        return cwd_resolved == origin_resolved or origin_resolved in cwd_resolved.parents
+    except (ValueError, OSError):
+        return False
+
+
+def is_appfix_active(cwd: str, session_id: str = "") -> bool:
     """Check if appfix mode is active via non-expired state file or env var.
 
     Loads the state file and checks TTL expiry. Expired state files are
@@ -225,6 +266,7 @@ def is_appfix_active(cwd: str) -> bool:
 
     Args:
         cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
         True if appfix mode is active and not expired, False otherwise
@@ -234,12 +276,12 @@ def is_appfix_active(cwd: str) -> bool:
     if state and not is_state_expired(state):
         return True
 
-    # Check user-level state with TTL
+    # Check user-level state with TTL and origin/session check
     user_state_path = Path.home() / ".claude" / "appfix-state.json"
     if user_state_path.exists():
         try:
             user_state = json.loads(user_state_path.read_text())
-            if not is_state_expired(user_state):
+            if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
                 return True
         except (json.JSONDecodeError, IOError):
             pass
@@ -251,7 +293,40 @@ def is_appfix_active(cwd: str) -> bool:
     return False
 
 
-def is_godo_active(cwd: str) -> bool:
+def is_mobileappfix_active(cwd: str, session_id: str = "") -> bool:
+    """Check if mobileappfix mode is active (mobile variant of appfix).
+
+    Checks if appfix mode is active AND the skill_type is 'mobile'.
+
+    Args:
+        cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
+
+    Returns:
+        True if mobileappfix mode is active, False otherwise
+    """
+    if not is_appfix_active(cwd, session_id):
+        return False
+
+    # Check project-level state for skill_type
+    state = load_state_file(cwd, "appfix-state.json")
+    if state and state.get("skill_type") == "mobile":
+        return True
+
+    # Check user-level state
+    user_state_path = Path.home() / ".claude" / "appfix-state.json"
+    if user_state_path.exists():
+        try:
+            user_state = json.loads(user_state_path.read_text())
+            if user_state.get("skill_type") == "mobile" and _is_cwd_under_origin(cwd, user_state, session_id):
+                return True
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return False
+
+
+def is_godo_active(cwd: str, session_id: str = "") -> bool:
     """Check if godo mode is active via non-expired state file or env var.
 
     Loads the state file and checks TTL expiry. Expired state files are
@@ -259,6 +334,7 @@ def is_godo_active(cwd: str) -> bool:
 
     Args:
         cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
         True if godo mode is active and not expired, False otherwise
@@ -268,12 +344,12 @@ def is_godo_active(cwd: str) -> bool:
     if state and not is_state_expired(state):
         return True
 
-    # Check user-level state with TTL
+    # Check user-level state with TTL and origin/session check
     user_state_path = Path.home() / ".claude" / "godo-state.json"
     if user_state_path.exists():
         try:
             user_state = json.loads(user_state_path.read_text())
-            if not is_state_expired(user_state):
+            if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
                 return True
         except (json.JSONDecodeError, IOError):
             pass
@@ -285,18 +361,19 @@ def is_godo_active(cwd: str) -> bool:
     return False
 
 
-def is_autonomous_mode_active(cwd: str) -> bool:
+def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
     """Check if any autonomous execution mode is active (godo or appfix).
 
     This is the unified check for enabling auto-approval hooks.
 
     Args:
         cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
         True if godo OR appfix mode is active, False otherwise
     """
-    return is_godo_active(cwd) or is_appfix_active(cwd)
+    return is_godo_active(cwd, session_id) or is_appfix_active(cwd, session_id)
 
 
 def _find_state_file_path(cwd: str, filename: str) -> Path | None:
@@ -384,7 +461,7 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
         return False
 
 
-def get_autonomous_state(cwd: str) -> tuple[dict | None, str | None]:
+def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, str | None]:
     """Get the autonomous mode state file and its type, filtering expired.
 
     Checks for godo-state.json first, then appfix-state.json.
@@ -393,6 +470,7 @@ def get_autonomous_state(cwd: str) -> tuple[dict | None, str | None]:
 
     Args:
         cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
         Tuple of (state_dict, state_type) where state_type is 'godo' or 'appfix'
@@ -414,7 +492,7 @@ def get_autonomous_state(cwd: str) -> tuple[dict | None, str | None]:
     if user_godo_path.exists():
         try:
             user_godo_state = json.loads(user_godo_path.read_text())
-            if not is_state_expired(user_godo_state):
+            if not is_state_expired(user_godo_state) and _is_cwd_under_origin(cwd, user_godo_state, session_id):
                 return user_godo_state, "godo"
         except (json.JSONDecodeError, IOError):
             pass
@@ -423,7 +501,7 @@ def get_autonomous_state(cwd: str) -> tuple[dict | None, str | None]:
     if user_appfix_path.exists():
         try:
             user_appfix_state = json.loads(user_appfix_path.read_text())
-            if not is_state_expired(user_appfix_state):
+            if not is_state_expired(user_appfix_state) and _is_cwd_under_origin(cwd, user_appfix_state, session_id):
                 return user_appfix_state, "appfix"
         except (json.JSONDecodeError, IOError):
             pass
