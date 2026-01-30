@@ -136,21 +136,21 @@ class TestValidateCodeRequirements:
         assert len(failures) == 0
 
     def test_app_code_requires_linters(self):
-        report = {"linters_pass": False, "deployed": True}
+        report = {"linters_pass": False, "deployed": True, "code_changes_made": True}
         failures = validate_code_requirements(
             report, has_app_code=True, has_frontend=False
         )
         assert any("linters_pass" in f for f in failures)
 
     def test_app_code_requires_deployed(self):
-        report = {"linters_pass": True, "deployed": False}
+        report = {"linters_pass": True, "deployed": False, "code_changes_made": True}
         failures = validate_code_requirements(
             report, has_app_code=True, has_frontend=False
         )
         assert any("deployed" in f for f in failures)
 
     def test_frontend_requires_web_testing(self):
-        report = {"linters_pass": True, "deployed": True, "web_testing_done": False}
+        report = {"linters_pass": True, "deployed": True, "web_testing_done": False, "code_changes_made": True}
         failures = validate_code_requirements(
             report, has_app_code=True, has_frontend=True
         )
@@ -250,20 +250,20 @@ class TestCleanupAutonomousState:
             assert not (root_claude / "appfix-state.json").exists()
             assert not (nested_claude / "appfix-state.json").exists()
 
-    def test_cleans_both_godo_and_appfix(self):
-        """Should clean both godo-state.json and appfix-state.json."""
+    def test_cleans_both_forge_and_appfix(self):
+        """Should clean both forge-state.json and appfix-state.json."""
         with tempfile.TemporaryDirectory() as tmpdir:
             claude_dir = Path(tmpdir) / ".claude"
             claude_dir.mkdir(parents=True)
 
             (claude_dir / "appfix-state.json").write_text('{"test": true}')
-            (claude_dir / "godo-state.json").write_text('{"test": true}')
+            (claude_dir / "forge-state.json").write_text('{"test": true}')
 
             deleted = cleanup_autonomous_state(tmpdir)
 
             assert len(deleted) >= 2
             assert not (claude_dir / "appfix-state.json").exists()
-            assert not (claude_dir / "godo-state.json").exists()
+            assert not (claude_dir / "forge-state.json").exists()
 
     def test_returns_empty_list_when_no_state_files(self):
         """Should return empty list when no state files exist."""

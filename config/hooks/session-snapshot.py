@@ -37,6 +37,8 @@ from _common import (
     cleanup_expired_state,
     is_pid_alive,
     _get_ancestor_pid,
+    _scoped_filename,
+    _extract_pid_from_filename,
     log_debug,
 )
 
@@ -125,9 +127,11 @@ def main():
     if not cwd:
         sys.exit(0)
 
-    # 1. Create session snapshot
-    snapshot_path = Path(cwd) / ".claude" / "session-snapshot.json"
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    # 1. Create session snapshot (PID-scoped for multi-agent isolation)
+    claude_dir = Path(cwd) / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_filename = _scoped_filename("session-snapshot.json")
+    snapshot_path = claude_dir / snapshot_filename
 
     snapshot = {
         "diff_hash_at_start": get_diff_hash(cwd),
@@ -136,6 +140,21 @@ def main():
     }
 
     snapshot_path.write_text(json.dumps(snapshot, indent=2))
+
+    # Clean up dead-PID snapshot files from previous crashed sessions
+    for old_snapshot in claude_dir.glob("session-snapshot.*.json"):
+        if old_snapshot == snapshot_path:
+            continue
+        pid = _extract_pid_from_filename(old_snapshot.name)
+        if pid is not None and not is_pid_alive(pid):
+            try:
+                old_snapshot.unlink()
+                log_debug(
+                    f"Cleaned stale snapshot for dead PID {pid}",
+                    hook_name="session-snapshot",
+                )
+            except (IOError, OSError):
+                pass
 
     # 2. Session guard - check and claim ownership
     _check_and_claim_session_ownership(cwd, session_id)

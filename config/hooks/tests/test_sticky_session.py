@@ -56,6 +56,18 @@ def make_state_dir(
     return state_path
 
 
+def find_state_file(tmpdir: str, base_name: str = "appfix-state") -> Path | None:
+    """Find a state file (PID-scoped or legacy) in .claude/ directory."""
+    claude_dir = Path(tmpdir) / ".claude"
+    if not claude_dir.exists():
+        return None
+    scoped = sorted(claude_dir.glob(f"{base_name}.*.json"))
+    if scoped:
+        return scoped[0]
+    legacy = claude_dir / f"{base_name}.json"
+    return legacy if legacy.exists() else None
+
+
 def make_checkpoint(tmpdir: str, checkpoint: dict) -> Path:
     """Create completion-checkpoint.json in .claude/."""
     claude_dir = Path(tmpdir) / ".claude"
@@ -290,7 +302,7 @@ class TestCleanupExpiredState:
     def teardown_method(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
         # Clean up any test user-level state
-        for f in ["appfix-state.json", "godo-state.json"]:
+        for f in ["appfix-state.json", "forge-state.json"]:
             p = self.user_state_dir / f
             if p.exists():
                 try:
@@ -386,7 +398,7 @@ class TestSkillStateInitializerDeactivation:
     def teardown_method(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
         # Clean up user-level state too
-        for f in ["appfix-state.json", "godo-state.json"]:
+        for f in ["appfix-state.json", "forge-state.json"]:
             p = Path.home() / ".claude" / f
             if p.exists():
                 try:
@@ -410,16 +422,16 @@ class TestSkillStateInitializerDeactivation:
             or "cleaned up" in result.stdout.lower()
         )
 
-    def test_godo_off_deletes_state(self):
-        """'/godo off' should delete godo state files."""
-        make_state_dir(self.tmpdir, {"iteration": 1}, filename="godo-state.json")
+    def test_forge_off_deletes_state(self):
+        """'/forge off' should delete forge state files."""
+        make_state_dir(self.tmpdir, {"iteration": 1}, filename="forge-state.json")
 
         run_hook(
             "skill-state-initializer.py",
-            {"cwd": self.tmpdir, "prompt": "/godo off", "session_id": "test-sess"},
+            {"cwd": self.tmpdir, "prompt": "/forge off", "session_id": "test-sess"},
         )
 
-        state_path = Path(self.tmpdir) / ".claude" / "godo-state.json"
+        state_path = Path(self.tmpdir) / ".claude" / "forge-state.json"
         assert not state_path.exists()
 
     def test_stop_autonomous_mode_deletes_state(self):
@@ -448,7 +460,7 @@ class TestSkillStateInitializerActivation:
     def teardown_method(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
         # Clean up user-level state
-        for f in ["appfix-state.json", "godo-state.json"]:
+        for f in ["appfix-state.json", "forge-state.json"]:
             p = Path.home() / ".claude" / f
             if p.exists():
                 try:
@@ -463,10 +475,10 @@ class TestSkillStateInitializerActivation:
             {"cwd": self.tmpdir, "prompt": "/appfix", "session_id": "test-session-123"},
         )
 
-        state_path = Path(self.tmpdir) / ".claude" / "appfix-state.json"
-        assert state_path.exists()
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "State file not created"
 
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_file.read_text())
         assert state.get("session_id") == "test-session-123"
         assert "last_activity_at" in state
 
@@ -519,16 +531,16 @@ class TestSessionSnapshot:
                 pass
 
     def test_creates_snapshot_with_session_id(self):
-        """Should create snapshot with session_id."""
+        """Should create snapshot with session_id (PID-scoped or legacy)."""
         run_hook(
             "session-snapshot.py",
             {"cwd": self.tmpdir, "session_id": "test-session-456"},
         )
 
-        snapshot_path = Path(self.tmpdir) / ".claude" / "session-snapshot.json"
-        assert snapshot_path.exists()
+        snapshot_file = find_state_file(self.tmpdir, "session-snapshot")
+        assert snapshot_file is not None, "Snapshot file not created"
 
-        snapshot = json.loads(snapshot_path.read_text())
+        snapshot = json.loads(snapshot_file.read_text())
         assert snapshot.get("session_id") == "test-session-456"
         assert "diff_hash_at_start" in snapshot
 
@@ -666,8 +678,8 @@ class TestStickySessionWorkflow:
 
         # 4. Simulate stop hook behavior: cleanup checkpoint only
         deleted = self.cleanup_checkpoint_only(self.tmpdir)
-        assert len(deleted) == 1
-        assert "completion-checkpoint.json" in deleted[0]
+        assert len(deleted) >= 1
+        assert any("completion-checkpoint" in d for d in deleted)
 
         # 5. Reset state for next task
         self.reset_state_for_next_task(self.tmpdir)
@@ -675,9 +687,10 @@ class TestStickySessionWorkflow:
         # 6. Verify mode STILL active (sticky!)
         assert self.is_autonomous_mode_active(self.tmpdir)
 
-        # 7. Check iteration incremented
-        state_path = Path(self.tmpdir) / ".claude" / "appfix-state.json"
-        state = json.loads(state_path.read_text())
+        # 7. Check iteration incremented (PID-scoped or legacy)
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None
+        state = json.loads(state_file.read_text())
         assert state["iteration"] == 2
         assert state["plan_mode_completed"] is False
 
@@ -725,24 +738,24 @@ class TestCornerCases:
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_both_state_files_one_expired(self):
-        """When both appfix and godo state exist, only expired one should be cleaned."""
+        """When both appfix and forge state exist, only expired one should be cleaned."""
         # Create fresh appfix state
         fresh_state = {"session_id": "sess-1", "last_activity_at": now_iso()}
         make_state_dir(self.tmpdir, fresh_state, filename="appfix-state.json")
 
-        # Create expired godo state
+        # Create expired forge state
         expired_state = {"session_id": "sess-1", "last_activity_at": hours_ago_iso(10)}
-        make_state_dir(self.tmpdir, expired_state, filename="godo-state.json")
+        make_state_dir(self.tmpdir, expired_state, filename="forge-state.json")
 
         from _common import cleanup_expired_state
 
         cleanup_expired_state(self.tmpdir, "sess-1")
 
-        # Only godo should be deleted
+        # Only forge should be deleted
         appfix_path = Path(self.tmpdir) / ".claude" / "appfix-state.json"
-        godo_path = Path(self.tmpdir) / ".claude" / "godo-state.json"
+        forge_path = Path(self.tmpdir) / ".claude" / "forge-state.json"
         assert appfix_path.exists()
-        assert not godo_path.exists()
+        assert not forge_path.exists()
 
     def test_env_var_fallback_no_ttl(self):
         """Environment variable activation should have no TTL check."""

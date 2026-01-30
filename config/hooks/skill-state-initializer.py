@@ -34,6 +34,7 @@ from _common import (
     is_state_for_session,
     load_state_file,
     log_debug,
+    _scoped_filename,
 )
 
 # Deactivation patterns - checked BEFORE activation
@@ -263,11 +264,12 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
 
     success = True
 
-    # Create project-level state file
+    # Create project-level state file (PID-scoped for multi-agent isolation)
     try:
         project_claude_dir = Path(cwd) / ".claude"
         project_claude_dir.mkdir(parents=True, exist_ok=True)
-        project_state_path = project_claude_dir / state_filename
+        scoped_state_filename = _scoped_filename(state_filename)
+        project_state_path = project_claude_dir / scoped_state_filename
         project_state_path.write_text(json.dumps(project_state, indent=2))
     except (OSError, IOError) as e:
         print(f"Warning: Failed to create project state file: {e}", file=sys.stderr)
@@ -381,8 +383,9 @@ def main():
         # Output message (added to context for Claude)
         # Map repair -> appfix for state file name (internal detail)
         state_skill_name = "appfix" if skill_name == "repair" else skill_name
+        scoped_name = _scoped_filename(f"{state_skill_name}-state.json")
         print(f"[skill-state-initializer] Autonomous mode activated: {skill_name}")
-        print(f"State file created: .claude/{state_skill_name}-state.json")
+        print(f"State file created: .claude/{scoped_name}")
         print("Auto-approval hooks are now active.")
 
     sys.exit(0)

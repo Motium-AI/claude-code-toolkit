@@ -67,6 +67,99 @@ VERSION_TRACKING_EXCLUSIONS = [
 DEBUG_LOG = Path(tempfile.gettempdir()) / "claude-hooks-debug.log"
 
 
+# ============================================================================
+# PID-Based Session Scoping
+# ============================================================================
+
+
+def get_session_pid() -> int:
+    """Get the Claude Code ancestor PID for this session.
+
+    PID is the key for session-scoped state files because it:
+    - Is unique across parallel Claude agents (OS guarantee)
+    - Persists through context compaction (same process)
+    - Is discoverable from any hook via process tree walking
+
+    Returns:
+        Claude Code process PID
+    """
+    return _get_ancestor_pid()
+
+
+def _scoped_filename(filename: str, pid: int | None = None) -> str:
+    """Convert a state filename to its PID-scoped version.
+
+    Examples:
+        'forge-state.json' → 'forge-state.12345.json'
+        'completion-checkpoint.json' → 'completion-checkpoint.12345.json'
+
+    Args:
+        filename: Original filename (e.g., 'forge-state.json')
+        pid: PID to scope to (default: current session PID)
+
+    Returns:
+        PID-scoped filename
+    """
+    if pid is None:
+        pid = get_session_pid()
+    base, ext = os.path.splitext(filename)
+    return f"{base}.{pid}{ext}"
+
+
+def _extract_pid_from_filename(filename: str) -> int | None:
+    """Extract PID from a PID-scoped filename.
+
+    Examples:
+        'forge-state.12345.json' → 12345
+        'forge-state.json' → None (legacy, no PID)
+
+    Args:
+        filename: Filename (stem or full name)
+
+    Returns:
+        PID if found, None otherwise
+    """
+    stem = Path(filename).stem
+    parts = stem.rsplit(".", 1)
+    if len(parts) == 2:
+        try:
+            return int(parts[1])
+        except ValueError:
+            return None
+    return None
+
+
+def _find_any_scoped_state_files(cwd: str, base_name: str) -> list[Path]:
+    """Find all PID-scoped state files matching a base name pattern.
+
+    Used for session-agnostic checks (e.g., "is ANY forge session active?").
+
+    Args:
+        cwd: Directory containing .claude/
+        base_name: Base name without extension (e.g., 'forge-state')
+
+    Returns:
+        List of matching Path objects, sorted by modification time (newest first)
+    """
+    results = []
+    if not cwd:
+        return results
+
+    claude_dir = Path(cwd) / ".claude"
+    if not claude_dir.exists():
+        return results
+
+    # Match pattern: {base_name}.{digits}.json
+    for f in claude_dir.glob(f"{base_name}.*.json"):
+        pid = _extract_pid_from_filename(f.name)
+        if pid is not None:
+            results.append(f)
+
+    # Sort by modification time, newest first
+    results.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return results
+
+
 def get_diff_hash(cwd: str = "") -> str:
     """
     Get hash of current git diff (excluding metadata files).
@@ -188,6 +281,9 @@ def _check_state_file(cwd: str, filename: str) -> bool:
     Walks up the directory tree to find the state file,
     similar to how git finds the .git directory.
 
+    Checks PID-scoped filename first, then falls back to legacy unscoped name.
+    Also checks for ANY PID-scoped file matching the base name (for multi-agent).
+
     IMPORTANT: Stops at the home directory to avoid picking up unrelated
     state files from ~/.claude/ which is meant for global config, not
     project-specific state.
@@ -202,14 +298,25 @@ def _check_state_file(cwd: str, filename: str) -> bool:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
+        base_name = Path(filename).stem  # e.g., 'forge-state'
         # Walk up to home directory (max 20 levels to prevent infinite loops)
         for _ in range(20):
             # Stop at home directory - ~/.claude/ is for global config, not project state
             if current == home:
                 break
-            state_file = current / ".claude" / filename
-            if state_file.exists():
-                return True
+            claude_dir = current / ".claude"
+            if claude_dir.exists():
+                # 1. Check PID-scoped file for this session
+                scoped = claude_dir / _scoped_filename(filename)
+                if scoped.exists():
+                    return True
+                # 2. Check any PID-scoped file (another active agent)
+                if _find_any_scoped_state_files(str(current), base_name):
+                    return True
+                # 3. Fall back to legacy unscoped file
+                legacy = claude_dir / filename
+                if legacy.exists():
+                    return True
             parent = current.parent
             if parent == current:  # Reached filesystem root
                 break
@@ -299,6 +406,9 @@ def is_appfix_active(cwd: str, session_id: str = "") -> bool:
     Loads the state file and checks TTL expiry. Expired state files are
     treated as inactive (cleaned up at next SessionStart).
 
+    Checks PID-scoped files first (via load_state_file → _find_state_file_path),
+    then user-level, then env var.
+
     Args:
         cwd: Current working directory path
         session_id: Current session ID (optional, for cross-directory trust)
@@ -306,7 +416,7 @@ def is_appfix_active(cwd: str, session_id: str = "") -> bool:
     Returns:
         True if appfix mode is active and not expired, False otherwise
     """
-    # Check project-level state with TTL
+    # Check project-level state with TTL (handles PID-scoped + legacy)
     state = load_state_file(cwd, "appfix-state.json")
     if state and not is_state_expired(state):
         return True
@@ -367,6 +477,9 @@ def is_forge_active(cwd: str, session_id: str = "") -> bool:
     Loads the state file and checks TTL expiry. Expired state files are
     treated as inactive (cleaned up at next SessionStart).
 
+    Checks PID-scoped files first (via load_state_file → _find_state_file_path),
+    then user-level, then env var.
+
     Args:
         cwd: Current working directory path
         session_id: Current session ID (optional, for cross-directory trust)
@@ -374,7 +487,7 @@ def is_forge_active(cwd: str, session_id: str = "") -> bool:
     Returns:
         True if forge mode is active and not expired, False otherwise
     """
-    # Check project-level state with TTL
+    # Check project-level state with TTL (handles PID-scoped + legacy)
     state = load_state_file(cwd, "forge-state.json")
     if state and not is_state_expired(state):
         return True
@@ -402,20 +515,55 @@ def is_godo_active(cwd: str, session_id: str = "") -> bool:
     return is_forge_active(cwd, session_id)
 
 
-def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
-    """Check if any autonomous execution mode is active (forge or repair).
+def is_burndown_active(cwd: str, session_id: str = "") -> bool:
+    """Check if burndown mode is active via non-expired state file or env var.
 
-    This is the unified check for enabling auto-approval hooks.
-    Recognizes both /forge and /repair (/appfix, /mobileappfix) modes.
+    Loads the state file and checks TTL expiry. Expired state files are
+    treated as inactive (cleaned up at next SessionStart).
 
     Args:
         cwd: Current working directory path
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        True if forge OR repair mode is active, False otherwise
+        True if burndown mode is active and not expired, False otherwise
     """
-    return is_forge_active(cwd, session_id) or is_repair_active(cwd, session_id)
+    # Check project-level state with TTL (handles PID-scoped + legacy)
+    state = load_state_file(cwd, "burndown-state.json")
+    if state and not is_state_expired(state):
+        return True
+
+    # Check user-level state with TTL and origin/session check
+    user_state_path = Path.home() / ".claude" / "burndown-state.json"
+    if user_state_path.exists():
+        try:
+            user_state = json.loads(user_state_path.read_text())
+            if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
+                return True
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Fallback: Check environment variable (no TTL for env vars)
+    if os.environ.get("BURNDOWN_ACTIVE", "").lower() in ("true", "1", "yes"):
+        return True
+
+    return False
+
+
+def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
+    """Check if any autonomous execution mode is active (forge, repair, or burndown).
+
+    This is the unified check for enabling auto-approval hooks.
+    Recognizes /forge, /repair (/appfix, /mobileappfix), and /burndown modes.
+
+    Args:
+        cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
+
+    Returns:
+        True if forge OR repair OR burndown mode is active, False otherwise
+    """
+    return is_forge_active(cwd, session_id) or is_repair_active(cwd, session_id) or is_burndown_active(cwd, session_id)
 
 
 def _find_state_file_path(cwd: str, filename: str) -> Path | None:
@@ -423,6 +571,11 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
 
     Walks up the directory tree to find the state file,
     similar to how git finds the .git directory.
+
+    Checks in this order at each directory level:
+    1. PID-scoped file for this session (e.g., forge-state.12345.json)
+    2. Any PID-scoped file with a live PID (another active agent)
+    3. Legacy unscoped file (e.g., forge-state.json)
 
     IMPORTANT: Stops at the home directory to avoid picking up unrelated
     state files from ~/.claude/ which is meant for global config, not
@@ -438,14 +591,28 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
+        base_name = Path(filename).stem  # e.g., 'forge-state'
         # Walk up to home directory (max 20 levels to prevent infinite loops)
         for _ in range(20):
             # Stop at home directory - ~/.claude/ is for global config, not project state
             if current == home:
                 break
-            state_file = current / ".claude" / filename
-            if state_file.exists():
-                return state_file
+            claude_dir = current / ".claude"
+            if claude_dir.exists():
+                # 1. Check PID-scoped file for this session
+                scoped = claude_dir / _scoped_filename(filename)
+                if scoped.exists():
+                    return scoped
+                # 2. Check any PID-scoped file with live PID
+                scoped_files = _find_any_scoped_state_files(str(current), base_name)
+                for sf in scoped_files:
+                    pid = _extract_pid_from_filename(sf.name)
+                    if pid is not None and is_pid_alive(pid):
+                        return sf
+                # 3. Fall back to legacy unscoped file
+                legacy = claude_dir / filename
+                if legacy.exists():
+                    return legacy
             parent = current.parent
             if parent == current:  # Reached filesystem root
                 break
@@ -506,7 +673,8 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
 def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, str | None]:
     """Get the autonomous mode state file and its type, filtering expired.
 
-    Checks for forge-state.json first, then appfix-state.json (used by /repair).
+    Checks for forge-state.json first, then appfix-state.json (used by /repair),
+    then burndown-state.json.
     Checks both project-level AND user-level state files.
     Returns None for expired state files.
 
@@ -515,7 +683,7 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        Tuple of (state_dict, state_type) where state_type is 'forge' or 'repair'
+        Tuple of (state_dict, state_type) where state_type is 'forge', 'repair', or 'burndown'
         Returns (None, None) if no state file found or all expired
     """
     # Check project-level forge state
@@ -528,25 +696,26 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
     if appfix_state and not is_state_expired(appfix_state):
         return appfix_state, "repair"
 
-    # Check user-level state files (for cross-directory support)
-    # This matches the behavior of is_repair_active() and is_forge_active()
-    user_forge_path = Path.home() / ".claude" / "forge-state.json"
-    if user_forge_path.exists():
-        try:
-            user_forge_state = json.loads(user_forge_path.read_text())
-            if not is_state_expired(user_forge_state) and _is_cwd_under_origin(cwd, user_forge_state, session_id):
-                return user_forge_state, "forge"
-        except (json.JSONDecodeError, IOError):
-            pass
+    # Check project-level burndown state
+    burndown_state = load_state_file(cwd, "burndown-state.json")
+    if burndown_state and not is_state_expired(burndown_state):
+        return burndown_state, "burndown"
 
-    user_appfix_path = Path.home() / ".claude" / "appfix-state.json"
-    if user_appfix_path.exists():
-        try:
-            user_appfix_state = json.loads(user_appfix_path.read_text())
-            if not is_state_expired(user_appfix_state) and _is_cwd_under_origin(cwd, user_appfix_state, session_id):
-                return user_appfix_state, "repair"
-        except (json.JSONDecodeError, IOError):
-            pass
+    # Check user-level state files (for cross-directory support)
+    # This matches the behavior of is_repair_active(), is_forge_active(), and is_burndown_active()
+    for filename, state_type in [
+        ("forge-state.json", "forge"),
+        ("appfix-state.json", "repair"),
+        ("burndown-state.json", "burndown"),
+    ]:
+        user_path = Path.home() / ".claude" / filename
+        if user_path.exists():
+            try:
+                user_state = json.loads(user_path.read_text())
+                if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
+                    return user_state, state_type
+            except (json.JSONDecodeError, IOError):
+                pass
 
     return None, None
 
@@ -557,6 +726,7 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
     Removes state files from:
     1. User-level (~/.claude/)
     2. ALL .claude/ directories walking UP from cwd
+    Handles both PID-scoped and legacy unscoped filenames.
 
     This function should be called after a successful stop to prevent
     stale state files from affecting subsequent sessions.
@@ -568,7 +738,8 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "forge-state.json"]
+    state_files = ["appfix-state.json", "forge-state.json", "burndown-state.json"]
+    state_bases = ["appfix-state", "forge-state", "burndown-state"]
 
     # 1. Clean user-level state
     user_claude_dir = Path.home() / ".claude"
@@ -588,6 +759,7 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
             claude_dir = current / ".claude"
             if claude_dir.exists():
                 for filename in state_files:
+                    # Legacy unscoped file
                     state_file = claude_dir / filename
                     if state_file.exists():
                         try:
@@ -595,6 +767,15 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
                             deleted.append(str(state_file))
                         except (IOError, OSError):
                             pass  # Best effort cleanup
+                # PID-scoped files
+                for base_name in state_bases:
+                    for scoped_file in claude_dir.glob(f"{base_name}.*.json"):
+                        if _extract_pid_from_filename(scoped_file.name) is not None:
+                            try:
+                                scoped_file.unlink()
+                                deleted.append(str(scoped_file))
+                            except (IOError, OSError):
+                                pass
             parent = current.parent
             if parent == current:  # Reached filesystem root
                 break
@@ -667,6 +848,8 @@ def cleanup_checkpoint_only(cwd: str) -> list[str]:
     at task boundaries. The mode state (appfix-state.json, godo-state.json)
     persists for the next task in the same session.
 
+    Handles both PID-scoped and legacy checkpoint filenames.
+
     Args:
         cwd: Working directory containing .claude/
 
@@ -677,11 +860,25 @@ def cleanup_checkpoint_only(cwd: str) -> list[str]:
     if not cwd:
         return deleted
 
-    checkpoint_path = Path(cwd) / ".claude" / "completion-checkpoint.json"
-    if checkpoint_path.exists():
+    claude_dir = Path(cwd) / ".claude"
+    if not claude_dir.exists():
+        return deleted
+
+    # PID-scoped checkpoint
+    scoped_path = claude_dir / _scoped_filename("completion-checkpoint.json")
+    if scoped_path.exists():
         try:
-            checkpoint_path.unlink()
-            deleted.append(str(checkpoint_path))
+            scoped_path.unlink()
+            deleted.append(str(scoped_path))
+        except (IOError, OSError):
+            pass
+
+    # Legacy unscoped checkpoint
+    legacy_path = claude_dir / "completion-checkpoint.json"
+    if legacy_path.exists():
+        try:
+            legacy_path.unlink()
+            deleted.append(str(legacy_path))
         except (IOError, OSError):
             pass
 
@@ -695,7 +892,8 @@ def reset_state_for_next_task(cwd: str) -> bool:
     clears per-task fields (verification_evidence, services).
     Does NOT delete the state file - that's the sticky session behavior.
 
-    Operates on whichever state file exists (forge or appfix).
+    Operates on whichever state file exists (forge, appfix, or burndown).
+    Finds PID-scoped files first, falls back to legacy.
 
     Args:
         cwd: Working directory containing .claude/
@@ -703,7 +901,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
     Returns:
         True if state was reset, False if no state file found
     """
-    for filename in ("forge-state.json", "appfix-state.json"):
+    for filename in ("forge-state.json", "appfix-state.json", "burndown-state.json"):
         state_path = _find_state_file_path(cwd, filename)
         if state_path:
             try:
@@ -828,7 +1026,7 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "forge-state.json"]
+    state_files = ["appfix-state.json", "forge-state.json", "burndown-state.json"]
 
     def _should_clean_project_level(state_path: Path) -> bool:
         """Check if a project-level state file should be cleaned up.
@@ -864,11 +1062,13 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
+        state_bases = [Path(f).stem for f in state_files]  # e.g., ['appfix-state', 'forge-state']
         for _ in range(20):
             if current == home:
                 break
             claude_dir = current / ".claude"
             if claude_dir.exists():
+                # Clean legacy unscoped files
                 for filename in state_files:
                     state_file = claude_dir / filename
                     if state_file.exists() and _should_clean_project_level(state_file):
@@ -877,6 +1077,26 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
                             deleted.append(str(state_file))
                         except (IOError, OSError):
                             pass
+                # Clean PID-scoped files with dead PIDs or expired TTL
+                for base_name in state_bases:
+                    for scoped_file in claude_dir.glob(f"{base_name}.*.json"):
+                        pid = _extract_pid_from_filename(scoped_file.name)
+                        if pid is None:
+                            continue
+                        # Dead PID → always clean
+                        if not is_pid_alive(pid):
+                            try:
+                                scoped_file.unlink()
+                                deleted.append(str(scoped_file))
+                            except (IOError, OSError):
+                                pass
+                        # Live PID but should clean based on content
+                        elif _should_clean_project_level(scoped_file):
+                            try:
+                                scoped_file.unlink()
+                                deleted.append(str(scoped_file))
+                            except (IOError, OSError):
+                                pass
             parent = current.parent
             if parent == current:
                 break
@@ -1062,6 +1282,8 @@ def get_worktree_info(cwd: str = "") -> dict | None:
 def load_checkpoint(cwd: str) -> dict | None:
     """Load completion checkpoint file from .claude directory.
 
+    Checks PID-scoped checkpoint first, falls back to legacy unscoped.
+
     Args:
         cwd: Working directory containing .claude/
 
@@ -1070,17 +1292,34 @@ def load_checkpoint(cwd: str) -> dict | None:
     """
     if not cwd:
         return None
-    checkpoint_path = Path(cwd) / ".claude" / "completion-checkpoint.json"
-    if not checkpoint_path.exists():
+
+    claude_dir = Path(cwd) / ".claude"
+    if not claude_dir.exists():
         return None
-    try:
-        return json.loads(checkpoint_path.read_text())
-    except (json.JSONDecodeError, IOError):
-        return None
+
+    # 1. Check PID-scoped checkpoint
+    scoped_path = claude_dir / _scoped_filename("completion-checkpoint.json")
+    if scoped_path.exists():
+        try:
+            return json.loads(scoped_path.read_text())
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    # 2. Fall back to legacy unscoped checkpoint
+    legacy_path = claude_dir / "completion-checkpoint.json"
+    if legacy_path.exists():
+        try:
+            return json.loads(legacy_path.read_text())
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    return None
 
 
 def save_checkpoint(cwd: str, checkpoint: dict) -> bool:
     """Save checkpoint file back to disk.
+
+    Uses PID-scoped filename for session isolation.
 
     Args:
         cwd: Working directory containing .claude/
@@ -1091,7 +1330,7 @@ def save_checkpoint(cwd: str, checkpoint: dict) -> bool:
     """
     if not cwd:
         return False
-    checkpoint_path = Path(cwd) / ".claude" / "completion-checkpoint.json"
+    checkpoint_path = Path(cwd) / ".claude" / _scoped_filename("completion-checkpoint.json")
     try:
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         checkpoint_path.write_text(json.dumps(checkpoint, indent=2))

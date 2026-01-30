@@ -56,6 +56,24 @@ def make_state_dir(
     return state_path
 
 
+def find_state_file(tmpdir: str, base_name: str = "appfix-state") -> Path | None:
+    """Find a state file (PID-scoped or legacy) in .claude/ directory.
+
+    State files may be PID-scoped (e.g., appfix-state.12345.json) or legacy
+    (e.g., appfix-state.json). This helper finds whichever exists.
+    """
+    claude_dir = Path(tmpdir) / ".claude"
+    if not claude_dir.exists():
+        return None
+    # Check PID-scoped first
+    scoped = sorted(claude_dir.glob(f"{base_name}.*.json"))
+    if scoped:
+        return scoped[0]
+    # Fall back to legacy
+    legacy = claude_dir / f"{base_name}.json"
+    return legacy if legacy.exists() else None
+
+
 def enforcer_input(cwd: str, tool_name: str, file_path: str) -> dict:
     """Build PreToolUse input for plan-mode-enforcer."""
     return {
@@ -202,9 +220,9 @@ class TestPlanModeEnforcer:
         assert result.returncode == 0
         assert result.stdout.strip() == ""
 
-    def test_godo_state_also_enforces(self):
-        """godo-state.json should also trigger enforcement."""
-        make_state_dir(self.tmpdir, self.base_state, filename="godo-state.json")
+    def test_forge_state_also_enforces(self):
+        """forge-state.json should also trigger enforcement."""
+        make_state_dir(self.tmpdir, self.base_state, filename="forge-state.json")
         result = run_hook(
             "plan-mode-enforcer.py",
             enforcer_input(self.tmpdir, "Edit", f"{self.tmpdir}/src/main.py"),
@@ -234,15 +252,17 @@ class TestPlanModeTracker:
 
     def test_updates_state_on_exit_plan_mode(self):
         """ExitPlanMode should set plan_mode_completed=true in state file."""
-        state_path = make_state_dir(self.tmpdir, self.base_state)
+        make_state_dir(self.tmpdir, self.base_state)
         result = run_hook(
             "plan-mode-tracker.py",
             tracker_input(self.tmpdir, "ExitPlanMode"),
         )
         assert result.returncode == 0
 
-        # Verify state file was updated
-        updated_state = json.loads(state_path.read_text())
+        # Verify state file was updated (may be legacy or PID-scoped path)
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "State file not found after tracker"
+        updated_state = json.loads(state_file.read_text())
         assert updated_state["plan_mode_completed"] is True
 
     def test_no_stdout_on_success(self):
@@ -278,22 +298,26 @@ class TestPlanModeTracker:
     def test_preserves_other_state_fields(self):
         """Updating plan_mode_completed should not erase other fields."""
         state = {**self.base_state, "services": {"frontend": {"healthy": True}}}
-        state_path = make_state_dir(self.tmpdir, state)
+        make_state_dir(self.tmpdir, state)
         run_hook("plan-mode-tracker.py", tracker_input(self.tmpdir, "ExitPlanMode"))
 
-        updated = json.loads(state_path.read_text())
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None
+        updated = json.loads(state_file.read_text())
         assert updated["plan_mode_completed"] is True
         assert updated["services"]["frontend"]["healthy"] is True
         assert updated["iteration"] == 1
 
-    def test_updates_godo_state(self):
-        """Should update godo-state.json when that's the active state."""
-        state_path = make_state_dir(
-            self.tmpdir, self.base_state, filename="godo-state.json"
+    def test_updates_forge_state(self):
+        """Should update forge-state.json when that's the active state."""
+        make_state_dir(
+            self.tmpdir, self.base_state, filename="forge-state.json"
         )
         run_hook("plan-mode-tracker.py", tracker_input(self.tmpdir, "ExitPlanMode"))
 
-        updated = json.loads(state_path.read_text())
+        state_file = find_state_file(self.tmpdir, "forge-state")
+        assert state_file is not None
+        updated = json.loads(state_file.read_text())
         assert updated["plan_mode_completed"] is True
 
 
@@ -312,30 +336,30 @@ class TestSkillStateInitializer:
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_creates_appfix_state_on_appfix_prompt(self):
-        """'/appfix' prompt should create appfix-state.json."""
+        """'/appfix' prompt should create appfix-state (PID-scoped or legacy)."""
         result = run_hook(
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "/appfix fix the bug"),
         )
         assert result.returncode == 0
 
-        state_path = Path(self.tmpdir) / ".claude" / "appfix-state.json"
-        assert state_path.exists(), f"State file not created at {state_path}"
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "State file not created"
 
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_file.read_text())
         assert state["iteration"] == 1
         assert state["plan_mode_completed"] is False
 
-    def test_creates_godo_state_on_godo_prompt(self):
-        """'/godo' prompt should create godo-state.json."""
+    def test_creates_forge_state_on_godo_prompt(self):
+        """'/godo' prompt should create forge-state (PID-scoped or legacy)."""
         result = run_hook(
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "/godo implement the feature"),
         )
         assert result.returncode == 0
 
-        state_path = Path(self.tmpdir) / ".claude" / "godo-state.json"
-        assert state_path.exists()
+        state_file = find_state_file(self.tmpdir, "forge-state")
+        assert state_file is not None, "Forge state file not created for /godo"
 
     def test_creates_appfix_on_natural_language(self):
         """'fix the app' should also create appfix state."""
@@ -343,7 +367,8 @@ class TestSkillStateInitializer:
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "fix the app it's broken"),
         )
-        assert (Path(self.tmpdir) / ".claude" / "appfix-state.json").exists()
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "Appfix state not created for natural language"
 
     def test_ignores_unrelated_prompts(self):
         """Regular prompts should NOT create any state file."""
@@ -351,10 +376,8 @@ class TestSkillStateInitializer:
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "explain how this code works"),
         )
-        claude_dir = Path(self.tmpdir) / ".claude"
-        if claude_dir.exists():
-            assert not (claude_dir / "appfix-state.json").exists()
-            assert not (claude_dir / "godo-state.json").exists()
+        assert find_state_file(self.tmpdir, "appfix-state") is None
+        assert find_state_file(self.tmpdir, "forge-state") is None
 
     def test_state_has_required_fields(self):
         """Created state should have all required fields."""
@@ -362,9 +385,9 @@ class TestSkillStateInitializer:
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "/appfix"),
         )
-        state = json.loads(
-            (Path(self.tmpdir) / ".claude" / "appfix-state.json").read_text()
-        )
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "State file not created"
+        state = json.loads(state_file.read_text())
         required_fields = [
             "iteration",
             "started_at",
@@ -400,10 +423,10 @@ class TestHookChain:
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "/appfix debug"),
         )
-        state_path = Path(self.tmpdir) / ".claude" / "appfix-state.json"
-        assert state_path.exists()
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        assert state_file is not None, "State file not created by initializer"
 
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_file.read_text())
         assert state["plan_mode_completed"] is False
 
         # Step 2: Code file should be BLOCKED (plan mode not done)
@@ -429,7 +452,8 @@ class TestHookChain:
             "plan-mode-tracker.py",
             tracker_input(self.tmpdir, "ExitPlanMode"),
         )
-        state = json.loads(state_path.read_text())
+        state_file = find_state_file(self.tmpdir, "appfix-state")
+        state = json.loads(state_file.read_text())
         assert state["plan_mode_completed"] is True
 
         # Step 5: Code file should now be ALLOWED

@@ -41,6 +41,7 @@ from _common import (
     cleanup_checkpoint_only,
     reset_state_for_next_task,
     is_autonomous_mode_active,
+    _scoped_filename,
 )
 from _sv_validators import (
     validate_checkpoint,
@@ -67,7 +68,10 @@ def session_made_code_changes(cwd: str) -> bool:
 
     Falls back to git diff check if no snapshot exists (old session format).
     """
-    snapshot_path = Path(cwd) / ".claude" / "session-snapshot.json"
+    # Check PID-scoped snapshot first, fall back to legacy
+    snapshot_path = Path(cwd) / ".claude" / _scoped_filename("session-snapshot.json")
+    if not snapshot_path.exists():
+        snapshot_path = Path(cwd) / ".claude" / "session-snapshot.json"
     if not snapshot_path.exists():
         # No snapshot = old session format, fall back to git diff check
         return has_code_changes(get_git_diff_files())

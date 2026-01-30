@@ -66,7 +66,13 @@ def main():
         sys.exit(0)
 
     # Determine state filename
-    state_filename = f"{state_type}-state.json"
+    # Map state_type to filename (repair uses appfix-state.json for backward compat)
+    STATE_TYPE_TO_FILENAME = {
+        "forge": "forge-state.json",
+        "repair": "appfix-state.json",
+        "burndown": "burndown-state.json",
+    }
+    state_filename = STATE_TYPE_TO_FILENAME.get(state_type, f"{state_type}-state.json")
 
     # Update state file to mark plan mode as completed
     success = update_state_file(cwd, state_filename, {"plan_mode_completed": True})

@@ -4,22 +4,41 @@ __pycache__/
 *$py.class
 
 # Claude Code session state (transient files)
-# Root level .claude/
+# Root level .claude/ — legacy unscoped files
 .claude/completion-checkpoint.json
 .claude/session-snapshot.json
 .claude/appfix-state.json
+.claude/forge-state.json
+.claude/burndown-state.json
 .claude/godo-state.json
+.claude/session-owner.json
 .claude/web-smoke/
 .claude/compacted.*.marker
 .claude/validation-tests/
 .claude/toolkit-update-state.json
 
+# PID-scoped session state files (e.g., forge-state.12345.json)
+.claude/forge-state.*.json
+.claude/appfix-state.*.json
+.claude/burndown-state.*.json
+.claude/completion-checkpoint.*.json
+.claude/session-snapshot.*.json
+
 # Nested .claude/ directories (e.g., config/hooks/.claude/)
 **/.claude/completion-checkpoint.json
 **/.claude/session-snapshot.json
 **/.claude/appfix-state.json
+**/.claude/forge-state.json
+**/.claude/burndown-state.json
 **/.claude/godo-state.json
+**/.claude/session-owner.json
 **/.claude/web-smoke/
+# Nested PID-scoped files
+**/.claude/forge-state.*.json
+**/.claude/appfix-state.*.json
+**/.claude/burndown-state.*.json
+**/.claude/completion-checkpoint.*.json
+**/.claude/session-snapshot.*.json
 
 # OS
 .DS_Store
