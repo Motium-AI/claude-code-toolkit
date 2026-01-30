@@ -40,7 +40,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 ---
 
-## All Slash Commands (13 commands + 4 core skills)
+## All Slash Commands (14 commands + 4 core skills)
 
 | Command | Purpose |
 |---------|---------|
@@ -48,6 +48,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/repair` | Unified debugging router (web → appfix, mobile → mobileappfix) |
 | `/burndown` | Autonomous tech debt elimination (combines /deslop + /qa) |
 | `/heavy` | Multi-agent analysis |
+| `/audiobook` | Transform documents into TTS-optimized audiobooks |
 | `/harness-test` | Test harness changes (hooks/skills) in sandbox |
 | `/appfix` | Web app debugging |
 | `/qa` | Architecture audit (detection only - use /burndown to fix) |
@@ -62,7 +63,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/designimprove` | UI improvement |
 | `/uximprove` | UX improvement |
 
-## All Skills (20 active, 2 deprecated)
+## All Skills (21 active, 2 deprecated)
 
 | Skill | Triggers |
 |-------|----------|
@@ -71,6 +72,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `burndown` | /burndown, "burn down debt", "clean up codebase", "fix the slop" |
 | `appfix` | (Internal: web debugging - prefer /repair) |
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives", "debate this" |
+| `audiobook` | /audiobook, "create an audiobook", "turn this into audio", "make TTS-ready" |
 | `mobileappfix` | (Internal: mobile debugging - prefer /repair) |
 | `skill-sandbox` | /skill-sandbox, "test skill", "sandbox test" |
 | `harness-test` | /harness-test, "test harness changes" (auto-triggers in /build for toolkit) |
@@ -138,7 +140,7 @@ namshub/        # THIS IS THE SOURCE OF TRUTH
 │   ├── settings.json          # Hook definitions
 │   ├── commands/              # 11 skill definition files (+ 3 skill-commands)
 │   ├── hooks/                 # Python/bash hooks (18 registered)
-│   └── skills/                # 17 skills (+ 2 deprecated) ← EDIT HERE
+│   └── skills/                # 18 skills (+ 2 deprecated) ← EDIT HERE
 ├── docs/                      # Documentation
 ├── scripts/                   # install.sh, doctor.sh
 └── README.md

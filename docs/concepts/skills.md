@@ -377,6 +377,26 @@ webapp-testing/
 - iOS (TestFlight) and Android deployment workflows
 - Build profiles and environment configuration
 
+### 18. audiobook
+
+**Location**: `~/.claude/skills/audiobook/`
+
+**Triggers**: /audiobook, "create an audiobook", "turn this into audio", "make TTS-ready"
+
+**Coverage**:
+- Transform technical documents into TTS-optimized audiobooks
+- 4-agent heavy analysis (First Principles, AGI-Pilled, TTS Expert, Stop-Slop Expert)
+- Michael Caine oration style with conversational asides
+- TTS-specific formatting (pause markers, number handling, no markdown syntax)
+- 35-item stop-slop watchlist for eliminating AI patterns
+- 5-dimension quality scoring (Directness, Rhythm, Trust, Authenticity, Density)
+
+**Structure**:
+```
+audiobook/
+└── SKILL.md                    # Complete workflow + voice guide + stop-slop reference
+```
+
 ## Creating Custom Skills
 
 ### Step 1: Identify the Domain
