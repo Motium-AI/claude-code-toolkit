@@ -83,7 +83,7 @@ Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → *
 | `skill-tester` | Deprecated | → skill-sandbox |
 | `skilltest` | Deprecated | → skill-sandbox |
 
-## Registered Hooks (18 scripts)
+## Registered Hooks (20 scripts)
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
@@ -93,7 +93,9 @@ Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → *
 | PreToolUse (Edit/Write) | plan-mode-enforcer | Block until plan done |
 | PreToolUse (Bash) | deploy-enforcer, azure-command-guard | Block deploys, guard Azure CLI |
 | PreToolUse (WebSearch) | exa-search-enforcer | Remind to use Exa MCP instead |
+| PreToolUse (ExitPlanMode) | lite-heavy-enforcer | Block until Lite Heavy done (forge) |
 | PostToolUse (Edit/Write) | checkpoint-invalidator | Reset stale flags |
+| PostToolUse (Read/Task) | lite-heavy-tracker | Track Lite Heavy progress (forge) |
 | PostToolUse (Bash) | bash-version-tracker, doc-updater-async | Track versions, suggest doc updates |
 | PostToolUse (ExitPlanMode) | plan-mode-tracker, plan-execution-reminder | Mark plan done, inject context |
 | PostToolUse (Skill) | skill-continuation-reminder | Continue loop after skill |
