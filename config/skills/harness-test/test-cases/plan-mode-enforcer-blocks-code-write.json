@@ -1,0 +1,29 @@
+{
+  "name": "plan-mode-enforcer-blocks-code-write",
+  "description": "Verify plan-mode-enforcer blocks Edit/Write to code files when plan_mode_completed=false on first iteration",
+  "type": "hook",
+  "target": "config/hooks/plan-mode-enforcer.py",
+  "setup": {
+    "state_file": "forge-state.json",
+    "state_content": {
+      "iteration": 1,
+      "plan_mode_completed": false,
+      "started_at": "2026-01-30T12:00:00Z"
+    },
+    "files": {
+      "src/main.py": "# existing file"
+    }
+  },
+  "prompt": "Use the Write tool to write 'print(\"test\")' to src/test.py",
+  "assertions": [
+    {
+      "type": "file_not_exists",
+      "path": "src/test.py"
+    },
+    {
+      "type": "output_contains",
+      "pattern": "(PLAN MODE|plan mode|blocked|denied)"
+    }
+  ],
+  "timeout": 60
+}

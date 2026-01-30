@@ -161,6 +161,18 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 │  PHASE 1: EXECUTE                                               │
 │     └─► Make code changes                                       │
 │     └─► Run linters, fix ALL errors                             │
+├─────────────────────────────────────────────────────────────────┤
+│  ╔═══════════════════════════════════════════════════════════╗  │
+│  ║  PHASE 1.75: HARNESS TEST (if in toolkit project)         ║  │
+│  ║     └─► Detect if cwd is claude-code-toolkit              ║  │
+│  ║     └─► Check for modified hooks/skills/settings          ║  │
+│  ║     └─► Create sandbox, propagate changes                 ║  │
+│  ║     └─► Run test cases in isolated Claude session         ║  │
+│  ║     └─► BLOCK if tests fail, continue if pass             ║  │
+│  ║     └─► See: /harness-test skill                          ║  │
+│  ╚═══════════════════════════════════════════════════════════╝  │
+├─────────────────────────────────────────────────────────────────┤
+│  PHASE 1.9: COMMIT & DEPLOY                                     │
 │     └─► Commit and push                                         │
 │     └─► Deploy                                                  │
 ├─────────────────────────────────────────────────────────────────┤
@@ -428,13 +440,53 @@ Use Edit tool for targeted changes. Keep changes focused on the task.
 - "This was broken before we started"
 - "I'll fix this in a separate PR"
 
-### 1.3 Commit and Push
+## Phase 1.75: Harness Test (Conditional)
+
+**This phase only runs when working on the claude-code-toolkit repository itself.**
+
+When modifying hooks, skills, or settings, changes don't take effect in the current session (hooks are captured at startup). This phase tests those changes in an isolated sandbox with a fresh Claude session.
+
+### Detection
+
+```bash
+# Check if we're in the harness project
+~/.claude/skills/harness-test/scripts/detect-harness.sh
+
+# Check for modified harness files
+~/.claude/skills/harness-test/scripts/detect-harness-changes.sh
+```
+
+If both return true, run harness tests before committing.
+
+### Execution
+
+```bash
+# Create sandbox with modified hooks/skills
+SANDBOX_ID=$(~/.claude/skills/harness-test/scripts/setup-harness-sandbox.sh)
+
+# Run test cases
+~/.claude/skills/harness-test/scripts/run-all-tests.sh "$SANDBOX_ID"
+
+# Cleanup
+~/.claude/skills/harness-test/scripts/cleanup-sandbox.sh "$SANDBOX_ID"
+```
+
+### Blocking Behavior
+
+- **Tests pass**: Continue to Phase 1.9 (commit)
+- **Tests fail**: STOP. Fix the issues and re-run. Do NOT commit broken hooks.
+
+See `/harness-test` skill for full documentation.
+
+## Phase 1.9: Commit and Deploy
+
+### 1.9.1 Commit and Push
 ```bash
 git add <specific files> && git commit -m "feat: [description]"
 git push
 ```
 
-### 1.4 Deploy
+### 1.9.2 Deploy
 ```bash
 gh workflow run deploy.yml -f environment=staging
 gh run watch --exit-status

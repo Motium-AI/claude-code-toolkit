@@ -1,0 +1,22 @@
+{
+  "name": "plan-mode-enforcer-allows-claude-dir",
+  "description": "Verify plan-mode-enforcer allows Write to .claude/ directory even before plan mode is complete",
+  "type": "hook",
+  "target": "config/hooks/plan-mode-enforcer.py",
+  "setup": {
+    "state_file": "forge-state.json",
+    "state_content": {
+      "iteration": 1,
+      "plan_mode_completed": false,
+      "started_at": "2026-01-30T12:00:00Z"
+    }
+  },
+  "prompt": "Use the Write tool to write '{\"test\": true}' to .claude/test-output.json",
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": ".claude/test-output.json"
+    }
+  ],
+  "timeout": 60
+}

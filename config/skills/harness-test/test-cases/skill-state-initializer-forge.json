@@ -1,0 +1,21 @@
+{
+  "name": "skill-state-initializer-forge",
+  "description": "Verify skill-state-initializer creates forge-state.json when /forge is invoked",
+  "type": "hook",
+  "target": "config/hooks/skill-state-initializer.py",
+  "setup": {},
+  "prompt": "/forge Add a hello world function",
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": ".claude/forge-state.json"
+    },
+    {
+      "type": "state_field",
+      "file": "forge-state.json",
+      "field": "iteration",
+      "expected": "1"
+    }
+  ],
+  "timeout": 90
+}

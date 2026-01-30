@@ -33,13 +33,14 @@ Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → *
 
 ---
 
-## All Slash Commands (12 commands + 3 core skills)
+## All Slash Commands (13 commands + 3 core skills)
 
 | Command | Purpose |
 |---------|---------|
 | `/forge` | Autonomous task execution (with Lite Heavy planning) |
 | `/repair` | Unified debugging router (web → appfix, mobile → mobileappfix) |
 | `/heavy` | Multi-agent analysis |
+| `/harness-test` | Test harness changes (hooks/skills) in sandbox |
 | `/appfix` | Web app debugging |
 | `/qa` | Architecture audit |
 | `/deslop` | AI slop detection |
@@ -53,7 +54,7 @@ Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → *
 | `/designimprove` | UI improvement |
 | `/uximprove` | UX improvement |
 
-## All Skills (18 active, 2 deprecated)
+## All Skills (19 active, 2 deprecated)
 
 | Skill | Triggers |
 |-------|----------|
@@ -63,6 +64,7 @@ Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → *
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives", "debate this" |
 | `mobileappfix` | (Internal: mobile debugging - prefer /repair) |
 | `skill-sandbox` | /skill-sandbox, "test skill", "sandbox test" |
+| `harness-test` | /harness-test, "test harness changes" (auto-triggers in /forge for toolkit) |
 | `toolkit` | /toolkit, "update toolkit" |
 | `deploy-pipeline` | /deploy, deployment questions |
 | `webapp-testing` | Browser testing |
