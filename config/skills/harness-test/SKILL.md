@@ -24,7 +24,7 @@ This skill:
 
 - `/harness-test` - explicit invocation
 - Auto-triggered by `/build` when:
-  1. Working in halt repository
+  1. Working in namshub repository
   2. Modified files include harness files (hooks, skills, settings)
 
 ## Integration with /build
@@ -231,8 +231,8 @@ Test cases are JSON files in `test-cases/` directory:
 Detected by checking for 2 of 3 markers:
 
 1. **Directory structure**: `config/hooks/`, `config/skills/`, `config/settings.json` exist
-2. **Git remote**: Contains "halt"
-3. **README.md**: Mentions "Halt"
+2. **Git remote**: Contains "namshub" (or "halt" for backward compatibility)
+3. **README.md**: Mentions "Namshub" (or "Halt" for backward compatibility)
 
 ## Limitations
 

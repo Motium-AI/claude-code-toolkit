@@ -33,7 +33,7 @@ PROJECT_DIR="${1:-$(pwd)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! "$SCRIPT_DIR/detect-harness.sh" "$PROJECT_DIR" >/dev/null 2>&1; then
     echo -e "${RED}ERROR: Not a harness project: $PROJECT_DIR${NC}" >&2
-    echo "Run from halt directory or pass path as argument" >&2
+    echo "Run from namshub directory or pass path as argument" >&2
     exit 1
 fi
 

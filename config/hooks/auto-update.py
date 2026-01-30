@@ -303,7 +303,7 @@ def main():
             print(f"""
 ⚠️ TOOLKIT RESTART REQUIRED ⚠️
 
-The Halt was updated but settings.json changed.
+Namshub was updated but settings.json changed.
 Hooks are captured at session startup and require restart to reload.
 
 Reason: {pending_restart}
@@ -366,7 +366,7 @@ The current session is using stale hook definitions.
         print(f"""
 ⚠️ TOOLKIT UPDATE FAILED
 
-Could not auto-update the Halt.
+Could not auto-update Namshub.
 Error: {message}
 
 Manual update: cd {repo_path} && git pull
@@ -447,7 +447,7 @@ Auto-update will resume once local matches or is behind remote.
         print(f"""
 ⚠️ TOOLKIT UPDATED - RESTART REQUIRED ⚠️
 
-The Halt was updated from {local_head[:7]} to {remote_head[:7]}.
+Namshub was updated from {local_head[:7]} to {remote_head[:7]}.
 
 {commit_summary}
 
@@ -465,7 +465,7 @@ Continue at your own risk - new hook behavior will not work correctly.
         print(f"""
 ✓ TOOLKIT UPDATED
 
-The Halt was updated from {local_head[:7]} to {remote_head[:7]}.
+Namshub was updated from {local_head[:7]} to {remote_head[:7]}.
 
 {commit_summary}
 

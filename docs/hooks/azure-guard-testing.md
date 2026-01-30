@@ -4,7 +4,7 @@ This guide walks you through testing the Azure command guard hook in a real Clau
 
 ## Prerequisites
 
-1. Halt installed
+1. Namshub installed
 2. Azure CLI installed (or commands will just be blocked/allowed without actually running)
 
 ## Step 1: Verify Installation
@@ -20,7 +20,7 @@ Should show: `-rwxr-xr-x ... azure-command-guard.sh`
 Run the install verification:
 
 ```bash
-cd halt
+cd namshub
 ./scripts/install.sh --verify
 ```
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Halt Installer
+# Namshub Installer
 #
 # This script installs the toolkit by:
 # 1. Backing up existing ~/.claude config
@@ -35,6 +35,9 @@ else
     # Try to find the toolkit in common locations
     POSSIBLE_LOCATIONS=(
         "$PWD"
+        "$PWD/namshub"
+        "$HOME/namshub"
+        "$(dirname "$PWD")/namshub"
         "$PWD/halt"
         "$HOME/halt"
         "$(dirname "$PWD")/halt"
@@ -56,11 +59,11 @@ else
         echo "" >&2
         echo "Solutions:" >&2
         echo "  1. Clone the repo first, then run install.sh directly:" >&2
-        echo "     git clone <repo-url> ~/halt" >&2
-        echo "     cd ~/halt && ./scripts/install.sh" >&2
+        echo "     git clone <repo-url> ~/namshub" >&2
+        echo "     cd ~/namshub && ./scripts/install.sh" >&2
         echo "" >&2
         echo "  2. Or run from inside the toolkit directory:" >&2
-        echo "     cd /path/to/halt && ./scripts/install.sh" >&2
+        echo "     cd /path/to/namshub && ./scripts/install.sh" >&2
         echo "" >&2
         exit 1
     fi
@@ -74,7 +77,7 @@ if [ ! -d "$CONFIG_DIR" ] || [ ! -f "$CONFIG_DIR/settings.json" ]; then
     echo -e "${RED}ERROR: Invalid toolkit structure at $REPO_DIR${NC}" >&2
     echo "Expected to find $CONFIG_DIR/settings.json" >&2
     echo "" >&2
-    echo "Make sure you're running from inside the halt directory." >&2
+    echo "Make sure you're running from inside the namshub directory." >&2
     exit 1
 fi
 
@@ -377,7 +380,7 @@ add_to_parent_gitignore() {
 
     # Add toolkit to .gitignore
     echo "" >> "$GITIGNORE_PATH"
-    echo "# Halt (separate git repo)" >> "$GITIGNORE_PATH"
+    echo "# Namshub (separate git repo)" >> "$GITIGNORE_PATH"
     echo "/${TOOLKIT_DIRNAME}/" >> "$GITIGNORE_PATH"
 
     echo -e "  ${GREEN}✓ Added /${TOOLKIT_DIRNAME}/ to parent .gitignore${NC}"
@@ -397,7 +400,7 @@ add_to_parent_gitignore() {
 run_full_verification() {
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  HALT VERIFICATION${NC}"
+    echo -e "${GREEN}  NAMSHUB VERIFICATION${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo ""
 
@@ -441,7 +444,7 @@ run_full_verification() {
 # ═══════════════════════════════════════════════════════════════════════════
 
 install_remote() {
-    echo -e "${GREEN}Halt Remote Installer${NC}"
+    echo -e "${GREEN}Namshub Remote Installer${NC}"
     echo "======================================"
     echo ""
     echo "Installing to: $REMOTE_HOST"
@@ -458,7 +461,7 @@ install_remote() {
 
     # Check if toolkit exists on remote
     echo -e "${BLUE}Checking remote toolkit location...${NC}"
-    REMOTE_TOOLKIT=$(ssh "$REMOTE_HOST" "ls -d ~/halt 2>/dev/null || echo 'NOT_FOUND'")
+    REMOTE_TOOLKIT=$(ssh "$REMOTE_HOST" "ls -d ~/namshub 2>/dev/null || ls -d ~/halt 2>/dev/null || echo 'NOT_FOUND'")
 
     if [ "$REMOTE_TOOLKIT" = "NOT_FOUND" ]; then
         echo -e "  ${YELLOW}Toolkit not found on remote. Syncing from local...${NC}"
@@ -467,8 +470,8 @@ install_remote() {
             --exclude '.git' \
             --exclude 'node_modules' \
             --exclude '__pycache__' \
-            "$REPO_DIR/" "$REMOTE_HOST:~/halt/"
-        echo -e "  ${GREEN}✓ Toolkit synced to ~/halt/${NC}"
+            "$REPO_DIR/" "$REMOTE_HOST:~/namshub/"
+        echo -e "  ${GREEN}✓ Toolkit synced to ~/namshub/${NC}"
     else
         echo -e "  ${GREEN}✓ Toolkit exists at $REMOTE_TOOLKIT${NC}"
     fi
@@ -476,7 +479,7 @@ install_remote() {
     # Run installer on remote (without verification to avoid double output)
     echo ""
     echo -e "${BLUE}Running installer on remote...${NC}"
-    ssh "$REMOTE_HOST" 'cd ~/halt && bash -c "
+    ssh "$REMOTE_HOST" 'cd ~/namshub 2>/dev/null || cd ~/halt && bash -c "
         # Backup existing config
         if [ -d ~/.claude ] || [ -L ~/.claude ]; then
             BACKUP_DIR=~/.claude.backup.\$(date +%s)
@@ -489,13 +492,13 @@ install_remote() {
 
         # Create symlinks
         echo \"Creating symlinks...\"
-        ln -sf ~/halt/config/settings.json ~/.claude/settings.json && echo \"  ✓ settings.json\"
-        ln -sf ~/halt/config/commands ~/.claude/commands && echo \"  ✓ commands/\"
-        ln -sf ~/halt/config/hooks ~/.claude/hooks && echo \"  ✓ hooks/\"
-        ln -sf ~/halt/config/skills ~/.claude/skills && echo \"  ✓ skills/\"
+        ln -sf ~/namshub/config/settings.json ~/.claude/settings.json && echo \"  ✓ settings.json\"
+        ln -sf ~/namshub/config/commands ~/.claude/commands && echo \"  ✓ commands/\"
+        ln -sf ~/namshub/config/hooks ~/.claude/hooks && echo \"  ✓ hooks/\"
+        ln -sf ~/namshub/config/skills ~/.claude/skills && echo \"  ✓ skills/\"
 
         # Make hooks executable
-        chmod +x ~/halt/config/hooks/*.py 2>/dev/null
+        chmod +x ~/namshub/config/hooks/*.py 2>/dev/null
         echo \"  ✓ hooks executable\"
         echo \"\"
         echo \"Installation complete!\"
@@ -590,7 +593,7 @@ fi
 
 # Handle uninstall
 if [ "$UNINSTALL" = true ]; then
-    echo -e "${GREEN}Halt Uninstaller${NC}"
+    echo -e "${GREEN}Namshub Uninstaller${NC}"
     echo "================================="
     echo ""
 
@@ -645,10 +648,10 @@ if [ "$VERIFY_ONLY" = true ]; then
 fi
 
 # Main installation flow
-echo -e "${GREEN}Halt Installer${NC}"
+echo -e "${GREEN}Namshub Installer${NC}"
 echo "==============================="
 echo ""
-echo "This will install Halt by creating symlinks"
+echo "This will install Namshub by creating symlinks"
 echo "from ~/.claude/ to $CONFIG_DIR"
 echo ""
 

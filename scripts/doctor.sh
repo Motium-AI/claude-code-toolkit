@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Halt Doctor
+# Namshub Doctor
 #
 # Comprehensive diagnostics for troubleshooting hook and skill issues.
 # Run this when /appfix or /build isn't working as expected.
@@ -46,7 +46,7 @@ done
 
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  HALT DOCTOR${NC}"
+echo -e "${CYAN}  NAMSHUB DOCTOR${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
 echo ""
 echo -e "Timestamp: $(date -Iseconds)"

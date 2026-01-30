@@ -10,8 +10,8 @@
 ## Install
 
 ```bash
-git clone https://github.com/Motium-AI/halt.git
-cd halt
+git clone https://github.com/Motium-AI/namshub.git
+cd namshub
 ./scripts/install.sh
 ```
 

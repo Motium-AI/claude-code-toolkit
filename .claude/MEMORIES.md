@@ -2,7 +2,7 @@
 
 ## Source of Truth
 
-**This repo (`halt`) is the source of truth for all skills, hooks, and configuration.**
+**This repo (`namshub`) is the source of truth for all skills, hooks, and configuration.**
 
 `~/.claude/skills/` and `~/.claude/hooks/` are symlinks to this repo's `config/` directory. When you edit skills or hooks (including via `~/.claude/`), you're editing this repo. **Always commit changes to preserve them.**
 

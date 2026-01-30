@@ -55,7 +55,7 @@ Skills are markdown files that Claude Code automatically loads when it detects r
 
 ### Via Toolkit Installer (Recommended)
 
-If you're using the Halt:
+If you're using Namshub:
 
 ```bash
 cd prompts && ./scripts/install.sh

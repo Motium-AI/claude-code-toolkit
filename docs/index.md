@@ -1,4 +1,4 @@
-# Halt Reference
+# Namshub Reference
 
 ## Quick Links
 
@@ -133,7 +133,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 ## Directory Structure
 
 ```
-halt/           # THIS IS THE SOURCE OF TRUTH
+namshub/        # THIS IS THE SOURCE OF TRUTH
 ├── config/
 │   ├── settings.json          # Hook definitions
 │   ├── commands/              # 11 skill definition files (+ 3 skill-commands)

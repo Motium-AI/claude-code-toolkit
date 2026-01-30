@@ -8,8 +8,8 @@
 #
 # Markers:
 #   1. Directory structure: config/hooks/, config/skills/, config/settings.json
-#   2. Git remote contains "halt"
-#   3. README.md mentions "Halt"
+#   2. Git remote contains "namshub" or "halt" (backward compat)
+#   3. README.md mentions "Namshub" or "Halt" (backward compat)
 #
 # Usage:
 #   ./detect-harness.sh [directory]
@@ -35,19 +35,19 @@ if [[ -f "config/settings.json" ]] && \
     fi
 fi
 
-# Marker 2: Git remote contains "halt"
-if git remote -v 2>/dev/null | grep -q "halt"; then
+# Marker 2: Git remote contains "namshub" or "halt" (backward compat)
+if git remote -v 2>/dev/null | grep -qE "(namshub|halt)"; then
     MARKERS_FOUND=$((MARKERS_FOUND + 1))
     if [[ -n "${HARNESS_DEBUG:-}" ]]; then
-        echo "Marker 2 found: Git remote contains 'halt'" >&2
+        echo "Marker 2 found: Git remote contains 'namshub' or 'halt'" >&2
     fi
 fi
 
-# Marker 3: README.md mentions "Halt"
-if grep -qi "Halt" README.md 2>/dev/null; then
+# Marker 3: README.md mentions "Namshub" or "Halt" (backward compat)
+if grep -qiE "(Namshub|Halt)" README.md 2>/dev/null; then
     MARKERS_FOUND=$((MARKERS_FOUND + 1))
     if [[ -n "${HARNESS_DEBUG:-}" ]]; then
-        echo "Marker 3 found: README.md mentions 'Halt'" >&2
+        echo "Marker 3 found: README.md mentions 'Namshub' or 'Halt'" >&2
     fi
 fi
 

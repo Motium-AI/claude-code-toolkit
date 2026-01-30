@@ -222,7 +222,7 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 ├─────────────────────────────────────────────────────────────────┤
 │  ╔═══════════════════════════════════════════════════════════╗  │
 │  ║  PHASE 1.75: HARNESS TEST (if in toolkit project)         ║  │
-│  ║     └─► Detect if cwd is halt              ║  │
+│  ║     └─► Detect if cwd is namshub              ║  │
 │  ║     └─► Check for modified hooks/skills/settings          ║  │
 │  ║     └─► Create sandbox, propagate changes                 ║  │
 │  ║     └─► Run test cases in isolated Claude session         ║  │
@@ -500,7 +500,7 @@ Use Edit tool for targeted changes. Keep changes focused on the task.
 
 ## Phase 1.75: Harness Test (Conditional)
 
-**This phase only runs when working on the halt repository itself.**
+**This phase only runs when working on the namshub repository itself.**
 
 When modifying hooks, skills, or settings, changes don't take effect in the current session (hooks are captured at startup). This phase tests those changes in an isolated sandbox with a fresh Claude session.
 

@@ -167,7 +167,7 @@ npm run build
 
 **What it does**: Documents the lifecycle hooks and skills so Claude understands what automated behavior exists around it.
 
-**Required (if using Halt)**:
+**Required (if using Namshub)**:
 - [ ] Extension types table: Type | Location | Trigger
 - [ ] Available commands with categories
 - [ ] Available skills with triggers and purpose

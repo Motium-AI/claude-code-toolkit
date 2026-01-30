@@ -10,7 +10,7 @@
 #   ./propagate-changes.sh <source-dir> <sandbox-project-dir>
 #
 # Example:
-#   ./propagate-changes.sh /path/to/halt /tmp/claude-sandboxes/sandbox-xxx/project
+#   ./propagate-changes.sh /path/to/namshub /tmp/claude-sandboxes/sandbox-xxx/project
 #
 # =============================================================================
 

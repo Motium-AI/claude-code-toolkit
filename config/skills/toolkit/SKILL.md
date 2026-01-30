@@ -1,11 +1,11 @@
 ---
 name: toolkit
-description: Halt management, information, and CLAUDE.md optimization. Use when asked about "/toolkit", "how does the toolkit work", "update toolkit", "toolkit status", "auto-update", "how to install", "optimize CLAUDE.md", "improve CLAUDE.md", or "audit CLAUDE.md".
+description: Namshub management, information, and CLAUDE.md optimization. Use when asked about "/toolkit", "how does the toolkit work", "update toolkit", "toolkit status", "auto-update", "how to install", "optimize CLAUDE.md", "improve CLAUDE.md", or "audit CLAUDE.md".
 ---
 
-# Halt
+# Namshub
 
-This skill explains how the Halt works, including installation, auto-update, and manual management.
+This skill explains how Namshub works, including installation, auto-update, and manual management.
 
 ## Triggers
 
@@ -20,7 +20,7 @@ This skill explains how the Halt works, including installation, auto-update, and
 
 ## What is the Toolkit?
 
-The Halt extends Claude Code with:
+Namshub extends Claude Code with:
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
@@ -55,8 +55,8 @@ The toolkit uses **symlinks** to connect `~/.claude/` to the toolkit repository:
 ### Installation Command
 
 ```bash
-git clone https://github.com/Motium-AI/halt.git ~/halt
-cd ~/halt && ./scripts/install.sh
+git clone https://github.com/Motium-AI/namshub.git ~/namshub
+cd ~/namshub && ./scripts/install.sh
 ```
 
 **After installation, restart Claude Code** - hooks are captured at session startup.
@@ -108,7 +108,7 @@ export CLAUDE_TOOLKIT_AUTO_UPDATE=false
 ### Check for Updates
 
 ```bash
-cd ~/halt  # or wherever you cloned it
+cd ~/namshub  # or wherever you cloned it
 git fetch origin main
 git log HEAD..origin/main --oneline
 ```
@@ -116,7 +116,7 @@ git log HEAD..origin/main --oneline
 ### Apply Updates
 
 ```bash
-cd ~/halt
+cd ~/namshub
 git pull
 ```
 
@@ -125,7 +125,7 @@ git pull
 ### Check Current Version
 
 ```bash
-cd ~/halt
+cd ~/namshub
 git log -1 --format="%h %s"
 ```
 
@@ -141,7 +141,7 @@ ls -la ~/.claude/commands
 ls -la ~/.claude/skills
 
 # Run verification
-~/halt/scripts/install.sh --verify
+~/namshub/scripts/install.sh --verify
 ```
 
 ### Check Update State
@@ -159,13 +159,13 @@ Fields:
 ### Diagnose Issues
 
 ```bash
-~/halt/scripts/doctor.sh
+~/namshub/scripts/doctor.sh
 ```
 
 ## Uninstall
 
 ```bash
-~/halt/scripts/install.sh --uninstall
+~/namshub/scripts/install.sh --uninstall
 ```
 
 This removes symlinks but preserves `~/.claude/` directory (state files, plans, memories).
@@ -184,7 +184,7 @@ This removes symlinks but preserves `~/.claude/` directory (state files, plans, 
 
 **Fix**: Manual update:
 ```bash
-cd ~/halt
+cd ~/namshub
 git fetch origin main
 git reset --hard origin/main  # Warning: discards local changes
 ```
@@ -195,7 +195,7 @@ git reset --hard origin/main  # Warning: discards local changes
 
 **Fix**:
 ```bash
-chmod +x ~/halt/config/hooks/*.py
+chmod +x ~/namshub/config/hooks/*.py
 ```
 
 ### Symlinks Broken
@@ -204,7 +204,7 @@ chmod +x ~/halt/config/hooks/*.py
 
 **Fix**: Re-run installer:
 ```bash
-cd ~/halt && ./scripts/install.sh --force
+cd ~/namshub && ./scripts/install.sh --force
 ```
 
 ## CLAUDE.md Optimization
