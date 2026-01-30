@@ -10,17 +10,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/auto-update.py",
+            "command": "python3 \"$HOME/.claude/hooks/auto-update.py\"",
             "timeout": 45
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/session-snapshot.py",
+            "command": "python3 \"$HOME/.claude/hooks/session-snapshot.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/read-docs-reminder.py",
+            "command": "python3 \"$HOME/.claude/hooks/read-docs-reminder.py\"",
             "timeout": 5
           }
         ]
@@ -30,17 +30,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/auto-update.py",
+            "command": "python3 \"$HOME/.claude/hooks/auto-update.py\"",
             "timeout": 45
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/session-snapshot.py",
+            "command": "python3 \"$HOME/.claude/hooks/session-snapshot.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/read-docs-reminder.py",
+            "command": "python3 \"$HOME/.claude/hooks/read-docs-reminder.py\"",
             "timeout": 5
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/stop-validator.py",
+            "command": "python3 \"$HOME/.claude/hooks/stop-validator.py\"",
             "timeout": 10
           }
         ]
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/pretooluse-auto-approve.py",
+            "command": "python3 \"$HOME/.claude/hooks/pretooluse-auto-approve.py\"",
             "timeout": 5
           }
         ]
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py",
+            "command": "python3 \"$HOME/.claude/hooks/plan-mode-enforcer.py\"",
             "timeout": 5
           }
         ]
@@ -83,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py",
+            "command": "python3 \"$HOME/.claude/hooks/plan-mode-enforcer.py\"",
             "timeout": 5
           }
         ]
@@ -93,12 +93,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/deploy-enforcer.py",
-            "timeout": 25
+            "command": "python3 \"$HOME/.claude/hooks/deploy-enforcer.py\"",
+            "timeout": 5
           },
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/azure-command-guard.sh",
+            "command": "bash \"$HOME/.claude/hooks/azure-command-guard.sh\"",
             "timeout": 5
           }
         ]
@@ -120,12 +120,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/plan-mode-tracker.py",
+            "command": "python3 \"$HOME/.claude/hooks/plan-mode-tracker.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/plan-execution-reminder.py",
+            "command": "python3 \"$HOME/.claude/hooks/plan-execution-reminder.py\"",
             "timeout": 5
           }
         ]
@@ -135,7 +135,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/checkpoint-invalidator.py",
+            "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
             "timeout": 5
           }
         ]
@@ -145,7 +145,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/checkpoint-invalidator.py",
+            "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/checkpoint-write-validator.py\"",
             "timeout": 5
           }
         ]
@@ -155,12 +160,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/bash-version-tracker.py",
+            "command": "python3 \"$HOME/.claude/hooks/bash-version-tracker.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/doc-updater-async.py",
+            "command": "python3 \"$HOME/.claude/hooks/doc-updater-async.py\"",
             "timeout": 10
           }
         ]
@@ -170,7 +175,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/skill-continuation-reminder.py",
+            "command": "python3 \"$HOME/.claude/hooks/skill-continuation-reminder.py\"",
             "timeout": 5
           }
         ]
@@ -182,12 +187,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/skill-state-initializer.py",
+            "command": "python3 \"$HOME/.claude/hooks/skill-state-initializer.py\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/read-docs-trigger.py",
+            "command": "python3 \"$HOME/.claude/hooks/read-docs-trigger.py\"",
             "timeout": 5
           }
         ]
@@ -199,7 +204,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/permissionrequest-auto-approve.py",
+            "command": "python3 \"$HOME/.claude/hooks/appfix-auto-approve.py\"",
             "timeout": 5
           }
         ]
