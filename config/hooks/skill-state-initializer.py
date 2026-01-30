@@ -37,19 +37,23 @@ from _common import (
 )
 
 # Deactivation patterns - checked BEFORE activation
+# /repair and /forge are the two primary autonomous skills
 DEACTIVATION_PATTERNS = [
-    r"(?:^|\s)/appfix\s+off\b",
-    r"(?:^|\s)/mobileappfix\s+off\b",
-    r"(?:^|\s)/godo\s+off\b",
+    r"(?:^|\s)/repair\s+off\b",  # Primary debugging skill
+    r"(?:^|\s)/forge\s+off\b",  # Primary task execution skill
+    r"(?:^|\s)/appfix\s+off\b",  # Internal web debugging
+    r"(?:^|\s)/mobileappfix\s+off\b",  # Internal mobile debugging
+    r"(?:^|\s)/godo\s+off\b",  # Legacy alias
     r"\bstop autonomous mode\b",
     r"\bdisable auto[- ]?approval\b",
-    r"\bturn off (appfix|mobileappfix|godo)\b",
+    r"\bturn off (repair|forge|appfix|mobileappfix|godo)\b",
 ]
 
 # Trigger patterns for each skill
-# These should match the triggers defined in the respective SKILL.md files
+# /repair is the PRIMARY debugging skill (creates appfix-state.json internally)
+# /forge is the PRIMARY task execution skill
 # Patterns that indicate mobile app vs web app
-MOBILE_APPFIX_PATTERNS = [
+MOBILE_REPAIR_PATTERNS = [
     r"(?:^|\s)/mobileappfix\b",
     r"\bfix the mobile app\b",
     r"\bmaestro (tests? )?(failing|broken|not working)\b",
@@ -61,9 +65,10 @@ MOBILE_APPFIX_PATTERNS = [
 ]
 
 SKILL_TRIGGERS = {
-    "appfix": [
-        r"(?:^|\s)/appfix\b",  # Slash command (at start or after whitespace)
-        r"(?:^|\s)/mobileappfix\b",  # Mobile variant - uses same appfix-state.json
+    "repair": [  # PRIMARY debugging skill - unified entry point
+        r"(?:^|\s)/repair\b",  # Primary slash command
+        r"(?:^|\s)/appfix\b",  # Web variant (internal)
+        r"(?:^|\s)/mobileappfix\b",  # Mobile variant (internal)
         r"\bfix the app\b",  # Natural language
         r"\bfix the mobile app\b",  # Mobile variant
         r"\bdebug production\b",
@@ -77,8 +82,9 @@ SKILL_TRIGGERS = {
         r"\bmaestro (tests? )?(failing|broken|not working)\b",  # Mobile E2E triggers
         r"\bsimulator (crash|fail|not working)\b",  # Mobile-specific
     ],
-    "godo": [
-        r"(?:^|\s)/godo\b",  # Slash command (at start or after whitespace)
+    "forge": [  # PRIMARY task execution skill
+        r"(?:^|\s)/forge\b",  # Primary slash command
+        r"(?:^|\s)/godo\b",  # Legacy alias
         r"\bgo do\b",  # Natural language
         r"\bjust do it\b",
         r"\bexecute this\b",
@@ -102,7 +108,8 @@ def detect_deactivation(prompt: str) -> bool:
 def detect_skill(prompt: str) -> str | None:
     """Detect which autonomous skill should be activated based on prompt.
 
-    Returns 'appfix', 'godo', or None.
+    Returns 'repair', 'forge', or None.
+    Note: 'repair' triggers create appfix-state.json internally for backwards compatibility.
     """
     prompt_lower = prompt.lower().strip()
 
@@ -118,9 +125,10 @@ def detect_mobile_mode(prompt: str) -> bool:
     """Detect if this is a mobile app fix (vs web app fix).
 
     Returns True if any mobile-specific patterns match.
+    Used by /repair to determine whether to route to web or mobile debugging.
     """
     prompt_lower = prompt.lower().strip()
-    for pattern in MOBILE_APPFIX_PATTERNS:
+    for pattern in MOBILE_REPAIR_PATTERNS:
         if re.search(pattern, prompt_lower, re.IGNORECASE):
             return True
     return False
@@ -134,13 +142,15 @@ def _has_valid_existing_state(cwd: str, skill_name: str, session_id: str) -> boo
 
     Args:
         cwd: Working directory
-        skill_name: 'appfix' or 'godo'
+        skill_name: 'repair' or 'forge'
         session_id: Current session ID
 
     Returns:
         True if valid state exists for this session
     """
-    state = load_state_file(cwd, f"{skill_name}-state.json")
+    # Map repair -> appfix for state file (backwards compatibility)
+    state_skill_name = "appfix" if skill_name == "repair" else skill_name
+    state = load_state_file(cwd, f"{state_skill_name}-state.json")
     if state is None:
         return False
     if is_state_expired(state):
@@ -197,6 +207,9 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
     Creates both project-level (.claude/) and user-level (~/.claude/) state files.
     Includes session_id and last_activity_at for sticky session support.
 
+    NOTE: 'repair' skill uses appfix-state.json internally for backwards compatibility.
+    This allows existing hooks and sessions to work without changes.
+
     MULTI-SESSION SUPPORT: User-level state uses a "sessions" dict that maps
     session_id to session info. This allows multiple parallel Claude sessions
     to coexist without overwriting each other's state.
@@ -208,7 +221,10 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
     Returns True if successful.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    state_filename = f"{skill_name}-state.json"
+
+    # Map repair -> appfix for state file (backwards compatibility)
+    state_skill_name = "appfix" if skill_name == "repair" else skill_name
+    state_filename = f"{state_skill_name}-state.json"
 
     # Detect if we're in a worktree (subagent) or main repo (coordinator)
     is_coordinator, agent_id, worktree_path = _detect_worktree_context(cwd)
@@ -231,7 +247,7 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
     }
 
     # Add skill-specific fields
-    if skill_name == "godo":
+    if skill_name == "forge":
         project_state["task"] = "Detected from user prompt"
 
     success = True
@@ -344,16 +360,18 @@ def main():
         )
         sys.exit(0)
 
-    # 4. Detect if mobile mode for appfix
-    is_mobile = skill_name == "appfix" and detect_mobile_mode(prompt)
+    # 4. Detect if mobile mode for repair skill
+    is_mobile = skill_name == "repair" and detect_mobile_mode(prompt)
 
     # 5. Create new state file with session binding
     success = create_state_file(cwd, skill_name, session_id, is_mobile)
 
     if success:
         # Output message (added to context for Claude)
+        # Map repair -> appfix for state file name (internal detail)
+        state_skill_name = "appfix" if skill_name == "repair" else skill_name
         print(f"[skill-state-initializer] Autonomous mode activated: {skill_name}")
-        print(f"State file created: .claude/{skill_name}-state.json")
+        print(f"State file created: .claude/{state_skill_name}-state.json")
         print("Auto-approval hooks are now active.")
 
     sys.exit(0)

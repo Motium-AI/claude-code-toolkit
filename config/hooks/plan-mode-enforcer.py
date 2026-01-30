@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse hook to enforce plan mode on first iteration of godo/appfix.
+PreToolUse hook to enforce plan mode on first iteration of forge/appfix.
 
 This hook BLOCKS Edit/Write tools until plan mode has been completed (indicated
 by plan_mode_completed: true in the state file). This ensures Claude follows
@@ -34,8 +34,8 @@ BLOCK_MESSAGE = """
 ║  ⚠️  PLAN MODE REQUIRED - FIRST ITERATION                                     ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-This is the first iteration of godo/appfix. You MUST explore the codebase
-and create a plan before making code changes.
+This is the first iteration of an autonomous skill (/forge or /repair).
+You MUST explore the codebase and create a plan before making code changes.
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │  REQUIRED WORKFLOW (Phase 0.5):                                                 │

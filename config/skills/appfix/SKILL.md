@@ -5,9 +5,13 @@ description: Autonomous app debugging system. Checks environment health, diagnos
 
 # Autonomous App Debugging (/appfix)
 
+> **Recommended**: Use `/repair` instead - it auto-detects web vs mobile and routes appropriately.
+> `/appfix` is the internal web debugging skill. Use it directly only when you specifically want
+> web debugging without platform detection.
+
 Autonomous debugging skill that iterates until all services are healthy and verified in browser.
 
-> `/appfix` is a debugging specialization of `/godo`. It inherits the completion checkpoint
+> `/appfix` is a debugging specialization of `/forge`. It inherits the completion checkpoint
 > architecture and adds debugging-specific phases (health checks, log collection, service topology).
 
 ## Triggers

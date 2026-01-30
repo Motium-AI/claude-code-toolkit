@@ -20,6 +20,7 @@ from _common import (
     get_code_version,
     get_fields_to_invalidate,
     save_checkpoint,
+    is_repair_active,
     is_appfix_active,
     is_mobileappfix_active,
     is_autonomous_mode_active,
@@ -30,6 +31,35 @@ from _common import (
 # ============================================================================
 # Git Utilities
 # ============================================================================
+
+
+def is_mobile_project(cwd: str) -> bool:
+    """Detect if the current project is a mobile app based on project files.
+
+    This provides a safety net against false-positive mobile detection.
+    Even if state says mobile, we shouldn't require Maestro tests unless
+    the project actually has mobile app indicators.
+
+    Args:
+        cwd: Working directory to check
+
+    Returns:
+        True if mobile app indicators are found, False otherwise
+    """
+    if not cwd:
+        return False
+    cwd_path = Path(cwd)
+    mobile_indicators = [
+        "app.json",          # Expo/React Native config
+        "eas.json",          # EAS Build config
+        "metro.config.js",   # React Native Metro bundler
+        "ios",               # iOS native directory
+        "android",           # Android native directory
+    ]
+    for indicator in mobile_indicators:
+        if (cwd_path / indicator).exists():
+            return True
+    return False
 
 
 def get_git_diff_files() -> list[str]:
@@ -655,6 +685,11 @@ def validate_mobile_testing(
     2. Maestro smoke artifacts exist and passed
     3. MCP tools were used (maestro_mcp_used)
 
+    Safety net: Even if state says mobile, we verify the project actually
+    has mobile app indicators (app.json, eas.json, etc.) before requiring
+    Maestro tests. This prevents false-positive mobile detection from
+    blocking non-mobile projects.
+
     Returns (failures, checkpoint_modified)
     """
     failures = []
@@ -662,6 +697,11 @@ def validate_mobile_testing(
     checkpoint_modified = False
 
     if not is_mobileappfix_active(cwd):
+        return failures, checkpoint_modified
+
+    # Safety net: Don't require Maestro tests if project isn't actually mobile
+    # This prevents false-positive mobile detection from blocking non-mobile projects
+    if not is_mobile_project(cwd):
         return failures, checkpoint_modified
 
     # Check if code changes were made

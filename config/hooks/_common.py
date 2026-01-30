@@ -272,8 +272,29 @@ def _is_cwd_under_origin(cwd: str, user_state: dict, session_id: str = "") -> bo
         return False
 
 
+def is_repair_active(cwd: str, session_id: str = "") -> bool:
+    """Check if repair mode is active (unified debugging - web or mobile).
+
+    This is the PRIMARY function to check for debugging mode.
+    Internally uses appfix-state.json for backwards compatibility.
+
+    For web vs mobile distinction, use is_mobileappfix_active().
+
+    Args:
+        cwd: Current working directory path
+        session_id: Current session ID (optional, for cross-directory trust)
+
+    Returns:
+        True if repair mode is active (web OR mobile), False otherwise
+    """
+    return is_appfix_active(cwd, session_id)
+
+
 def is_appfix_active(cwd: str, session_id: str = "") -> bool:
     """Check if appfix mode is active via non-expired state file or env var.
+
+    NOTE: Prefer using is_repair_active() for new code. This function exists
+    for backwards compatibility.
 
     Loads the state file and checks TTL expiry. Expired state files are
     treated as inactive (cleaned up at next SessionStart).
@@ -340,8 +361,8 @@ def is_mobileappfix_active(cwd: str, session_id: str = "") -> bool:
     return False
 
 
-def is_godo_active(cwd: str, session_id: str = "") -> bool:
-    """Check if godo mode is active via non-expired state file or env var.
+def is_forge_active(cwd: str, session_id: str = "") -> bool:
+    """Check if forge mode is active via non-expired state file or env var.
 
     Loads the state file and checks TTL expiry. Expired state files are
     treated as inactive (cleaned up at next SessionStart).
@@ -351,15 +372,15 @@ def is_godo_active(cwd: str, session_id: str = "") -> bool:
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        True if godo mode is active and not expired, False otherwise
+        True if forge mode is active and not expired, False otherwise
     """
     # Check project-level state with TTL
-    state = load_state_file(cwd, "godo-state.json")
+    state = load_state_file(cwd, "forge-state.json")
     if state and not is_state_expired(state):
         return True
 
     # Check user-level state with TTL and origin/session check
-    user_state_path = Path.home() / ".claude" / "godo-state.json"
+    user_state_path = Path.home() / ".claude" / "forge-state.json"
     if user_state_path.exists():
         try:
             user_state = json.loads(user_state_path.read_text())
@@ -369,25 +390,32 @@ def is_godo_active(cwd: str, session_id: str = "") -> bool:
             pass
 
     # Fallback: Check environment variable (no TTL for env vars)
-    if os.environ.get("GODO_ACTIVE", "").lower() in ("true", "1", "yes"):
+    if os.environ.get("FORGE_ACTIVE", "").lower() in ("true", "1", "yes"):
         return True
 
     return False
 
 
+# Alias for backward compatibility
+def is_godo_active(cwd: str, session_id: str = "") -> bool:
+    """Deprecated: Use is_forge_active() instead."""
+    return is_forge_active(cwd, session_id)
+
+
 def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
-    """Check if any autonomous execution mode is active (godo or appfix).
+    """Check if any autonomous execution mode is active (forge or repair).
 
     This is the unified check for enabling auto-approval hooks.
+    Recognizes both /forge and /repair (/appfix, /mobileappfix) modes.
 
     Args:
         cwd: Current working directory path
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        True if godo OR appfix mode is active, False otherwise
+        True if forge OR repair mode is active, False otherwise
     """
-    return is_godo_active(cwd, session_id) or is_appfix_active(cwd, session_id)
+    return is_forge_active(cwd, session_id) or is_repair_active(cwd, session_id)
 
 
 def _find_state_file_path(cwd: str, filename: str) -> Path | None:
@@ -402,7 +430,7 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'godo-state.json')
+        filename: Name of the state file (e.g., 'forge-state.json')
 
     Returns:
         Path to state file if found, None otherwise
@@ -432,7 +460,7 @@ def load_state_file(cwd: str, filename: str) -> dict | None:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'godo-state.json')
+        filename: Name of the state file (e.g., 'forge-state.json')
 
     Returns:
         Parsed JSON contents as dict if found, None otherwise
@@ -453,7 +481,7 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'godo-state.json')
+        filename: Name of the state file (e.g., 'forge-state.json')
         updates: Dictionary of key-value pairs to merge into state
 
     Returns:
@@ -478,7 +506,7 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
 def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, str | None]:
     """Get the autonomous mode state file and its type, filtering expired.
 
-    Checks for godo-state.json first, then appfix-state.json.
+    Checks for forge-state.json first, then appfix-state.json (used by /repair).
     Checks both project-level AND user-level state files.
     Returns None for expired state files.
 
@@ -487,27 +515,27 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        Tuple of (state_dict, state_type) where state_type is 'godo' or 'appfix'
+        Tuple of (state_dict, state_type) where state_type is 'forge' or 'repair'
         Returns (None, None) if no state file found or all expired
     """
-    # Check project-level godo state
-    godo_state = load_state_file(cwd, "godo-state.json")
-    if godo_state and not is_state_expired(godo_state):
-        return godo_state, "godo"
+    # Check project-level forge state
+    forge_state = load_state_file(cwd, "forge-state.json")
+    if forge_state and not is_state_expired(forge_state):
+        return forge_state, "forge"
 
-    # Check project-level appfix state
+    # Check project-level appfix state (used by /repair)
     appfix_state = load_state_file(cwd, "appfix-state.json")
     if appfix_state and not is_state_expired(appfix_state):
-        return appfix_state, "appfix"
+        return appfix_state, "repair"
 
     # Check user-level state files (for cross-directory support)
-    # This matches the behavior of is_appfix_active() and is_godo_active()
-    user_godo_path = Path.home() / ".claude" / "godo-state.json"
-    if user_godo_path.exists():
+    # This matches the behavior of is_repair_active() and is_forge_active()
+    user_forge_path = Path.home() / ".claude" / "forge-state.json"
+    if user_forge_path.exists():
         try:
-            user_godo_state = json.loads(user_godo_path.read_text())
-            if not is_state_expired(user_godo_state) and _is_cwd_under_origin(cwd, user_godo_state, session_id):
-                return user_godo_state, "godo"
+            user_forge_state = json.loads(user_forge_path.read_text())
+            if not is_state_expired(user_forge_state) and _is_cwd_under_origin(cwd, user_forge_state, session_id):
+                return user_forge_state, "forge"
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -516,7 +544,7 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         try:
             user_appfix_state = json.loads(user_appfix_path.read_text())
             if not is_state_expired(user_appfix_state) and _is_cwd_under_origin(cwd, user_appfix_state, session_id):
-                return user_appfix_state, "appfix"
+                return user_appfix_state, "repair"
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -540,7 +568,7 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "godo-state.json"]
+    state_files = ["appfix-state.json", "forge-state.json"]
 
     # 1. Clean user-level state
     user_claude_dir = Path.home() / ".claude"
@@ -667,7 +695,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
     clears per-task fields (verification_evidence, services).
     Does NOT delete the state file - that's the sticky session behavior.
 
-    Operates on whichever state file exists (godo or appfix).
+    Operates on whichever state file exists (forge or appfix).
 
     Args:
         cwd: Working directory containing .claude/
@@ -675,7 +703,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
     Returns:
         True if state was reset, False if no state file found
     """
-    for filename in ("godo-state.json", "appfix-state.json"):
+    for filename in ("forge-state.json", "appfix-state.json"):
         state_path = _find_state_file_path(cwd, filename)
         if state_path:
             try:
@@ -800,7 +828,7 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "godo-state.json"]
+    state_files = ["appfix-state.json", "forge-state.json"]
 
     def _should_clean_project_level(state_path: Path) -> bool:
         """Check if a project-level state file should be cleaned up.

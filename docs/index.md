@@ -10,19 +10,19 @@
 
 ## The Three Core Skills
 
-### `/godo` — Universal Task Execution
+### `/forge` — Universal Task Execution
 **Use when**: You have a task and want autonomous execution.
 ```
-/godo add a logout button to the navbar
+/forge add a logout button to the navbar
 ```
-Explores codebase → implements → lints → commits → deploys → verifies in browser → **cannot stop until done**.
+**Lite Heavy planning** (2 parallel Opus agents: First Principles + AGI-Pilled, read from `/heavy`) → implements → lints → commits → deploys → verifies in browser → **cannot stop until done**.
 
-### `/appfix` — Autonomous Debugging
-**Use when**: Something is broken.
+### `/repair` — Unified Debugging Router
+**Use when**: Something is broken (auto-detects web vs mobile).
 ```
-/appfix
+/repair
 ```
-Health checks → collects logs → diagnoses → fixes → deploys → **loops until healthy**.
+Detects platform → routes to `/appfix` (web) or `/mobileappfix` (mobile) → **loops until healthy**.
 
 ### `/heavy` — Multi-Perspective Analysis
 **Use when**: Complex question needing broad perspectives.
@@ -33,13 +33,14 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 
 ---
 
-## All Slash Commands (11 commands + 3 core skills)
+## All Slash Commands (12 commands + 3 core skills)
 
 | Command | Purpose |
 |---------|---------|
-| `/godo` | Autonomous task execution |
-| `/appfix` | Autonomous debugging |
+| `/forge` | Autonomous task execution (with Lite Heavy planning) |
+| `/repair` | Unified debugging router (web → appfix, mobile → mobileappfix) |
 | `/heavy` | Multi-agent analysis |
+| `/appfix` | Web app debugging |
 | `/qa` | Architecture audit |
 | `/deslop` | AI slop detection |
 | `/docupdate` | Documentation gaps |
@@ -52,14 +53,15 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 | `/designimprove` | UI improvement |
 | `/uximprove` | UX improvement |
 
-## All Skills (17 active, 2 deprecated)
+## All Skills (18 active, 2 deprecated)
 
 | Skill | Triggers |
 |-------|----------|
-| `godo` | /godo, "go do", "just do it", "execute this" |
-| `appfix` | /appfix, "fix the app", "debug production" |
+| `forge` | /forge, /godo (legacy), "go do", "just do it", "execute this" |
+| `repair` | /repair, /appfix, /mobileappfix, "fix the app", "debug production" |
+| `appfix` | (Internal: web debugging - prefer /repair) |
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives", "debate this" |
-| `mobileappfix` | Mobile app debugging, Maestro tests |
+| `mobileappfix` | (Internal: mobile debugging - prefer /repair) |
 | `skill-sandbox` | /skill-sandbox, "test skill", "sandbox test" |
 | `toolkit` | /toolkit, "update toolkit" |
 | `deploy-pipeline` | /deploy, deployment questions |
@@ -109,7 +111,7 @@ Health checks → collects logs → diagnoses → fixes → deploys → **loops 
 | [Hooks](concepts/hooks.md) | Hook lifecycle |
 | [Architecture](architecture.md) | System design |
 | [Appfix Guide](skills/appfix-guide.md) | Complete debugging guide |
-| [Godo Guide](skills/godo-guide.md) | Autonomous task execution guide |
+| [Forge Guide](skills/forge-guide.md) | Autonomous task execution guide (with Lite Heavy) |
 | [Philosophy](philosophy.md) | Core philosophy and principles |
 | [Settings Reference](reference/settings.md) | Configuration options |
 | [Azure Command Guard](hooks/azure-command-guard.md) | Azure CLI security hook |
