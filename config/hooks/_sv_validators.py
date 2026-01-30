@@ -441,6 +441,12 @@ def validate_code_requirements(
     """Check linters, deployed for app code changes."""
     failures = []
 
+    # Trust session's self-report over git diff for multi-session scenarios.
+    # Git diff is repo-global, but code_changes_made is session-specific.
+    # Session B shouldn't be blocked by Session A's dirty git state.
+    if not report.get("code_changes_made", False):
+        return failures
+
     if not has_app_code:
         return failures
 
