@@ -18,7 +18,7 @@ Complete guide to the `/forge` skill for autonomous task execution with Lite Hea
 
 `/forge` is the universal autonomous execution skill. It provides:
 
-- **Lite Heavy Planning** - 2 parallel Opus agents (First Principles + Implementer) before execution
+- **Lite Heavy Planning** - 4 parallel Opus agents (First Principles + AGI-Pilled + 2 dynamic) before execution
 - **100% Autonomous Operation** - No permission prompts, no confirmation requests
 - **Completion Checkpoint** - Deterministic boolean validation before stopping
 - **Browser Verification** - Mandatory testing in real browser
@@ -28,7 +28,7 @@ Complete guide to the `/forge` skill for autonomous task execution with Lite Hea
 
 | Feature | Description |
 |---------|-------------|
-| Lite Heavy planning | 2-agent planning phase to prevent over/under-engineering |
+| Lite Heavy planning | 4-agent planning phase to prevent over/under-engineering |
 | Auto-approval hooks | All tool permissions granted automatically |
 | Stop hook validation | Cannot stop until checkpoint booleans pass |
 | Checkpoint invalidation | Stale fields reset when code changes |
@@ -120,7 +120,7 @@ EOF
    - Environment and deployment configs
    - Relevant code patterns for the task
    - Existing tests and validation
-3. **Launch 2 parallel Opus agents** (First Principles + Implementer)
+3. **Launch 4 parallel Opus agents in a SINGLE message** (First Principles + AGI-Pilled + 2 dynamic perspectives)
 4. **Synthesize tradeoffs** and write to plan file
 5. `ExitPlanMode` - Get plan approved
 
@@ -213,7 +213,7 @@ deployed_at_version: "abc1234"
 | Aspect | /forge | /appfix |
 |--------|--------|---------|
 | **Purpose** | Any task | Debugging failures |
-| **Lite Heavy planning** | Yes (2 agents) | No |
+| **Lite Heavy planning** | Yes (4 agents) | No |
 | **docs_read_at_start** | Not required | Required |
 | **Health check phase** | No | Yes |
 | **Log collection** | No | Yes |

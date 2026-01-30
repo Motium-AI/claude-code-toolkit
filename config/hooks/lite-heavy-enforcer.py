@@ -2,10 +2,11 @@
 """
 PreToolUse hook to enforce Lite Heavy execution before ExitPlanMode for /forge.
 
-Blocks ExitPlanMode until:
+Blocks ExitPlanMode until ALL 4 agents have been launched:
 1. heavy/SKILL.md has been read
 2. "First Principles" Task agent has been launched
 3. "AGI-Pilled" Task agent has been launched
+4. 2 dynamic Task agents have been launched (task-specific perspectives)
 
 The tracking is done by lite-heavy-tracker.py (PostToolUse hook).
 This hook only checks the state and blocks if requirements aren't met.
@@ -34,7 +35,7 @@ BLOCK_MESSAGE = """
 ║  ⚠️  LITE HEAVY PLANNING REQUIRED - /forge                                    ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-Before exiting plan mode, you MUST complete Lite Heavy planning:
+Before exiting plan mode, you MUST launch ALL 4 Opus agents.
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │  REQUIRED STEPS:                                                                │
@@ -42,16 +43,27 @@ Before exiting plan mode, you MUST complete Lite Heavy planning:
 │  {step1}  1. Read ~/.claude/skills/heavy/SKILL.md (get agent prompts)           │
 │  {step2}  2. Launch Task: "First Principles Analysis" (from heavy)              │
 │  {step3}  3. Launch Task: "AGI-Pilled Analysis" (from heavy)                    │
-│  4. Synthesize their responses into your plan                                   │
+│  {step4}  4. Launch 2 dynamic Task agents (task-specific perspectives)          │
+│           ({dynamic_count}/2 launched)                                          │
+│  5. Synthesize ALL 4 agents' responses into your plan                           │
 │                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
-WHY LITE HEAVY?
-- First Principles asks: "What can be deleted? What's over-engineered?"
-- AGI-Pilled asks: "What would god-tier AI implementation look like?"
-- Together they prevent both over-engineering AND under-ambition
+⚠️  CRITICAL: Launch ALL 4 agents in a SINGLE message (one message, four Task calls).
+Do NOT launch them one at a time. They must run in PARALLEL.
 
-Complete the missing steps, then ExitPlanMode again.
+Dynamic agents = task-specific perspectives. Ask:
+"For THIS task, who would argue about it at a company meeting?"
+Pick 2 perspectives that catch what First Principles and AGI-Pilled miss.
+Use "perspective", "analysis", "review", or "expert" in the Task description.
+
+WHY 4 AGENTS?
+- First Principles: "What can be deleted? What's over-engineered?"
+- AGI-Pilled: "What would god-tier AI implementation look like?"
+- Dynamic 1: Domain expertise — "What does [expert] see?"
+- Dynamic 2: Adversarial review — "What could go wrong?"
+
+Complete ALL missing steps, then ExitPlanMode again.
 """.strip()
 
 
@@ -85,11 +97,18 @@ def main():
     heavy_skill_read = lite_heavy.get("heavy_skill_read", False)
     first_principles_launched = lite_heavy.get("first_principles_launched", False)
     agi_pilled_launched = lite_heavy.get("agi_pilled_launched", False)
+    dynamic_agents_launched = lite_heavy.get("dynamic_agents_launched", 0)
 
     # If all requirements met, allow ExitPlanMode
-    if heavy_skill_read and first_principles_launched and agi_pilled_launched:
+    all_met = (
+        heavy_skill_read
+        and first_principles_launched
+        and agi_pilled_launched
+        and dynamic_agents_launched >= 2
+    )
+    if all_met:
         log_debug(
-            "Lite Heavy requirements met, allowing ExitPlanMode",
+            "Lite Heavy requirements met (4 agents), allowing ExitPlanMode",
             hook_name="lite-heavy-enforcer"
         )
         sys.exit(0)
@@ -98,8 +117,12 @@ def main():
     step1 = "✓" if heavy_skill_read else "✗"
     step2 = "✓" if first_principles_launched else "✗"
     step3 = "✓" if agi_pilled_launched else "✗"
+    step4 = "✓" if dynamic_agents_launched >= 2 else "✗"
 
-    message = BLOCK_MESSAGE.format(step1=step1, step2=step2, step3=step3)
+    message = BLOCK_MESSAGE.format(
+        step1=step1, step2=step2, step3=step3, step4=step4,
+        dynamic_count=dynamic_agents_launched
+    )
 
     log_debug(
         "Blocking ExitPlanMode - Lite Heavy incomplete",
@@ -108,6 +131,7 @@ def main():
             "heavy_skill_read": heavy_skill_read,
             "first_principles_launched": first_principles_launched,
             "agi_pilled_launched": agi_pilled_launched,
+            "dynamic_agents_launched": dynamic_agents_launched,
         }
     )
 

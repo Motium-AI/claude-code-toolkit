@@ -308,7 +308,7 @@ EOF
 
 ### Overview
 
-Lite Heavy is a streamlined version of `/heavy` that provides multi-perspective analysis in a single round. It uses **4 agents**: `/heavy`'s **First Principles** and **AGI-Pilled** (2 required, hook-enforced) plus **2 dynamic agents** generated based on the specific task. This ensures you don't over-engineer, under-simplify, AND catches task-specific blind spots.
+Lite Heavy is a streamlined version of `/heavy` that provides multi-perspective analysis in a single round. It uses **4 agents** (all hook-enforced): `/heavy`'s **First Principles** and **AGI-Pilled** plus **2 dynamic agents** generated based on the specific task. This ensures you don't over-engineer, under-simplify, AND catches task-specific blind spots.
 
 ### Workflow
 
@@ -343,7 +343,7 @@ Lite Heavy is a streamlined version of `/heavy` that provides multi-perspective 
    Using the prompts read from heavy/SKILL.md:
 
    ```
-   // 2 REQUIRED AGENTS (hook-enforced)
+   // 4 AGENTS (all hook-enforced — must be in a SINGLE message)
    Task(
      subagent_type="general-purpose",
      description="First Principles Analysis",
@@ -358,7 +358,7 @@ Lite Heavy is a streamlined version of `/heavy` that provides multi-perspective 
      prompt="[PASTE HEAVY'S AGI-PILLED PROMPT with TASK and CODEBASE CONTEXT filled in]"
    )
 
-   // 2 DYNAMIC AGENTS (task-specific)
+   // 2 DYNAMIC AGENTS (task-specific, also hook-enforced)
    Task(
      subagent_type="general-purpose",
      description="[DYNAMIC PERSPECTIVE 1] perspective",
@@ -403,8 +403,8 @@ Lite Heavy uses **4 agents** to cover both universal tensions and task-specific 
 |------------|-------|--------------|-------------|
 | **First Principles** | Simplification | "What can be deleted?" | Hook-enforced |
 | **AGI-Pilled** | Capability | "What would god-tier AI do?" | Hook-enforced |
-| **Dynamic 1** | Domain expertise | "What does [expert] see?" | Documentation |
-| **Dynamic 2** | Adversarial review | "What could go wrong?" | Documentation |
+| **Dynamic 1** | Domain expertise | "What does [expert] see?" | Hook-enforced |
+| **Dynamic 2** | Adversarial review | "What could go wrong?" | Hook-enforced |
 
 | Problem | Which Agent Catches It |
 |---------|----------------------|
@@ -418,7 +418,7 @@ Lite Heavy uses **4 agents** to cover both universal tensions and task-specific 
 - 4 agents = 6 pairwise tensions (each perspective challenges 3 others)
 - Planning tokens << execution tokens — better planning = fewer fix-verify iterations
 
-**Hook enforcement**: Only the 2 required agents are hook-enforced. Dynamic agents are guided by documentation — the hooks enforce minimums, not maximums.
+**Hook enforcement**: All 4 agents are hook-enforced. The `lite-heavy-enforcer` blocks ExitPlanMode until First Principles, AGI-Pilled, AND 2 dynamic agents have been launched. Dynamic agents are detected by "perspective", "analysis", "review", or "expert" keywords in the Task description.
 
 **Why reference heavy instead of duplicating?** Single source of truth. When heavy's prompts improve, forge automatically benefits.
 
