@@ -90,11 +90,11 @@ def _scoped_filename(filename: str, pid: int | None = None) -> str:
     """Convert a state filename to its PID-scoped version.
 
     Examples:
-        'forge-state.json' → 'forge-state.12345.json'
+        'build-state.json' → 'build-state.12345.json'
         'completion-checkpoint.json' → 'completion-checkpoint.12345.json'
 
     Args:
-        filename: Original filename (e.g., 'forge-state.json')
+        filename: Original filename (e.g., 'build-state.json')
         pid: PID to scope to (default: current session PID)
 
     Returns:
@@ -110,8 +110,8 @@ def _extract_pid_from_filename(filename: str) -> int | None:
     """Extract PID from a PID-scoped filename.
 
     Examples:
-        'forge-state.12345.json' → 12345
-        'forge-state.json' → None (legacy, no PID)
+        'build-state.12345.json' → 12345
+        'build-state.json' → None (legacy, no PID)
 
     Args:
         filename: Filename (stem or full name)
@@ -132,11 +132,11 @@ def _extract_pid_from_filename(filename: str) -> int | None:
 def _find_any_scoped_state_files(cwd: str, base_name: str) -> list[Path]:
     """Find all PID-scoped state files matching a base name pattern.
 
-    Used for session-agnostic checks (e.g., "is ANY forge session active?").
+    Used for session-agnostic checks (e.g., "is ANY build session active?").
 
     Args:
         cwd: Directory containing .claude/
-        base_name: Base name without extension (e.g., 'forge-state')
+        base_name: Base name without extension (e.g., 'build-state')
 
     Returns:
         List of matching Path objects, sorted by modification time (newest first)
@@ -298,7 +298,7 @@ def _check_state_file(cwd: str, filename: str) -> bool:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
-        base_name = Path(filename).stem  # e.g., 'forge-state'
+        base_name = Path(filename).stem  # e.g., 'build-state'
         # Walk up to home directory (max 20 levels to prevent infinite loops)
         for _ in range(20):
             # Stop at home directory - ~/.claude/ is for global config, not project state
@@ -471,8 +471,8 @@ def is_mobileappfix_active(cwd: str, session_id: str = "") -> bool:
     return False
 
 
-def is_forge_active(cwd: str, session_id: str = "") -> bool:
-    """Check if forge mode is active via non-expired state file or env var.
+def is_build_active(cwd: str, session_id: str = "") -> bool:
+    """Check if build mode is active via non-expired state file or env var.
 
     Loads the state file and checks TTL expiry. Expired state files are
     treated as inactive (cleaned up at next SessionStart).
@@ -485,34 +485,45 @@ def is_forge_active(cwd: str, session_id: str = "") -> bool:
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        True if forge mode is active and not expired, False otherwise
+        True if build mode is active and not expired, False otherwise
     """
     # Check project-level state with TTL (handles PID-scoped + legacy)
-    state = load_state_file(cwd, "forge-state.json")
-    if state and not is_state_expired(state):
-        return True
+    # Check build-state.json first, fall back to forge-state.json for backward compat
+    for state_filename in ("build-state.json", "forge-state.json"):
+        state = load_state_file(cwd, state_filename)
+        if state and not is_state_expired(state):
+            return True
 
     # Check user-level state with TTL and origin/session check
-    user_state_path = Path.home() / ".claude" / "forge-state.json"
-    if user_state_path.exists():
-        try:
-            user_state = json.loads(user_state_path.read_text())
-            if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
-                return True
-        except (json.JSONDecodeError, IOError):
-            pass
+    for state_filename in ("build-state.json", "forge-state.json"):
+        user_state_path = Path.home() / ".claude" / state_filename
+        if user_state_path.exists():
+            try:
+                user_state = json.loads(user_state_path.read_text())
+                if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
+                    return True
+            except (json.JSONDecodeError, IOError):
+                pass
 
     # Fallback: Check environment variable (no TTL for env vars)
+    if os.environ.get("BUILD_ACTIVE", "").lower() in ("true", "1", "yes"):
+        return True
+    # Legacy env var fallback
     if os.environ.get("FORGE_ACTIVE", "").lower() in ("true", "1", "yes"):
         return True
 
     return False
 
 
-# Alias for backward compatibility
+# Backward compatibility aliases
+def is_forge_active(cwd: str, session_id: str = "") -> bool:
+    """Deprecated: Use is_build_active() instead."""
+    return is_build_active(cwd, session_id)
+
+
 def is_godo_active(cwd: str, session_id: str = "") -> bool:
-    """Deprecated: Use is_forge_active() instead."""
-    return is_forge_active(cwd, session_id)
+    """Deprecated: Use is_build_active() instead."""
+    return is_build_active(cwd, session_id)
 
 
 def is_burndown_active(cwd: str, session_id: str = "") -> bool:
@@ -551,19 +562,19 @@ def is_burndown_active(cwd: str, session_id: str = "") -> bool:
 
 
 def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
-    """Check if any autonomous execution mode is active (forge, repair, or burndown).
+    """Check if any autonomous execution mode is active (build, repair, or burndown).
 
     This is the unified check for enabling auto-approval hooks.
-    Recognizes /forge, /repair (/appfix, /mobileappfix), and /burndown modes.
+    Recognizes /build, /repair (/appfix, /mobileappfix), and /burndown modes.
 
     Args:
         cwd: Current working directory path
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        True if forge OR repair OR burndown mode is active, False otherwise
+        True if build OR repair OR burndown mode is active, False otherwise
     """
-    return is_forge_active(cwd, session_id) or is_repair_active(cwd, session_id) or is_burndown_active(cwd, session_id)
+    return is_build_active(cwd, session_id) or is_repair_active(cwd, session_id) or is_burndown_active(cwd, session_id)
 
 
 def _find_state_file_path(cwd: str, filename: str) -> Path | None:
@@ -573,9 +584,9 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
     similar to how git finds the .git directory.
 
     Checks in this order at each directory level:
-    1. PID-scoped file for this session (e.g., forge-state.12345.json)
+    1. PID-scoped file for this session (e.g., build-state.12345.json)
     2. Any PID-scoped file with a live PID (another active agent)
-    3. Legacy unscoped file (e.g., forge-state.json)
+    3. Legacy unscoped file (e.g., build-state.json)
 
     IMPORTANT: Stops at the home directory to avoid picking up unrelated
     state files from ~/.claude/ which is meant for global config, not
@@ -583,7 +594,7 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'forge-state.json')
+        filename: Name of the state file (e.g., 'build-state.json')
 
     Returns:
         Path to state file if found, None otherwise
@@ -591,7 +602,7 @@ def _find_state_file_path(cwd: str, filename: str) -> Path | None:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
-        base_name = Path(filename).stem  # e.g., 'forge-state'
+        base_name = Path(filename).stem  # e.g., 'build-state'
         # Walk up to home directory (max 20 levels to prevent infinite loops)
         for _ in range(20):
             # Stop at home directory - ~/.claude/ is for global config, not project state
@@ -627,7 +638,7 @@ def load_state_file(cwd: str, filename: str) -> dict | None:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'forge-state.json')
+        filename: Name of the state file (e.g., 'build-state.json')
 
     Returns:
         Parsed JSON contents as dict if found, None otherwise
@@ -648,7 +659,7 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
 
     Args:
         cwd: Current working directory path
-        filename: Name of the state file (e.g., 'forge-state.json')
+        filename: Name of the state file (e.g., 'build-state.json')
         updates: Dictionary of key-value pairs to merge into state
 
     Returns:
@@ -673,8 +684,8 @@ def update_state_file(cwd: str, filename: str, updates: dict) -> bool:
 def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, str | None]:
     """Get the autonomous mode state file and its type, filtering expired.
 
-    Checks for forge-state.json first, then appfix-state.json (used by /repair),
-    then burndown-state.json.
+    Checks for build-state.json first (with forge-state.json fallback),
+    then appfix-state.json (used by /repair), then burndown-state.json.
     Checks both project-level AND user-level state files.
     Returns None for expired state files.
 
@@ -683,13 +694,14 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         session_id: Current session ID (optional, for cross-directory trust)
 
     Returns:
-        Tuple of (state_dict, state_type) where state_type is 'forge', 'repair', or 'burndown'
+        Tuple of (state_dict, state_type) where state_type is 'build', 'repair', or 'burndown'
         Returns (None, None) if no state file found or all expired
     """
-    # Check project-level forge state
-    forge_state = load_state_file(cwd, "forge-state.json")
-    if forge_state and not is_state_expired(forge_state):
-        return forge_state, "forge"
+    # Check project-level build state (new name first, legacy fallback)
+    for build_filename in ("build-state.json", "forge-state.json"):
+        build_state = load_state_file(cwd, build_filename)
+        if build_state and not is_state_expired(build_state):
+            return build_state, "build"
 
     # Check project-level appfix state (used by /repair)
     appfix_state = load_state_file(cwd, "appfix-state.json")
@@ -702,9 +714,9 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         return burndown_state, "burndown"
 
     # Check user-level state files (for cross-directory support)
-    # This matches the behavior of is_repair_active(), is_forge_active(), and is_burndown_active()
     for filename, state_type in [
-        ("forge-state.json", "forge"),
+        ("build-state.json", "build"),
+        ("forge-state.json", "build"),  # Legacy fallback
         ("appfix-state.json", "repair"),
         ("burndown-state.json", "burndown"),
     ]:
@@ -738,8 +750,8 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "forge-state.json", "burndown-state.json"]
-    state_bases = ["appfix-state", "forge-state", "burndown-state"]
+    state_files = ["appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json"]
+    state_bases = ["appfix-state", "build-state", "forge-state", "burndown-state"]
 
     # 1. Clean user-level state
     user_claude_dir = Path.home() / ".claude"
@@ -845,7 +857,7 @@ def cleanup_checkpoint_only(cwd: str) -> list[str]:
     """Delete ONLY the completion checkpoint file. Leave mode state intact.
 
     This is the sticky session replacement for cleanup_autonomous_state
-    at task boundaries. The mode state (appfix-state.json, godo-state.json)
+    at task boundaries. The mode state (appfix-state.json, build-state.json)
     persists for the next task in the same session.
 
     Handles both PID-scoped and legacy checkpoint filenames.
@@ -901,7 +913,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
     Returns:
         True if state was reset, False if no state file found
     """
-    for filename in ("forge-state.json", "appfix-state.json", "burndown-state.json"):
+    for filename in ("build-state.json", "forge-state.json", "appfix-state.json", "burndown-state.json"):
         state_path = _find_state_file_path(cwd, filename)
         if state_path:
             try:
@@ -1026,7 +1038,7 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
         List of file paths that were deleted
     """
     deleted = []
-    state_files = ["appfix-state.json", "forge-state.json", "burndown-state.json"]
+    state_files = ["appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json"]
 
     def _should_clean_project_level(state_path: Path) -> bool:
         """Check if a project-level state file should be cleaned up.
@@ -1062,7 +1074,7 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
     if cwd:
         current = Path(cwd).resolve()
         home = Path.home()
-        state_bases = [Path(f).stem for f in state_files]  # e.g., ['appfix-state', 'forge-state']
+        state_bases = [Path(f).stem for f in state_files]  # e.g., ['appfix-state', 'build-state', 'forge-state']
         for _ in range(20):
             if current == home:
                 break

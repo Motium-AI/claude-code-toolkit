@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-PostToolUse hook to track plan mode completion for godo/appfix.
+PostToolUse hook to track plan mode completion for build/appfix.
 
-When ExitPlanMode is called during godo/appfix, this hook updates the state
+When ExitPlanMode is called during build/appfix, this hook updates the state
 file to set plan_mode_completed: true, allowing subsequent Edit/Write tools
 to proceed without being blocked by plan-mode-enforcer.py.
 
@@ -59,23 +59,29 @@ def main():
     state, state_type = get_autonomous_state(cwd, session_id)
     if not state:
         log_debug(
-            "No autonomous state file found - not in godo/appfix mode",
+            "No autonomous state file found - not in build/appfix mode",
             hook_name="plan-mode-tracker",
             parsed_data={"cwd": cwd},
         )
         sys.exit(0)
 
-    # Determine state filename
-    # Map state_type to filename (repair uses appfix-state.json for backward compat)
-    STATE_TYPE_TO_FILENAME = {
-        "forge": "forge-state.json",
-        "repair": "appfix-state.json",
-        "burndown": "burndown-state.json",
+    # Determine state filename candidates
+    # "build" has legacy fallback "forge-state.json" for older sessions
+    STATE_TYPE_TO_FILENAMES = {
+        "build": ["build-state.json", "forge-state.json"],
+        "repair": ["appfix-state.json"],
+        "burndown": ["burndown-state.json"],
     }
-    state_filename = STATE_TYPE_TO_FILENAME.get(state_type, f"{state_type}-state.json")
+    candidates = STATE_TYPE_TO_FILENAMES.get(state_type, [f"{state_type}-state.json"])
 
-    # Update state file to mark plan mode as completed
-    success = update_state_file(cwd, state_filename, {"plan_mode_completed": True})
+    # Try each candidate filename until one succeeds
+    success = False
+    state_filename = candidates[0]
+    for candidate in candidates:
+        if update_state_file(cwd, candidate, {"plan_mode_completed": True}):
+            success = True
+            state_filename = candidate
+            break
 
     if success:
         log_debug(

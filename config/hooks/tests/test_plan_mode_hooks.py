@@ -350,16 +350,16 @@ class TestSkillStateInitializer:
         assert state["iteration"] == 1
         assert state["plan_mode_completed"] is False
 
-    def test_creates_forge_state_on_godo_prompt(self):
-        """'/godo' prompt should create forge-state (PID-scoped or legacy)."""
+    def test_creates_build_state_on_godo_prompt(self):
+        """'/godo' prompt should create build-state (PID-scoped or legacy)."""
         result = run_hook(
             "skill-state-initializer.py",
             initializer_input(self.tmpdir, "/godo implement the feature"),
         )
         assert result.returncode == 0
 
-        state_file = find_state_file(self.tmpdir, "forge-state")
-        assert state_file is not None, "Forge state file not created for /godo"
+        state_file = find_state_file(self.tmpdir, "build-state")
+        assert state_file is not None, "Build state file not created for /godo"
 
     def test_creates_appfix_on_natural_language(self):
         """'fix the app' should also create appfix state."""
