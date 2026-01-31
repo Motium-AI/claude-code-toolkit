@@ -2,19 +2,11 @@
 """
 PreToolUse hook to enforce plan mode on first iteration of build/repair.
 
-This hook BLOCKS Edit/Write tools until plan mode has been completed (indicated
-by plan_mode_completed: true in the state file). This ensures Claude follows
-the Phase 0.5 workflow before making code changes.
-
-IMPORTANT: Uses PreToolUse (not PermissionRequest) because PreToolUse fires
-before EVERY tool execution, while PermissionRequest only fires when a
-permission dialog would be shown.
+This hook BLOCKS Edit/Write tools until plan mode has been completed.
+Also detects stale sessions (>30 min old) and treats them as new problems.
 
 Hook event: PreToolUse
 Matcher: Edit|Write
-
-Exit codes:
-  0 - Decision made (deny via hookSpecificOutput or silent passthrough)
 """
 
 from __future__ import annotations
@@ -22,57 +14,38 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-# Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import log_debug
 from _state import get_autonomous_state, is_autonomous_mode_active
 
+STALE_SESSION_THRESHOLD = timedelta(minutes=30)
 
 BLOCK_MESSAGE = """
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║  ⚠️  PLAN MODE REQUIRED - FIRST ITERATION                                     ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
+PLAN MODE REQUIRED - FIRST ITERATION
 
 This is the first iteration of an autonomous skill (/build or /repair).
 You MUST explore the codebase and create a plan before making code changes.
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  REQUIRED WORKFLOW (Phase 0.5):                                                 │
-│                                                                                 │
-│  1. Call EnterPlanMode                                                          │
-│  2. Explore codebase architecture, recent commits, configs                      │
-│  3. Write implementation plan to the plan file                                  │
-│  4. Call ExitPlanMode                                                           │
-│                                                                                 │
-│  THEN your edit will be allowed.                                                │
-└─────────────────────────────────────────────────────────────────────────────────┘
+REQUIRED WORKFLOW (Phase 0.5):
+1. Call EnterPlanMode
+2. Explore codebase architecture, recent commits, configs
+3. Write implementation plan to the plan file
+4. Call ExitPlanMode
 
-WHY THIS MATTERS:
-- Understanding the codebase prevents breaking changes
-- Plan mode forces you to think before coding
-- Multi-file changes need architectural context
-
-The state file will be updated automatically when you exit plan mode.
+THEN your edit will be allowed.
 """.strip()
 
 
 def is_plan_file(file_path: str) -> bool:
-    """Check if the file is a plan file that should be allowed during plan mode."""
     if not file_path:
         return False
-    # Plan files are in ~/.claude/plans/ or .claude/plans/
     return "/plans/" in file_path or file_path.endswith("/plans")
 
 
 def is_workflow_artifact(file_path: str) -> bool:
-    """Check if the file is a .claude/ workflow artifact that should always be allowed.
-
-    Files under .claude/ are internal workflow state (checkpoints, validation tests,
-    web smoke artifacts, state files) — NOT code changes. Blocking these during plan
-    mode causes the recurring issue where appfix cannot write its own artifacts.
-    """
     if not file_path:
         return False
     return "/.claude/" in file_path or file_path.startswith(".claude/")
@@ -85,70 +58,58 @@ def main():
         log_debug("Failed to parse JSON input", hook_name="plan-mode-enforcer", error=e)
         sys.exit(0)
 
-    # PreToolUse uses tool_name (not toolName)
     cwd = input_data.get("cwd", "") or os.getcwd()
     tool_name = input_data.get("tool_name", "")
     session_id = input_data.get("session_id", "")
     tool_input = input_data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
 
-    # Only process Edit/Write tools
     if tool_name not in ("Edit", "Write"):
-        sys.exit(0)  # Silent passthrough
+        sys.exit(0)
 
-    # CRITICAL: Always allow writes to plan files during plan mode
-    # This allows Claude to write its implementation plan
     if is_plan_file(file_path):
-        sys.exit(0)  # Allow plan file writes
+        sys.exit(0)
 
-    # Always allow writes to .claude/ workflow artifacts (checkpoints, validation
-    # tests, state files, web smoke results). These are NOT code changes — they are
-    # internal repair/build state that must be writable at any point in the workflow.
     if is_workflow_artifact(file_path):
-        log_debug(
-            f"Allowing {tool_name} to .claude/ workflow artifact",
-            hook_name="plan-mode-enforcer",
-            parsed_data={"file_path": file_path},
-        )
-        sys.exit(0)  # Allow .claude/ writes
+        log_debug(f"Allowing {tool_name} to .claude/ workflow artifact", hook_name="plan-mode-enforcer")
+        sys.exit(0)
 
-    # Only process if autonomous mode is active (build or repair)
-    # Pass session_id to enable cross-directory trust for same session
     if not is_autonomous_mode_active(cwd, session_id):
-        sys.exit(0)  # Not in build/repair mode, no enforcement
+        sys.exit(0)
 
-    # Check if plan mode has been completed
     state, state_type = get_autonomous_state(cwd, session_id)
     if not state:
-        sys.exit(0)  # No state file, passthrough
+        sys.exit(0)
 
     plan_mode_completed = state.get("plan_mode_completed", False)
     iteration = state.get("iteration", 1)
+    last_activity = state.get("last_activity_at", "")
 
-    # Only enforce on first iteration
-    if iteration > 1:
-        sys.exit(0)  # Subsequent iterations don't require plan mode again
+    # Check if session is stale (indicates new problem, not continuation)
+    is_stale = False
+    if last_activity:
+        try:
+            last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            if now - last_dt > STALE_SESSION_THRESHOLD:
+                is_stale = True
+                log_debug("Session is stale - treating as new problem", hook_name="plan-mode-enforcer",
+                          parsed_data={"last_activity": last_activity})
+        except (ValueError, TypeError) as e:
+            log_debug(f"Failed to parse last_activity_at: {e}", hook_name="plan-mode-enforcer")
 
-    # Check if plan mode has been completed
+    # Only enforce on first iteration OR stale sessions (new problem)
+    if iteration > 1 and not is_stale:
+        sys.exit(0)
+
     if plan_mode_completed:
-        sys.exit(0)  # Plan mode done, allow edit
+        sys.exit(0)
 
-    # Block the edit with instructions
-    log_debug(
-        f"Blocking {tool_name} - plan mode not completed",
-        hook_name="plan-mode-enforcer",
-        parsed_data={"state_type": state_type, "iteration": iteration},
-    )
+    log_debug(f"Blocking {tool_name} - plan mode not completed", hook_name="plan-mode-enforcer",
+              parsed_data={"state_type": state_type, "iteration": iteration, "is_stale": is_stale})
 
-    # PreToolUse uses permissionDecision: "deny" (not behavior: "block")
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": BLOCK_MESSAGE,
-        }
-    }
-
+    output = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                     "permissionDecisionReason": BLOCK_MESSAGE}}
     print(json.dumps(output))
     sys.exit(0)
 
