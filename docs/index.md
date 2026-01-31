@@ -100,11 +100,11 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `docs-navigator` | Documentation |
 | `revonc-eas-deploy` | /eas, /revonc-deploy, "deploy to testflight", "build ios/android" |
 
-## Registered Hooks (20 scripts)
+## Registered Hooks (21 scripts)
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | auto-update, session-snapshot, read-docs-reminder | Init and toolkit update |
+| SessionStart | auto-update, session-snapshot, compound-context-loader, read-docs-reminder | Init, context injection, toolkit update |
 | UserPromptSubmit | skill-state-initializer, read-docs-trigger | State files and doc suggestions |
 | PreToolUse (*) | pretooluse-auto-approve | Auto-approve during autonomous mode |
 | PreToolUse (Edit/Write) | plan-mode-enforcer | Block until plan done |
