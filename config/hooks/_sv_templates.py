@@ -27,11 +27,14 @@ GO_CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
   "self_report": {{
     "is_job_complete": false,                // Is the job ACTUALLY done?
     "code_changes_made": false,              // Did you modify any code files?
-    "linters_pass": false                    // (Only if code_changes_made) Did linters pass?
+    "linters_pass": false,                   // (Only if code_changes_made) Did linters pass?
+    "category": ""                           // REQUIRED: bugfix | gotcha | architecture | pattern | config | refactor
   }},
   "reflection": {{
     "what_was_done": "...",                  // >20 chars - what you actually did
-    "what_remains": "none"                   // Must be empty to allow stop
+    "what_remains": "none",                  // Must be empty to allow stop
+    "key_insight": "...",                    // >30 chars: reusable lesson for FUTURE sessions. NOT what you did — what you LEARNED.
+    "search_terms": []                       // 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
   }}
 }}"""
 
@@ -45,11 +48,14 @@ CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
     "deployed_at_version": "",              // Git version when deployed
     "linters_pass": false,                  // Did all linters pass?
     "linters_pass_at_version": "",          // Git version when linted
-    "is_job_complete": false                // Is the job ACTUALLY done?
+    "is_job_complete": false,               // Is the job ACTUALLY done?
+    "category": ""                          // REQUIRED: bugfix | gotcha | architecture | pattern | config | refactor
   }},
   "reflection": {{
     "what_was_done": "...",                 // Honest summary of work completed
-    "what_remains": "none"                  // Must be empty to allow stop
+    "what_remains": "none",                 // Must be empty to allow stop
+    "key_insight": "...",                   // REQUIRED >30 chars: reusable lesson for FUTURE sessions. NOT what you did — what you LEARNED.
+    "search_terms": []                      // REQUIRED 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
   }},
   "evidence": {{
     "urls_tested": [],                      // URLs you actually tested
@@ -93,6 +99,21 @@ GUIDANCE_BLOCKS = {
 """,
     "what_remains": """
   → You listed remaining work — do it!
+""",
+    "key_insight": """
+  → key_insight captures what FUTURE sessions should know — the reusable lesson
+  → Must be >30 chars and different from what_was_done (it's what you LEARNED, not what you DID)
+  → Example: "macOS fsync() doesn't flush disk write cache; F_FULLFSYNC is required for crash safety"
+""",
+    "search_terms": """
+  → search_terms are 2-7 concept keywords for memory retrieval
+  → Include: tool names, error types, technique names, platform quirks
+  → Do NOT include file paths (those are extracted automatically)
+  → Example: ["macOS", "fsync", "crash-safety", "atomic-write"]
+""",
+    "category": """
+  → category must be one of: bugfix, gotcha, architecture, pattern, config, refactor
+  → Pick the one that best describes this session's work
 """,
 }
 

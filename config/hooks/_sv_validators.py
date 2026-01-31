@@ -30,6 +30,11 @@ from _state import (
     is_autonomous_mode_active,
 )
 
+# Valid category values for memory events
+VALID_CATEGORIES = frozenset({
+    "bugfix", "gotcha", "architecture", "pattern", "config", "refactor",
+})
+
 
 # ============================================================================
 # Git Utilities
@@ -261,7 +266,8 @@ def validate_maestro_smoke_artifacts(cwd: str) -> tuple[bool, list[str]]:
     if not summary_path.exists():
         errors.append(
             "maestro_smoke: No summary.json found. Run Maestro MCP tests first.\n"
-            "Use mcp__maestro__run_flow() to execute test journeys, then create artifacts.\n"
+            "Use ToolSearch(query: 'maestro') to discover available Maestro MCP tools, "
+            "then use the run_flow tool to execute test journeys and create artifacts.\n"
             "Required minimum: J2-returning-user-login.yaml + J3-main-app-navigation.yaml"
         )
         return False, errors
@@ -555,11 +561,106 @@ def validate_core_completion(report: dict, reflection: dict) -> list[str]:
     return failures
 
 
+def validate_memory_fields(report: dict, reflection: dict) -> list[str]:
+    """Validate memory-quality fields: key_insight, search_terms, category.
+
+    These fields drive the compound memory system. Without them, auto-captured
+    events are low-signal noise. Blocking enforcement ensures every session
+    contributes meaningful cross-session knowledge.
+    """
+    failures = []
+
+    # key_insight: required, >30 chars, must differ from what_was_done
+    key_insight = reflection.get("key_insight", "")
+    what_done = reflection.get("what_was_done", "")
+    if not key_insight or len(key_insight.strip()) < 30:
+        failures.append(
+            "key_insight is missing or too brief (need >30 chars) — "
+            "what reusable lesson should FUTURE sessions know? "
+            "Not what you did — what you LEARNED."
+        )
+    elif what_done and key_insight.strip()[:40] == what_done.strip()[:40]:
+        failures.append(
+            "key_insight is a copy of what_was_done — "
+            "key_insight should be the LESSON (what you learned), "
+            "not a repeat of what you did"
+        )
+
+    # search_terms: required, 2-7 concept keywords
+    search_terms = reflection.get("search_terms", [])
+    if not isinstance(search_terms, list):
+        failures.append(
+            "search_terms must be a JSON array of concept keywords"
+        )
+    elif len(search_terms) < 2:
+        failures.append(
+            "search_terms needs 2-7 concept keywords for memory retrieval — "
+            "include tool names, error types, technique names, platform names. "
+            "NOT file paths."
+        )
+    elif len(search_terms) > 7:
+        failures.append(
+            "search_terms has too many entries (max 7) — "
+            "keep only the most distinctive concept keywords"
+        )
+    else:
+        # Check each term is meaningful
+        short_terms = [t for t in search_terms if not isinstance(t, str) or len(t.strip()) < 2]
+        if short_terms:
+            failures.append(
+                "search_terms contains empty or trivial entries — "
+                "each keyword must be at least 2 characters"
+            )
+
+    # category: required, must be valid enum
+    category = report.get("category", "")
+    if not category or category.lower() in ("session", ""):
+        failures.append(
+            "category is missing or 'session' — pick a real category: "
+            "bugfix | gotcha | architecture | pattern | config | refactor"
+        )
+    elif category.lower() not in VALID_CATEGORIES:
+        failures.append(
+            f"category '{category}' is not valid — "
+            "must be one of: bugfix, gotcha, architecture, pattern, config, refactor"
+        )
+
+    return failures
+
+
+def warn_memory_fields(report: dict, reflection: dict) -> None:
+    """Emit non-blocking warnings for missing memory fields in /go mode.
+
+    Prints to stderr so the model sees them but isn't blocked.
+    """
+    key_insight = reflection.get("key_insight", "")
+    search_terms = reflection.get("search_terms", [])
+    category = report.get("category", "")
+
+    warnings = []
+    if not key_insight or len(key_insight.strip()) < 30:
+        warnings.append(
+            "key_insight is missing/short — future sessions won't learn from this one"
+        )
+    if not search_terms or len(search_terms) < 2:
+        warnings.append(
+            "search_terms missing — memory won't be retrievable by concept"
+        )
+    if not category or category.lower() in ("session", ""):
+        warnings.append(
+            "category missing — set to bugfix|gotcha|architecture|pattern|config|refactor"
+        )
+
+    for w in warnings:
+        print(f"  ⚠ MEMORY: {w}", file=sys.stderr)
+
+
 def validate_go_completion(report: dict, reflection: dict) -> list[str]:
     """Validate /go mode checkpoint: 3+1 fields.
 
     Always required: is_job_complete, what_remains empty, what_was_done >20 chars.
     Conditional: linters_pass required only when code_changes_made is self-reported true.
+    Memory fields: warned but not blocking.
     """
     failures = []
 
@@ -580,6 +681,9 @@ def validate_go_completion(report: dict, reflection: dict) -> list[str]:
             failures.append(
                 "linters_pass required - you changed code, run the linter"
             )
+
+    # Non-blocking memory field warnings
+    warn_memory_fields(report, reflection)
 
     return failures
 
@@ -767,7 +871,8 @@ def validate_mobile_testing(
     if not mcp_used:
         failures.append(
             "maestro_mcp_used is false - you must use Maestro MCP tools for testing.\n"
-            "Use mcp__maestro__run_flow(), mcp__maestro__hierarchy(), etc.\n"
+            "Use ToolSearch(query: 'maestro') to discover available tools, then use "
+            "the run_flow, hierarchy, and screenshot tools.\n"
             "Bash 'maestro test' commands are NOT acceptable."
         )
 
@@ -842,6 +947,9 @@ def validate_checkpoint(
 
     # 2. Core completion checks
     failures.extend(validate_core_completion(report, reflection))
+
+    # 2.5 Memory quality fields (key_insight, search_terms, category)
+    failures.extend(validate_memory_fields(report, reflection))
 
     # 3. Code requirements (if app code changed)
     has_app_code = has_code_changes(modified_files)

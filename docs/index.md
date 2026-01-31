@@ -124,16 +124,19 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 ---
 
-## Memory System
+## Memory System (v3)
 
 **Append-only event store** for cross-session learning. Events stored in `~/.claude/memory/{project-hash}/events/`.
 
 ### How It Works
 
-1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as memory event on every successful stop
-2. **Manual capture** (deep captures): `/compound` skill for detailed problem documentation
-3. **Auto-injection**: `compound-context-loader` hook injects top 5 relevant events at SessionStart
-4. **Scoring**: Events ranked by recency (60%) + entity overlap (40%)
+1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as LESSON-first memory event on every successful stop. Checkpoint requires `key_insight` (>30 chars), `search_terms` (2-7 concept keywords), and `category` (enum).
+2. **Manual capture** (deep captures): `/compound` skill for detailed LESSON/PROBLEM/CAUSE/FIX documentation
+3. **Auto-injection**: `compound-context-loader` hook injects top 10 relevant events as structured XML at SessionStart
+4. **Scoring**: 4-signal ranking — entity overlap (35%) + recency (30%) + content quality (20%) + source (15%)
+5. **Entity matching**: File-path entities (basename, stem, dir) + concept entities (from `search_terms`) with substring matching
+6. **Dedup**: Prefix-hash guard (8-event lookback, 60-min window) prevents duplicates
+7. **Bootstrap filter**: Commit-message-level events automatically excluded from injection
 
 ### Storage
 
@@ -141,6 +144,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 - **Isolation**: Project-scoped via SHA256(git_remote_url | repo_root)
 - **Retention**: 90-day TTL, 500 event cap per project
 - **Format**: JSON events with atomic writes (F_FULLFSYNC + os.replace for crash safety)
+- **Budget**: 10 events, 8000 chars, score-tiered (600/350/200 chars per event)
 
 ### Event Schema
 
@@ -149,10 +153,11 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
   "id": "evt_20260131T143022-12345-a1b2c3",
   "ts": "2026-01-31T14:30:22Z",
   "type": "compound",
-  "content": "Learning summary (1-5 sentences)",
-  "entities": ["file.py", "concept", "tool"],
+  "content": "LESSON: <key insight>\nDONE: <what was done>",
+  "entities": ["crash-safety", "atomic-write", "macOS", "_memory.py", "hooks/_memory.py"],
   "source": "compound",
-  "meta": {"session_context": "..."}
+  "category": "gotcha",
+  "meta": {"quality": "rich", "files_changed": ["config/hooks/_memory.py"]}
 }
 ```
 
@@ -161,6 +166,46 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 ```bash
 grep -riwl "keyword" ~/.claude/memory/*/events/
 ```
+
+---
+
+## ToolSearch (MCP Lazy Loading)
+
+ToolSearch (`ENABLE_TOOL_SEARCH=auto` in settings.json) defers MCP tool loading until needed, saving 85-95% of context tokens from tool definitions.
+
+### Key Facts
+
+- **Enabled by default** via `auto` mode — tools are eagerly loaded as fallback if ToolSearch fails
+- **Chrome MCP is NOT affected** — `mcp__claude-in-chrome__*` tools are injected by the Chrome extension via system prompt, not through user-configured MCP servers
+- **Affected servers**: Maestro MCP and Exa MCP are user-configured and subject to lazy loading
+- **Discovery pattern**: Skills use `ToolSearch(query: "server-name")` for pre-flight capability detection
+
+### Pre-Flight Pattern
+
+Skills with hard MCP dependencies use ToolSearch as a fail-fast check:
+
+```
+# In skill SKILL.md:
+ToolSearch(query: "maestro")   # Discovers + loads Maestro MCP tools
+ToolSearch(query: "exa")       # Discovers + loads Exa MCP tools
+```
+
+If the MCP server isn't configured, ToolSearch returns no results and the skill can error clearly instead of failing mysteriously mid-execution.
+
+### Which Skills Use ToolSearch
+
+| Skill | ToolSearch Call | Why |
+|-------|---------------|-----|
+| `/mobileappfix` | `ToolSearch(query: "maestro")` | Hard dependency on Maestro MCP for E2E tests |
+| `/build` (mobile path) | `ToolSearch(query: "maestro")` | Mobile verification requires Maestro MCP |
+| `/heavy` (search policy) | `ToolSearch(query: "exa")` | Preferred search tool, discovered on demand |
+
+Skills without MCP dependencies (`/go`, `/compound`, `/burndown`, `/qa`, `/deslop`) need no ToolSearch calls.
+
+### Hooks Integration
+
+- **exa-search-enforcer**: Reminds agents to use `ToolSearch(query: "exa")` if Exa tools aren't loaded
+- **stop-validator**: Error messages reference ToolSearch discovery for Maestro tools
 
 ---
 

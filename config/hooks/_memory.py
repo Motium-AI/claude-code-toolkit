@@ -140,6 +140,42 @@ def get_memory_dir(cwd: str) -> Path:
 
 
 # ============================================================================
+# Dedup Guard
+# ============================================================================
+
+
+def _is_duplicate(event_dir: Path, content: str, window: int = 8) -> bool:
+    """Check if content duplicates a recent event (prefix hash + time window).
+
+    Compares MD5 of first 200 chars against last `window` events.
+    Only considers matches within a 60-minute time window to catch
+    stop-retry duplicates and cross-session duplicates from sticky sessions.
+    """
+    prefix_hash = hashlib.md5(content[:200].encode()).hexdigest()
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        now = time.time()
+        for eid in manifest.get("recent", [])[:window]:
+            evt = safe_read_event(event_dir / f"{eid}.json")
+            if not evt:
+                continue
+            # Check content prefix match
+            if hashlib.md5(evt.get("content", "")[:200].encode()).hexdigest() != prefix_hash:
+                continue
+            # Check time window (60 minutes)
+            evt_path = event_dir / f"{eid}.json"
+            try:
+                if now - evt_path.stat().st_mtime < 3600:
+                    return True
+            except OSError:
+                continue
+    except (json.JSONDecodeError, IOError, OSError):
+        pass
+    return False
+
+
+# ============================================================================
 # Event Operations
 # ============================================================================
 
@@ -150,14 +186,26 @@ def append_event(
     entities: list[str],
     event_type: str = "compound",
     source: str = "compound",
+    category: str = "session",
     meta: dict | None = None,
-) -> Path:
+) -> Path | None:
     """Append a new event to the store. Returns the event file path.
 
+    Returns None if the event is a duplicate of a recent event.
     Filename includes timestamp + PID + random suffix for uniqueness
     without locking.
     """
     event_dir = get_memory_dir(cwd)
+
+    # Dedup guard: skip if content matches a recent event within 60 minutes
+    if _is_duplicate(event_dir, content):
+        log_debug(
+            "Skipping duplicate event (content prefix matches recent event)",
+            hook_name="memory",
+            parsed_data={"content_prefix": content[:50]},
+        )
+        return None
+
     now = datetime.now(timezone.utc)
     ts = now.strftime("%Y%m%dT%H%M%S")
     suffix = uuid4().hex[:6]
@@ -170,6 +218,7 @@ def append_event(
         "content": content,
         "entities": entities,
         "source": source,
+        "category": category,
         "meta": meta or {},
     }
 

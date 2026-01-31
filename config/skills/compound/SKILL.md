@@ -16,19 +16,42 @@ Capture what you just learned as a memory event. Future sessions will see it aut
 
 ## Workflow
 
-### Step 1: Extract the Learning
+### Step 1: Extract the Learning (LESSON-first)
 
-Review the current session. Write a **1-5 sentence summary** of what was learned. Focus on:
-- What was the problem?
-- What was the root cause?
-- What fixed it?
-- What should future sessions know?
+Review the current session. Structure the content with LESSON first — this is what future sessions see even if truncated:
+
+```
+LESSON: <the reusable insight — what should future sessions know? 1 sentence>
+PROBLEM: <what happened>
+CAUSE: <root cause>
+FIX: <what resolved it>
+```
 
 ### Step 2: Extract Entities
 
-Identify 3-10 entity tags — file paths, concept names, tool names, platform names. These are search keys for future retrieval.
+Identify 5-12 entity tags — **concept keywords first**, then file paths. These are search keys for future retrieval.
 
-### Step 3: Write the Event
+**Concept keywords** (PRIMARY — match across different file contexts):
+- Tool names: `maestro`, `mcp`, `ruff`
+- Error types: `stdout-pollution`, `json-rpc-corruption`
+- Technique names: `atomic-write`, `crash-safety`
+- Platform names: `macOS`, `linux`
+
+**File paths** (SECONDARY — match when touching the same files):
+- Parent/base: `hooks/_memory.py`
+- Basename: `_memory.py`
+
+### Step 3: Pick a Category
+
+Choose the most fitting category for the learning:
+- `bugfix` — fixed a bug, root cause found
+- `gotcha` — platform quirk, non-obvious behavior
+- `architecture` — design decision, structural insight
+- `pattern` — reusable solution pattern
+- `config` — configuration, environment, setup
+- `refactor` — code restructuring, cleanup
+
+### Step 4: Write the Event
 
 Run this command to write the event (replace the content and entities):
 
@@ -38,24 +61,29 @@ import sys; sys.path.insert(0, 'config/hooks')
 from _memory import append_event
 path = append_event(
     cwd='$(pwd)',
-    content='''YOUR LEARNING SUMMARY HERE''',
-    entities=['entity1', 'entity2', 'entity3'],
+    content='''LESSON: <1 sentence insight>
+PROBLEM: <what happened>
+CAUSE: <root cause>
+FIX: <what resolved it>''',
+    entities=['macOS', 'platform-portability', 'process-detection', '_common.py', 'hooks/_common.py'],
     event_type='compound',
     source='compound',
-    meta={'session_context': 'brief description of what task triggered this'}
+    category='gotcha',
+    meta={'session_context': 'brief description'}
 )
-print(f'Event captured: {path.name}')
+print(f'Event captured: {path.name}' if path else 'Skipped (duplicate)')
 "
 ```
 
-### Step 4: Confirm
+### Step 5: Confirm
 
 After writing, confirm:
 
 ```
 Memory captured: evt_{timestamp}.json
 
-Entities: [list]
+Category: gotcha
+Entities: [concept keywords + file paths]
 
 Future sessions will see this automatically via compound-context-loader.
 ```
@@ -70,25 +98,37 @@ import sys; sys.path.insert(0, 'config/hooks')
 from _memory import append_event
 append_event(
     cwd='$(pwd)',
-    content='ps -o comm= returns full path on Linux but name-only on macOS. basename() on a name without separators strips incorrectly. Use session_id isolation instead of PID-based process detection.',
-    entities=['_common.py', 'hooks', 'macOS', 'Linux', 'platform-portability', 'ps', 'basename'],
+    content='''LESSON: Never assume Unix command output format is consistent across platforms.
+PROBLEM: ps -o comm= returns full path on Linux but name-only on macOS.
+CAUSE: macOS and Linux have different ps implementations with incompatible output formats.
+FIX: Use session_id isolation instead of PID-based process detection.''',
+    entities=['macOS', 'linux', 'platform-portability', 'process-detection', 'ps-command', '_common.py', 'hooks/_common.py'],
     event_type='compound',
     source='compound',
+    category='gotcha',
     meta={'session_context': 'debugging PID-scoped state isolation failure on macOS'}
 )
 print('Event captured.')
 "
 ```
 
-## Auto-Capture
+## Auto-Capture (v3)
 
-Most learnings are captured **automatically** by the stop hook — no /compound needed. The stop hook archives completion checkpoint data as a memory event on every successful stop.
+Most learnings are captured **automatically** by the stop hook — no /compound needed.
 
-Use /compound only for **deep captures** where the auto-captured summary isn't enough detail.
+The checkpoint template now requires:
+- **`key_insight`** (>30 chars): the reusable lesson — what you LEARNED, not what you did
+- **`search_terms`** (2-7 items): concept keywords for memory retrieval
+- **`category`**: bugfix | gotcha | architecture | pattern | config | refactor
+
+The stop hook archives these as a structured memory event with concept-first entities.
+
+Use /compound only for **deep captures** where the auto-captured summary isn't enough detail (e.g., multi-step root cause analysis, failed approaches worth documenting).
 
 ## Integration
 
-- **SessionStart**: compound-context-loader.py injects top 5 relevant events
-- **Stop**: stop-validator.py auto-captures checkpoint as event
+- **SessionStart**: compound-context-loader.py injects top 10 relevant events as structured XML
+- **Stop**: stop-validator.py auto-captures checkpoint (LESSON-first) with concept entities
 - **Manual**: /compound for detailed captures
+- **Scoring**: 4-signal (entity overlap 35%, recency 30%, content quality 20%, source 15%)
 - **Search**: `grep -riwl "keyword" ~/.claude/memory/*/events/`

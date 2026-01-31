@@ -105,7 +105,22 @@ def requires_checkpoint(cwd: str, modified_files: list[str]) -> bool:
     - Research/exploration sessions (no code changes in THIS session)
     - Sessions with only pre-existing uncommitted changes from previous sessions
     - Simple file reads, documentation queries
+    - Sessions where cwd is HOME (not a project directory)
     """
+    # HOME directory is not a project — checkpoint path would be ~/.claude/
+    # which contains toolkit symlinks, not project checkpoints. Any checkpoint
+    # there is stale from a different session. Skip validation entirely.
+    if cwd:
+        try:
+            if Path(cwd).resolve() == Path.home().resolve():
+                log_debug(
+                    "SKIPPING: cwd is HOME directory, not a project",
+                    hook_name="stop-validator",
+                )
+                return False
+        except (ValueError, OSError):
+            pass
+
     # CRITICAL: If autonomous mode active (build or appfix), checkpoint is ALWAYS required
     # This ensures all changes are validated before stopping
     if is_autonomous_mode_active(cwd):
@@ -275,6 +290,9 @@ def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
 
     This is the PRIMARY capture path — zero user effort.
     Runs on every successful stop with code changes.
+
+    v3: Model-provided search_terms as primary entities, lesson-first
+    content with truncated context, top-level category, quality metadata.
     """
     try:
         from _memory import append_event
@@ -293,40 +311,67 @@ def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     if not self_report.get("code_changes_made", False):
         return
 
-    # Extract entities from changed files
+    # Build LESSON-first content (lesson IS the memory; done is context)
+    content_parts = []
+    key_insight = reflection.get("key_insight", "")
+    if key_insight and len(key_insight.strip()) > 10:
+        content_parts.append(f"LESSON: {key_insight.strip()}")
+    content_parts.append(f"DONE: {what_was_done[:200]}")
+    content = "\n".join(content_parts)
+
+    # Entity sourcing: model-provided search_terms FIRST, git diff SECOND
     entities = []
+
+    # PRIMARY: model-declared concept keywords (highest retrieval value)
+    search_terms = reflection.get("search_terms", [])
+    if isinstance(search_terms, list):
+        for term in search_terms[:7]:
+            if isinstance(term, str) and len(term.strip()) >= 2:
+                entities.append(term.strip().lower())
+
+    # SECONDARY: git diff file paths (basename + parent/base enrichment)
     files_changed = self_report.get("files_changed", [])
     if not files_changed:
-        # Try to get from git
         files_changed = get_git_diff_files()
-    for f in files_changed[:10]:
-        # Use just the filename, not full path
-        name = f.split("/")[-1] if "/" in f else f
-        if name and name not in entities:
-            entities.append(name)
+    for f in files_changed[:5]:
+        parts = f.split("/")
+        entities.append(parts[-1])                  # "_memory.py"
+        if len(parts) >= 2:
+            entities.append("/".join(parts[-2:]))   # "hooks/_memory.py"
 
-    # Add skill type as entity
-    skill_used = self_report.get("skill_used", "")
-    if skill_used and skill_used not in entities:
-        entities.append(skill_used)
+    entities = list(dict.fromkeys(entities))        # dedup preserving order
+
+    # Category from checkpoint (validated upstream by _sv_validators)
+    category = self_report.get("category", "")
+    if not category or category.lower() in ("session", ""):
+        category = "session"
+
+    # Quality tier for scoring
+    has_lesson = bool(key_insight and len(key_insight.strip()) > 10)
+    has_terms = bool(search_terms and len(search_terms) >= 2)
+    quality = "rich" if (has_lesson and has_terms) else "standard"
 
     try:
         append_event(
             cwd=cwd,
-            content=what_was_done,
+            content=content,
             entities=entities,
             event_type="session_end",
             source="auto-capture",
+            category=category,
             meta={
-                "skill_used": skill_used,
-                "files_changed": files_changed[:10],
-                "is_job_complete": self_report.get("is_job_complete", False),
+                "quality": quality,
+                "files_changed": files_changed[:5],
             },
         )
         log_debug(
             "Auto-captured memory event from checkpoint",
             hook_name="stop-validator",
-            parsed_data={"entities": entities[:5]},
+            parsed_data={
+                "entities": entities[:5],
+                "quality": quality,
+                "category": category,
+            },
         )
     except Exception as e:
         log_debug(
