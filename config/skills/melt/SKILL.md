@@ -811,16 +811,44 @@ python3 ~/.claude/hooks/worktree-manager.py gc 4         # Custom 4-hour TTL
 python3 ~/.claude/hooks/worktree-manager.py gc --dry-run # Preview what would be cleaned
 ```
 
-## Philosophy: Honest Self-Reflection
+## Philosophy: Why the Deterministic Layer Works
 
-This system works because:
+### The Core Insight
 
-1. **Booleans force honesty** - You must choose true/false, no middle ground
-2. **Self-enforcing** - If you say false, you're blocked
-3. **Deterministic** - No regex heuristics, just boolean checks
-4. **Trusts the model** - Models don't want to lie when asked directly
+Models don't "forget" over time—they have **positional attention bias**. Information at the beginning of context gets deprioritized as the window grows (the "lost-in-the-middle" phenomenon). This is architectural, not a bug.
 
-The stop hook doesn't try to catch lies. It asks direct questions:
+Hooks work because they function as **implementation intentions** (Gollwitzer research, d=.65 effect across 94 studies):
+- **If** PreToolUse(Edit) fires → **then** inject plan-mode-enforcer context
+- **If** Stop hook fires → **then** validate checkpoint booleans
+- The environmental trigger directly elicits the response, bypassing deliberation
+
+### The 4-Layer Stack
+
+```
+Layer 4: Persistent Memory    → compound-context-loader injects past learnings
+Layer 3: Session State        → Checkpoints, snapshots, TTL cleanup
+Layer 2: Deterministic Hooks  → PreToolUse, PostToolUse, Stop (THIS LAYER)
+Layer 1: Model Intelligence   → Reasoning, tool selection, execution
+```
+
+Hooks are Layer 2. Essential, but insufficient without Layers 3 and 4.
+
+### Design Principles
+
+1. **Block irreversibles, remind for everything else**
+   - Deploy, delete, push to main → BLOCK (safety gate)
+   - Read docs, cite memories, plan first → REMIND (context injection)
+
+2. **Exploit recency**
+   - Put critical info at END of injections (attention advantage)
+   - Stop hook fires AFTER work, forcing verification at decision point
+
+3. **Honest self-reflection works**
+   - Booleans force honesty: true/false, no middle ground
+   - If you say false, you're blocked
+   - The hook doesn't catch lies—it asks direct questions
+
+The stop hook asks:
 - "Did you test this in the browser?" → Answer honestly
 - "Is the job actually complete?" → Answer honestly
 

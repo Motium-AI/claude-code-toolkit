@@ -314,3 +314,29 @@ Task(
 - Agents don't need detailed rubrics - they're smart
 - Principles over prescriptions
 - Let agents determine depth organically
+
+---
+
+## Why This Works (Cognitive Science)
+
+Multi-agent analysis works because it exploits **implementation intentions** (Gollwitzer research, d=.65 effect across 94 studies).
+
+**The mechanism:**
+1. Each agent prompt is an "if-then" plan: "If analyzing X, then apply Y perspective"
+2. This bypasses the model's tendency to optimize for fluency over verification
+3. Parallel execution forces genuine perspective diversity (not serial drift toward consensus)
+
+**Key insight from research:**
+- Models don't "forget" - they have **positional attention bias** (lost-in-the-middle phenomenon)
+- Agent prompts work because they inject perspective at the moment of analysis
+- Synthesis works because agent outputs land at the END of context (recency advantage)
+
+**The 4-layer production stack:**
+```
+Layer 4: Persistent Memory (cross-session learnings)
+Layer 3: Session State (agent outputs, synthesis)
+Layer 2: Deterministic Scaffolding (parallel launch, synthesis template)
+Layer 1: Model Intelligence (each agent's reasoning)
+```
+
+Heavy operates at Layers 1-3. Layer 4 is handled by the memory system that captures `/heavy` insights for future sessions.
