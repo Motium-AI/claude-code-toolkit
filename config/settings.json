@@ -21,6 +21,11 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/compound-context-loader.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/read-docs-reminder.py\"",
             "timeout": 5
           }
@@ -37,6 +42,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/session-snapshot.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/compound-context-loader.py\"",
             "timeout": 5
           },
           {

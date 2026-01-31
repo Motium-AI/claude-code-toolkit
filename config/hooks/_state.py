@@ -14,7 +14,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import is_state_expired, is_state_for_session
+from _common import is_state_expired, is_state_for_session, is_pid_alive
 
 
 # ============================================================================
@@ -491,10 +491,13 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
 
 
 def cleanup_checkpoint_only(cwd: str) -> list[str]:
-    """Delete ONLY the completion checkpoint file. Leave mode state intact.
+    """Delete ONLY the completion checkpoint file(s). Leave mode state intact.
 
     This is the sticky session replacement for cleanup_autonomous_state
     at task boundaries.
+
+    Handles PID-scoped checkpoint files (e.g., completion-checkpoint.12345.json)
+    by checking if the PID is still alive before deleting.
     """
     deleted = []
     if not cwd:
@@ -504,8 +507,21 @@ def cleanup_checkpoint_only(cwd: str) -> list[str]:
     if not claude_dir.exists():
         return deleted
 
-    checkpoint_path = claude_dir / "completion-checkpoint.json"
-    if checkpoint_path.exists():
+    # Use glob to find all checkpoint variants (including PID-scoped)
+    for checkpoint_path in claude_dir.glob("completion-checkpoint*.json"):
+        name = checkpoint_path.name
+
+        # Check for PID-scoped files (e.g., completion-checkpoint.12345.json)
+        if name != "completion-checkpoint.json":
+            try:
+                # Extract PID from filename
+                pid_str = name.replace("completion-checkpoint.", "").replace(".json", "")
+                pid = int(pid_str)
+                if is_pid_alive(pid):
+                    continue  # Skip - belongs to active session
+            except ValueError:
+                pass  # Not a valid PID format, safe to delete
+
         try:
             checkpoint_path.unlink()
             deleted.append(str(checkpoint_path))

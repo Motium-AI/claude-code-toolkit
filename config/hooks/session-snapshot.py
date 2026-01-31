@@ -169,6 +169,28 @@ def main():
     except ImportError:
         pass  # worktree-manager not available
 
+    # 5. Clean up stale async-tasks files (older than 7 days)
+    import time
+
+    async_tasks_dir = claude_dir / "async-tasks"
+    if async_tasks_dir.exists():
+        seven_days_ago = time.time() - (7 * 24 * 60 * 60)
+        cleaned_tasks = []
+        for task_file in async_tasks_dir.glob("*.json"):
+            try:
+                if task_file.stat().st_mtime < seven_days_ago:
+                    task_file.unlink()
+                    cleaned_tasks.append(task_file.name)
+            except (IOError, OSError):
+                continue
+        if cleaned_tasks:
+            log_debug(
+                "Cleaned up stale async-tasks",
+                hook_name="session-snapshot",
+                parsed_data={"cleaned": len(cleaned_tasks)},
+            )
+            print(f"[session-snapshot] Cleaned up {len(cleaned_tasks)} stale async-task(s).")
+
     sys.exit(0)
 
 

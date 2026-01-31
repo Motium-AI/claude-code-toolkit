@@ -204,6 +204,14 @@ def main():
         log_debug(
             "ALLOWING STOP: checkpoint valid on first stop", hook_name="stop-validator"
         )
+
+        # Compound reminder: suggest /compound for non-trivial fixes
+        if checkpoint.get("self_report", {}).get("code_changes_made", False):
+            print(
+                "\n[stop-validator] If you solved a non-trivial problem, "
+                "consider running /compound to capture it for future sessions."
+            )
+
         # Sticky session: clean only checkpoint, keep mode state for next task
         deleted = cleanup_checkpoint_only(cwd)
         if deleted:
@@ -245,6 +253,14 @@ def main():
         hook_name="stop-validator",
         parsed_data={"checkpoint": checkpoint},
     )
+
+    # Compound reminder: suggest /compound for non-trivial fixes
+    if checkpoint.get("self_report", {}).get("code_changes_made", False):
+        print(
+            "\n[stop-validator] If you solved a non-trivial problem, "
+            "consider running /compound to capture it for future sessions."
+        )
+
     # Sticky session: clean only checkpoint, keep mode state for next task
     deleted = cleanup_checkpoint_only(cwd)
     if deleted:
