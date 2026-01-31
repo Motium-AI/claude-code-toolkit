@@ -98,20 +98,22 @@ else
     echo "  WARNING: No timeout command found, running without timeout" >&2
 fi
 
-# Run Claude in sandbox environment
+# Run Claude in sandbox environment (cd to project so hooks use correct CWD)
 set +e
-env HOME="$FAKE_HOME" \
-    PATH="$MOCK_BIN:$PATH" \
-    SANDBOX_MODE=true \
-    SANDBOX_ID="$SANDBOX_ID" \
-    SANDBOX_DIR="$SANDBOX_ROOT" \
-    $TIMEOUT_CMD claude -p "$PROMPT" \
-        --dangerously-skip-permissions \
-        --no-session-persistence \
-        --output-format json \
-        --model haiku \
-        --add-dir "$SANDBOX_PROJECT" \
-        >"$STDOUT_FILE" 2>"$STDERR_FILE"
+(
+    cd "$SANDBOX_PROJECT"
+    env HOME="$FAKE_HOME" \
+        PATH="$MOCK_BIN:$PATH" \
+        SANDBOX_MODE=true \
+        SANDBOX_ID="$SANDBOX_ID" \
+        SANDBOX_DIR="$SANDBOX_ROOT" \
+        $TIMEOUT_CMD claude -p "$PROMPT" \
+            --dangerously-skip-permissions \
+            --no-session-persistence \
+            --output-format json \
+            --model haiku \
+            >"$STDOUT_FILE" 2>"$STDERR_FILE"
+)
 EXIT_CODE=$?
 set -e
 

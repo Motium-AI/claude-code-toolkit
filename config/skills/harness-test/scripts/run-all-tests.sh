@@ -62,11 +62,16 @@ if [[ -z "$HARNESS_FILES" ]] && [[ "$RUN_ALL" != "--all" ]]; then
     exit 0
 fi
 
-echo "Modified harness files:"
-echo "$HARNESS_FILES" | while read -r file; do
-    [[ -n "$file" ]] && echo "  - $file"
-done
-echo ""
+if [[ -n "$HARNESS_FILES" ]]; then
+    echo "Modified harness files:"
+    echo "$HARNESS_FILES" | while read -r file; do
+        [[ -n "$file" ]] && echo "  - $file"
+    done
+    echo ""
+else
+    echo "Running all test cases (no specific file filter)."
+    echo ""
+fi
 
 # Determine which test cases to run
 TEST_CASES=()
