@@ -207,7 +207,8 @@ The Maestro MCP automatically saves test evidence to `.claude/maestro-smoke/`.
 **MCP tools handle artifact creation** - no manual bash commands needed:
 
 ```
-mcp__maestro__run_flow(flow: "...", output_dir: ".claude/maestro-smoke/")
+# Use the run_flow tool discovered via ToolSearch(query: "maestro")
+run_flow(flow: "...", output_dir: ".claude/maestro-smoke/")
 ```
 
 <reference path="references/maestro-mcp-contract.md" />

@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _common import get_code_version, get_worktree_info
-from _state import is_go_active, is_improve_active
+from _state import is_go_active
 
 
 # ============================================================================
@@ -161,32 +161,6 @@ You must create {checkpoint_path} before stopping.
 
 RULES:
 - what_was_done must be >20 characters (describe what you did)
-- what_remains must be empty ("none") to stop
-- linters_pass only required if you changed code files (code_changes_made: true)
-
-Create this file, answer honestly, then stop again.
-""",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    # Use same lightweight template for /improve (observe-grade loop is the verification)
-    if is_improve_active(cwd):
-        schema = GO_CHECKPOINT_SCHEMA_TEMPLATE.format(version_note=version_note)
-        print(
-            f"""
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║  ❌ COMPLETION CHECKPOINT REQUIRED (/improve)                                 ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-
-You must create {checkpoint_path} before stopping.
-
-/improve uses a lightweight 3+1 checkpoint (the observe-grade loop IS verification):
-
-{schema}
-
-RULES:
-- what_was_done must be >20 characters (describe the improvements made)
 - what_remains must be empty ("none") to stop
 - linters_pass only required if you changed code files (code_changes_made: true)
 

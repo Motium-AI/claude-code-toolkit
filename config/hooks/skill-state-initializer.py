@@ -46,13 +46,16 @@ DEACTIVATION_PATTERNS = [
     r"(?:^|\s)/build\s+off\b",  # Primary task execution skill
     r"(?:^|\s)/burndown\s+off\b",  # Tech debt elimination skill
     r"(?:^|\s)/episode\s+off\b",  # Video episode generation skill
+    r"(?:^|\s)/improve\s+off\b",  # Design/UX improvement skill
     r"(?:^|\s)/appfix\s+off\b",  # Internal web debugging
     r"(?:^|\s)/mobileappfix\s+off\b",  # Internal mobile debugging
+    r"(?:^|\s)/designimprove\s+off\b",  # Legacy alias for /improve
+    r"(?:^|\s)/uximprove\s+off\b",  # Legacy alias for /improve
     r"(?:^|\s)/forge\s+off\b",  # Legacy alias
     r"(?:^|\s)/godo\s+off\b",  # Legacy alias
     r"\bstop autonomous mode\b",
     r"\bdisable auto[- ]?approval\b",
-    r"\bturn off (go|repair|build|forge|burndown|episode|appfix|mobileappfix|godo)\b",
+    r"\bturn off (go|repair|build|forge|burndown|episode|improve|designimprove|uximprove|appfix|mobileappfix|godo)\b",
 ]
 
 # Trigger patterns for each skill
@@ -120,6 +123,15 @@ SKILL_TRIGGERS = {
         r"\bcreate (an? )?(educational )?video\b",
         r"\bproduce (an? )?episode\b",
     ],
+    "improve": [  # Design/UX improvement router skill
+        r"(?:^|\s)/improve\b",  # Primary slash command
+        r"(?:^|\s)/designimprove\b",  # Backwards-compat alias (design variant)
+        r"(?:^|\s)/uximprove\b",  # Backwards-compat alias (UX variant)
+        r"\bimprove the (design|ux|ui)\b",  # Natural language
+        r"\baudit (the )?(design|ux|ui)\b",
+        r"\bgrade (the )?(design|ux|ui)\b",
+        r"\bfix (the )?(styling|design|ux)\b",
+    ],
 }
 
 
@@ -180,6 +192,7 @@ def _has_valid_existing_state(cwd: str, skill_name: str, session_id: str) -> boo
     """
     # Map repair -> appfix for state file (backwards compatibility)
     # Map build -> build (new primary name)
+    # Map improve -> improve (new skill, no legacy mapping needed)
     state_skill_name = "appfix" if skill_name == "repair" else skill_name
     state = load_state_file(cwd, f"{state_skill_name}-state.json")
     if state is None:
@@ -285,6 +298,13 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
         project_state["plan_mode_completed"] = True
         project_state["context_gathered"] = False  # Read-gate: must read before editing
         project_state["task"] = "Detected from user prompt"
+    elif skill_name == "improve":
+        # /improve skips Lite Heavy planning - the observe-grade loop IS the planning.
+        # Set plan_mode_completed from start so plan-mode-enforcer doesn't block.
+        project_state["plan_mode_completed"] = True
+        project_state["improve_variant"] = "auto"  # auto|design|ux - detected from prompt
+        project_state["improve_iteration"] = 0
+        project_state["improve_target_score"] = 8.0
 
     success = True
 
@@ -336,11 +356,13 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
         sessions = _cleanup_expired_sessions(sessions)
 
         # Add this session to the sessions dict
+        # /go and /improve skip planning - set plan_mode_completed from start
+        skip_planning = skill_name in ("go", "improve")
         sessions[session_id] = {
             "origin_project": cwd,
             "started_at": now,
             "last_activity_at": now,
-            "plan_mode_completed": False,
+            "plan_mode_completed": skip_planning,
         }
 
         # Build user-level state with multi-session format
@@ -352,7 +374,7 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
             "last_activity_at": now,
             "session_id": session_id,
             "origin_project": cwd,
-            "plan_mode_completed": False,
+            "plan_mode_completed": skip_planning,
         }
 
         user_state_path.write_text(json.dumps(user_state, indent=2))

@@ -223,6 +223,9 @@ def main():
         # Auto-capture: archive checkpoint as memory event
         _auto_capture_memory(cwd, checkpoint)
 
+        # Auto-capture: archive health snapshot
+        _capture_session_health(cwd, checkpoint)
+
         # Sticky session: clean only checkpoint, keep mode state for next task
         deleted = cleanup_checkpoint_only(cwd)
         if deleted:
@@ -267,6 +270,9 @@ def main():
 
     # Auto-capture: archive checkpoint as memory event
     _auto_capture_memory(cwd, checkpoint)
+
+    # Auto-capture: archive health snapshot
+    _capture_session_health(cwd, checkpoint)
 
     # Sticky session: clean only checkpoint, keep mode state for next task
     deleted = cleanup_checkpoint_only(cwd)
@@ -434,6 +440,28 @@ def _record_injection_utility(cwd: str, checkpoint: dict) -> None:
         )
     except (ImportError, Exception) as e:
         log_debug(f"Utility recording failed: {e}", hook_name="stop-validator")
+
+
+def _capture_session_health(cwd: str, checkpoint: dict) -> None:
+    """Archive health snapshot at session end. Best-effort, never blocks.
+
+    Called after _auto_capture_memory on successful stops. Imports _health
+    lazily to avoid crash cascade if the module is broken.
+    """
+    try:
+        from _health import generate_health_report, archive_health_snapshot
+    except ImportError:
+        return
+    try:
+        report = generate_health_report(cwd)
+        # Enrich with checkpoint data
+        report["session"]["checkpoint_valid"] = True
+        report["session"]["memory_captured"] = True
+        sr = checkpoint.get("self_report", {})
+        report["session"]["code_changes"] = sr.get("code_changes_made", False)
+        archive_health_snapshot(cwd, report)
+    except Exception as e:
+        log_debug(f"Health capture failed: {e}", hook_name="stop-validator")
 
 
 if __name__ == "__main__":

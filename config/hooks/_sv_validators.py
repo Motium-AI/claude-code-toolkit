@@ -27,6 +27,7 @@ from _state import (
     is_mobileappfix_active,
     is_build_active,
     is_go_active,
+    is_improve_active,
     is_autonomous_mode_active,
 )
 
@@ -688,6 +689,48 @@ def validate_go_completion(report: dict, reflection: dict) -> list[str]:
     return failures
 
 
+def validate_improve_completion(report: dict, reflection: dict) -> list[str]:
+    """Validate /improve mode checkpoint.
+
+    /improve uses a screenshot-based observe-grade loop. It does NOT require:
+    - Lite Heavy planning (the observe-grade loop IS the planning)
+    - Surf CLI web smoke artifacts (it uses its own screenshot grading)
+    - Deployment verification (design changes are local-first)
+
+    Required fields:
+    - is_job_complete: true
+    - what_remains: empty
+    - what_was_done: >20 chars (describe what was improved)
+    - linters_pass: required when code_changes_made is true
+
+    Memory fields: warned but not blocking (same as /go).
+    """
+    failures = []
+
+    # Core completion (is_job_complete + what_remains)
+    failures.extend(validate_core_completion(report, reflection))
+
+    # what_was_done must be substantive (>20 chars)
+    what_done = reflection.get("what_was_done", "")
+    if not what_done or len(what_done.strip()) < 20:
+        failures.append(
+            "what_was_done is missing or too brief (need >20 chars) - "
+            "describe what design/UX improvements were made"
+        )
+
+    # Conditional: linters_pass only when code was changed
+    if report.get("code_changes_made", False):
+        if not report.get("linters_pass", False):
+            failures.append(
+                "linters_pass required - you changed code, run the linter"
+            )
+
+    # Non-blocking memory field warnings
+    warn_memory_fields(report, reflection)
+
+    return failures
+
+
 def validate_code_requirements(
     report: dict, has_app_code: bool, has_frontend: bool
 ) -> list[str]:
@@ -937,6 +980,14 @@ def validate_checkpoint(
     if is_go_active(cwd):
         failures.extend(validate_go_completion(report, reflection))
         return len(failures) == 0, failures
+
+    # FAST PATH: /improve mode uses same 3+1 validation as /go
+    # Skips: Lite Heavy, Surf CLI web smoke, deployment verification
+    # The observe-grade screenshot loop IS the verification
+    if is_improve_active(cwd):
+        failures.extend(validate_improve_completion(report, reflection))
+        return len(failures) == 0, failures
+
     checkpoint_modified = False
 
     # 1. Version staleness (with auto-reset)

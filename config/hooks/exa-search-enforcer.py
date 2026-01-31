@@ -24,6 +24,7 @@ from _common import log_debug
 
 REMINDER = (
     "REMINDER: Exa MCP is the preferred search tool. "
+    "If Exa tools are not yet loaded, use ToolSearch(query: 'exa') to discover them. "
     "Use `web_search_exa` for technical research, "
     "`get_code_context_exa` for GitHub/code search, and "
     "`company_research_exa` for vendor research. "

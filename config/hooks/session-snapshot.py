@@ -154,6 +154,15 @@ def main():
             f"from previous session."
         )
 
+    # Write health cleanup metrics sidecar (read by _health.py)
+    try:
+        cleanup_metrics = {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expired_state_cleaned": len(deleted) if deleted else 0,
+        }
+    except Exception:
+        cleanup_metrics = {"ts": "", "expired_state_cleaned": 0}
+
     # 4. Garbage collect stale worktrees (from crashed coordinators)
     try:
         from worktree_manager import gc_worktrees
@@ -191,7 +200,158 @@ def main():
             )
             print(f"[session-snapshot] Cleaned up {len(cleaned_tasks)} stale async-task(s).")
 
+    # 6. Clean up old session transcript files (prevents ~/.claude bloat)
+    # Keep 20 most recent per project, delete files older than 30 days
+    _cleanup_old_sessions()
+
+    # 7. Clean up old debug files (older than 7 days)
+    _cleanup_debug_files()
+
+    # 8. Clean up empty session-env directories
+    _cleanup_session_env()
+
+    # 9. Write health cleanup metrics sidecar
+    try:
+        metrics_path = claude_dir / "health-cleanup-metrics.json"
+        metrics_path.write_text(json.dumps(cleanup_metrics, indent=2))
+    except Exception:
+        pass
+
     sys.exit(0)
+
+
+def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> None:
+    """Clean up old session transcript .jsonl files to prevent disk bloat.
+
+    Strategy:
+    - Keep at most `max_per_project` sessions per project (by mtime)
+    - Delete any session older than `max_age_days` days
+    - Also clean up orphaned session subdirectories
+
+    Args:
+        max_per_project: Maximum number of session files to keep per project
+        max_age_days: Delete sessions older than this many days
+    """
+    import shutil
+    import time
+
+    projects_dir = Path.home() / ".claude" / "projects"
+    if not projects_dir.exists():
+        return
+
+    cutoff_time = time.time() - (max_age_days * 24 * 60 * 60)
+    total_deleted_files = 0
+    total_deleted_dirs = 0
+    total_bytes_freed = 0
+
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        # Get all session .jsonl files sorted by mtime (newest first)
+        session_files = []
+        for f in project_dir.glob("*.jsonl"):
+            try:
+                stat = f.stat()
+                session_files.append((f, stat.st_mtime, stat.st_size))
+            except OSError:
+                continue
+
+        session_files.sort(key=lambda x: x[1], reverse=True)
+
+        # Delete excess sessions and old sessions
+        for i, (session_file, mtime, size) in enumerate(session_files):
+            should_delete = i >= max_per_project or mtime < cutoff_time
+            if should_delete:
+                try:
+                    session_file.unlink()
+                    total_deleted_files += 1
+                    total_bytes_freed += size
+
+                    # Also delete corresponding session directory if exists
+                    session_dir = project_dir / session_file.stem
+                    if session_dir.is_dir():
+                        shutil.rmtree(session_dir, ignore_errors=True)
+                        total_deleted_dirs += 1
+                except OSError:
+                    continue
+
+    if total_deleted_files > 0:
+        mb_freed = total_bytes_freed / (1024 * 1024)
+        log_debug(
+            "Cleaned up old session transcripts",
+            hook_name="session-snapshot",
+            parsed_data={
+                "files_deleted": total_deleted_files,
+                "dirs_deleted": total_deleted_dirs,
+                "mb_freed": round(mb_freed, 1),
+            },
+        )
+        print(
+            f"[session-cleanup] Removed {total_deleted_files} old session(s), "
+            f"freed {mb_freed:.1f} MB"
+        )
+
+
+def _cleanup_debug_files(max_age_days: int = 7) -> None:
+    """Clean up old debug log files."""
+    import time
+
+    debug_dir = Path.home() / ".claude" / "debug"
+    if not debug_dir.exists():
+        return
+
+    cutoff_time = time.time() - (max_age_days * 24 * 60 * 60)
+    deleted_count = 0
+    bytes_freed = 0
+
+    for debug_file in debug_dir.iterdir():
+        try:
+            stat = debug_file.stat()
+            if stat.st_mtime < cutoff_time:
+                size = stat.st_size
+                if debug_file.is_file():
+                    debug_file.unlink()
+                elif debug_file.is_dir():
+                    import shutil
+                    shutil.rmtree(debug_file, ignore_errors=True)
+                deleted_count += 1
+                bytes_freed += size
+        except OSError:
+            continue
+
+    if deleted_count > 0:
+        mb_freed = bytes_freed / (1024 * 1024)
+        log_debug(
+            "Cleaned up old debug files",
+            hook_name="session-snapshot",
+            parsed_data={"deleted": deleted_count, "mb_freed": round(mb_freed, 1)},
+        )
+        print(f"[session-cleanup] Removed {deleted_count} old debug file(s), freed {mb_freed:.1f} MB")
+
+
+def _cleanup_session_env() -> None:
+    """Clean up empty session-env directories."""
+    session_env_dir = Path.home() / ".claude" / "session-env"
+    if not session_env_dir.exists():
+        return
+
+    deleted_count = 0
+    for session_dir in session_env_dir.iterdir():
+        try:
+            if session_dir.is_dir() and not any(session_dir.iterdir()):
+                session_dir.rmdir()
+                deleted_count += 1
+        except OSError:
+            continue
+
+    if deleted_count > 0:
+        log_debug(
+            "Cleaned up empty session-env directories",
+            hook_name="session-snapshot",
+            parsed_data={"deleted": deleted_count},
+        )
+        print(f"[session-cleanup] Removed {deleted_count} empty session-env dir(s)")
 
 
 if __name__ == "__main__":

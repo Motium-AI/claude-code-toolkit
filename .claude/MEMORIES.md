@@ -23,6 +23,22 @@ See [docs/index.md](../docs/index.md#memory-system-v3) for full details.
 
 ---
 
+## Health System (2026-01-31)
+
+**Self-monitoring instrumentation** via `_health.py` + append-only snapshots in `~/.claude/health/{project-hash}/snapshots/`.
+
+- **Auto-capture**: Health snapshot archived at every successful stop (alongside memory event)
+- **SessionStart summary**: `health-aggregator` hook prints warnings (low citation rate, demoted events, stale data)
+- **Sidecar metrics**: `compound-context-loader` writes injection metrics, `session-snapshot` writes cleanup metrics
+- **Manual diagnostics**: `/health` skill generates comprehensive report with recommendations
+- **Storage**: 30-day TTL, 100 snapshot cap, schema versioned (v1)
+
+All `import _health` calls are guarded with try/except — health failures never affect hook primary logic.
+
+See [docs/index.md](../docs/index.md#health-system) for full details.
+
+---
+
 ## Architectural Decisions
 
 ### Status File Enforcement (2026-01-09, updated)

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "maestro": {
+      "disabled": true
+    }
+  }
+}

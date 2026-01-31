@@ -82,6 +82,8 @@ def main():
         sys.exit(0)
 
     plan_mode_completed = state.get("plan_mode_completed", False)
+    # NOTE: /go and /improve start with plan_mode_completed=True (skip planning by design)
+    # /go uses a Read-gate instead; /improve uses its observe-grade loop as planning
     iteration = state.get("iteration", 1)
     last_activity = state.get("last_activity_at", "")
 

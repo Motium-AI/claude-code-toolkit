@@ -101,9 +101,10 @@ TEST_PASSWORD=your-test-password
 | API changes | Verify mobile app integration works |
 
 **Mobile projects MUST use Maestro MCP tools:**
-- `mcp__maestro__run_flow()` - Run test journeys
-- `mcp__maestro__hierarchy()` - Inspect element tree
-- `mcp__maestro__screenshot()` - Capture screenshots
+- Use `ToolSearch(query: "maestro")` to discover available Maestro MCP tools
+- Use the `run_flow` tool to execute test journeys
+- Use the `hierarchy` tool to inspect element tree
+- Use the `screenshot` tool to capture screenshots
 
 **The purpose of verification is to confirm the application works after your changes.**
 
@@ -165,7 +166,7 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
     "what_remains": "none"
   },
   "evidence": {
-    "mcp_tools_used": ["mcp__maestro__run_flow", "mcp__maestro__hierarchy"],
+    "mcp_tools_used": ["maestro run_flow", "maestro hierarchy"],
     "maestro_flows_tested": ["J2-returning-user-login.yaml", "J3-main-app-navigation.yaml"],
     "platform": "ios"
   }
@@ -589,16 +590,19 @@ cat .claude/web-smoke/summary.json
 **If the project contains `app.json`, `eas.json`, or `ios/`/`android/` directories, you MUST use Maestro MCP.**
 
 ```
-# Minimum required journeys
-mcp__maestro__run_flow(flow: ".maestro/journeys/J2-returning-user-login.yaml")
-mcp__maestro__run_flow(flow: ".maestro/journeys/J3-main-app-navigation.yaml")
+# Step 1: Discover Maestro MCP tools (may be lazy-loaded via ToolSearch)
+ToolSearch(query: "maestro")
 
-# Create artifacts
+# Step 2: Run minimum required journeys using the discovered run_flow tool
+run_flow(flow: ".maestro/journeys/J2-returning-user-login.yaml")
+run_flow(flow: ".maestro/journeys/J3-main-app-navigation.yaml")
+
+# Step 3: Create artifacts
 mkdir -p .claude/maestro-smoke
 # Maestro MCP auto-saves screenshots and summary
 ```
 
-**DO NOT use bash `maestro test` commands.** Always use Maestro MCP tools.
+**If Maestro MCP tools are not found via ToolSearch, STOP and report the error clearly.** Do not fall back to bash `maestro test` commands. Always use Maestro MCP tools.
 
 ### Verification Checklist
 
@@ -610,6 +614,7 @@ mkdir -p .claude/maestro-smoke
 - [ ] Data actually displays (not spinner)
 
 **Mobile Projects:**
+- [ ] ToolSearch(query: "maestro") used to discover Maestro MCP tools
 - [ ] Maestro MCP tools used (not bash commands)
 - [ ] Full journeys validated (J2 + J3 minimum)
 - [ ] Screenshots captured via MCP

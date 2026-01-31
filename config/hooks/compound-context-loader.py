@@ -347,12 +347,14 @@ def main():
     scored.sort(key=lambda x: x[1], reverse=True)
 
     # Apply per-event demotion from utility tracking (feedback loop)
+    demoted_count = 0
     try:
         from _memory import get_event_demotion
         for i, (event, score) in enumerate(scored):
             demotion = get_event_demotion(cwd, event.get("id", ""))
             if demotion > 0:
                 scored[i] = (event, score * (1.0 - demotion))
+                demoted_count += 1
         scored.sort(key=lambda x: x[1], reverse=True)
     except (ImportError, Exception):
         pass
@@ -363,7 +365,9 @@ def main():
         min_score = get_tuned_min_score(cwd, default=MIN_SCORE)
     except (ImportError, Exception):
         min_score = MIN_SCORE
+    pre_filter_count = len(scored)
     scored = [(e, s) for e, s in scored if s >= min_score]
+    filtered_count = pre_filter_count - len(scored)
 
     # Take top N
     top_events = scored[:MAX_EVENTS]
@@ -401,6 +405,22 @@ def main():
             ],
         }
         log_path.write_text(json.dumps(log_data, indent=2))
+    except Exception:
+        pass
+
+    # Write health injection metrics sidecar (read by _health.py)
+    try:
+        metrics_path = Path(cwd) / ".claude" / "health-injection-metrics.json"
+        metrics = {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "total_candidates": len(events),
+            "demoted_count": demoted_count,
+            "filtered_by_min_score": filtered_count,
+            "min_score_used": round(min_score, 3),
+            "injected_count": len(top_events),
+            "scores": [round(s, 3) for _, s in top_events],
+        }
+        metrics_path.write_text(json.dumps(metrics, indent=2))
     except Exception:
         pass
 

@@ -275,8 +275,45 @@ def is_go_active(cwd: str, session_id: str = "") -> bool:
     return False
 
 
+def is_improve_active(cwd: str, session_id: str = "") -> bool:
+    """Check if /improve mode is active via state file or env var.
+
+    /improve is a design/UX improvement router skill that uses an
+    observe-grade loop instead of Lite Heavy planning.
+    Backwards-compatible with /designimprove and /uximprove aliases.
+    """
+    state = load_state_file(cwd, "improve-state.json")
+    if state and not is_state_expired(state):
+        return True
+
+    user_state_path = Path.home() / ".claude" / "improve-state.json"
+    if user_state_path.exists():
+        try:
+            user_state = json.loads(user_state_path.read_text())
+            if not is_state_expired(user_state) and _is_cwd_under_origin(cwd, user_state, session_id):
+                return True
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    if os.environ.get("IMPROVE_ACTIVE", "").lower() in ("true", "1", "yes"):
+        return True
+
+    return False
+
+
+# Backward compatibility aliases for /improve
+def is_designimprove_active(cwd: str, session_id: str = "") -> bool:
+    """Deprecated: Use is_improve_active() instead."""
+    return is_improve_active(cwd, session_id)
+
+
+def is_uximprove_active(cwd: str, session_id: str = "") -> bool:
+    """Deprecated: Use is_improve_active() instead."""
+    return is_improve_active(cwd, session_id)
+
+
 def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
-    """Check if any autonomous execution mode is active (go, build, repair, burndown, or episode).
+    """Check if any autonomous execution mode is active (go, build, repair, burndown, episode, or improve).
 
     This is the unified check for enabling auto-approval hooks.
     """
@@ -286,6 +323,7 @@ def is_autonomous_mode_active(cwd: str, session_id: str = "") -> bool:
         or is_repair_active(cwd, session_id)
         or is_burndown_active(cwd, session_id)
         or is_episode_active(cwd, session_id)
+        or is_improve_active(cwd, session_id)
     )
 
 
@@ -321,6 +359,10 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
     if episode_state and not is_state_expired(episode_state):
         return episode_state, "episode"
 
+    improve_state = load_state_file(cwd, "improve-state.json")
+    if improve_state and not is_state_expired(improve_state):
+        return improve_state, "improve"
+
     for filename, state_type in [
         ("go-state.json", "go"),
         ("build-state.json", "build"),
@@ -328,6 +370,7 @@ def get_autonomous_state(cwd: str, session_id: str = "") -> tuple[dict | None, s
         ("appfix-state.json", "repair"),
         ("burndown-state.json", "burndown"),
         ("episode-state.json", "episode"),
+        ("improve-state.json", "improve"),
     ]:
         user_path = Path.home() / ".claude" / filename
         if user_path.exists():
@@ -354,7 +397,7 @@ def cleanup_autonomous_state(cwd: str) -> list[str]:
     2. ALL .claude/ directories walking UP from cwd
     """
     deleted = []
-    state_files = ["go-state.json", "appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json", "episode-state.json"]
+    state_files = ["go-state.json", "appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json", "episode-state.json", "improve-state.json"]
 
     # 1. Clean user-level state
     user_claude_dir = Path.home() / ".claude"
@@ -444,7 +487,7 @@ def cleanup_expired_state(cwd: str, current_session_id: str = "") -> list[str]:
     Called at SessionStart to clean up stale state from previous sessions.
     """
     deleted = []
-    state_files = ["go-state.json", "appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json", "episode-state.json"]
+    state_files = ["go-state.json", "appfix-state.json", "build-state.json", "forge-state.json", "burndown-state.json", "episode-state.json", "improve-state.json"]
 
     def _should_clean(state_path: Path) -> bool:
         try:
@@ -540,7 +583,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
     NOTE: For /go mode, plan_mode_completed is NOT reset (it stays true)
     because /go skips the planning phase by design.
     """
-    for filename in ("go-state.json", "build-state.json", "forge-state.json", "appfix-state.json", "burndown-state.json", "episode-state.json"):
+    for filename in ("go-state.json", "build-state.json", "forge-state.json", "appfix-state.json", "burndown-state.json", "episode-state.json", "improve-state.json"):
         state_path = _find_state_file_path(cwd, filename)
         if state_path:
             try:
@@ -548,8 +591,11 @@ def reset_state_for_next_task(cwd: str) -> bool:
                 state["iteration"] = state.get("iteration", 1) + 1
                 # /go mode keeps plan_mode_completed=True (skips planning by design)
                 # but must re-read for each new task (Read-gate resets)
+                # /improve mode keeps plan_mode_completed=True (observe-grade loop IS planning)
                 if filename == "go-state.json":
                     state["context_gathered"] = False
+                elif filename == "improve-state.json":
+                    state["improve_iteration"] = 0  # Reset iteration counter for next task
                 else:
                     state["plan_mode_completed"] = False
                 state["verification_evidence"] = None

@@ -1,0 +1,132 @@
+{
+  "started_at": "2026-01-30T14:00:47Z",
+  "sandbox_id": "harness-1769781643-ac279263",
+  "trigger": "manual",
+  "harness_files_modified": [
+    "config/skills/harness-test/scripts/run-all-tests.sh",
+    "config/skills/harness-test/scripts/run-test-case.sh"
+  ],
+  "test_cases_run": [
+    {
+      "name": "auto-approval-in-build-mode",
+      "description": "Verify tools are auto-approved when build-state.json exists and is valid",
+      "status": "failed",
+      "duration_ms": 186847,
+      "exit_code": 1,
+      "assertions": {
+        "passed": 1,
+        "total": 2,
+        "failed": [
+          {
+            "type": "file_exists",
+            "path": "src/hello.py",
+            "reason": "File does not exist"
+          }
+        ]
+      }
+    },
+    {
+      "name": "auto-approval-in-burndown-mode",
+      "description": "Verify tools are auto-approved when burndown-state.json exists and is valid",
+      "status": "failed",
+      "duration_ms": 187361,
+      "exit_code": 1,
+      "assertions": {
+        "passed": 1,
+        "total": 2,
+        "failed": [
+          {
+            "type": "file_exists",
+            "path": "src/hello.py",
+            "reason": "File does not exist"
+          }
+        ]
+      }
+    },
+    {
+      "name": "plan-mode-enforcer-allows-claude-dir",
+      "description": "Verify plan-mode-enforcer allows Write to .claude/ directory even before plan mode is complete",
+      "status": "failed",
+      "duration_ms": 213421,
+      "exit_code": 1,
+      "assertions": {
+        "passed": 0,
+        "total": 1,
+        "failed": [
+          {
+            "type": "file_exists",
+            "path": ".claude/test-output.json",
+            "reason": "File does not exist"
+          }
+        ]
+      }
+    },
+    {
+      "name": "plan-mode-enforcer-blocks-burndown",
+      "description": "Verify plan-mode-enforcer blocks Edit/Write to code files when burndown plan_mode_completed=false on first iteration",
+      "status": "failed",
+      "duration_ms": 2053469,
+      "exit_code": 0,
+      "assertions": {
+        "passed": 1,
+        "total": 2,
+        "failed": [
+          {
+            "type": "output_contains",
+            "pattern": "(PLAN MODE|plan mode|blocked|denied)",
+            "reason": "Pattern not found in output"
+          }
+        ]
+      }
+    },
+    {
+      "name": "plan-mode-enforcer-blocks-code-write",
+      "description": "Verify plan-mode-enforcer blocks Edit/Write to code files when plan_mode_completed=false on first iteration",
+      "status": "failed",
+      "duration_ms": 1421593,
+      "exit_code": 0,
+      "assertions": {
+        "passed": 1,
+        "total": 2,
+        "failed": [
+          {
+            "type": "output_contains",
+            "pattern": "(PLAN MODE|plan mode|blocked|denied)",
+            "reason": "Pattern not found in output"
+          }
+        ]
+      }
+    },
+    {
+      "name": "skill-state-initializer-build",
+      "description": "Verify skill-state-initializer creates build-state.json when /build is invoked",
+      "status": "passed",
+      "duration_ms": 1391088,
+      "exit_code": 1,
+      "assertions": {
+        "passed": 2,
+        "total": 2,
+        "failed": []
+      }
+    },
+    {
+      "name": "skill-state-initializer-burndown",
+      "description": "Verify skill-state-initializer creates burndown-state.json when /burndown is invoked",
+      "status": "passed",
+      "duration_ms": 1429251,
+      "exit_code": 1,
+      "assertions": {
+        "passed": 2,
+        "total": 2,
+        "failed": []
+      }
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "passed": 2,
+    "failed": 5,
+    "skipped": 0
+  },
+  "overall_status": "failed"
+}

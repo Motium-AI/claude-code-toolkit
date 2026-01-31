@@ -1,0 +1,15 @@
+{
+  "type": "doc-update",
+  "created_at": "2026-01-29T22:54:46.287452+00:00",
+  "status": "pending",
+  "commit_message": "chore(hooks): remove unused datetime import from deploy-enforcer\n\nAuto-fixed by ruff linter.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>",
+  "diff_content": "commit 4f41f50e4f99b987af5aab93f90a426a18d75550\nAuthor: olivier-motium <243932812+olivier-motium@users.noreply.github.com>\nDate:   Thu Jan 29 23:54:46 2026 +0100\n\n    chore(hooks): remove unused datetime import from deploy-enforcer\n    \n    Auto-fixed by ruff linter.\n    \n    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\n---\n config/hooks/deploy-enforcer.py | 1 -\n 1 file changed, 1 deletion(-)\n\ndiff --git a/config/hooks/deploy-enforcer.py b/config/hooks/deploy-enforcer.py\nindex f2ea0df..bb9095a 100755\n--- a/config/hooks/deploy-enforcer.py\n+++ b/config/hooks/deploy-enforcer.py\n@@ -27,7 +27,6 @@ import os\n import re\n import subprocess\n import sys\n-from datetime import datetime\n from pathlib import Path\n \n # Add hooks directory to path for shared imports",
+  "existing_docs": [
+    "docs/architecture.md",
+    "docs/index.md",
+    "docs/philosophy.md",
+    "README.md",
+    ".claude/MEMORIES.md"
+  ],
+  "instructions": "\nDOCUMENTATION UPDATE TASK\n\nA commit was just made in an appfix/godo session. Your job is to:\n\n1. Analyze the diff to understand what changed\n2. Determine which documentation files need updating\n3. Update the relevant docs to reflect the changes\n\nCOMMIT MESSAGE:\nchore(hooks): remove unused datetime import from deploy-enforcer\n\nAuto-fixed by ruff linter.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\n\nEXISTING DOCUMENTATION FILES:\n- docs/architecture.md\n- docs/index.md\n- docs/philosophy.md\n- README.md\n- .claude/MEMORIES.md\n\nDIFF CONTENT:\ncommit 4f41f50e4f99b987af5aab93f90a426a18d75550\nAuthor: olivier-motium <243932812+olivier-motium@users.noreply.github.com>\nDate:   Thu Jan 29 23:54:46 2026 +0100\n\n    chore(hooks): remove unused datetime import from deploy-enforcer\n    \n    Auto-fixed by ruff linter.\n    \n    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\n---\n config/hooks/deploy-enforcer.py | 1 -\n 1 file changed, 1 deletion(-)\n\ndiff --git a/config/hooks/deploy-enforcer.py b/config/hooks/deploy-enforcer.py\nindex f2ea0df..bb9095a 100755\n--- a/config/hooks/deploy-enforcer.py\n+++ b/config/hooks/deploy-enforcer.py\n@@ -27,7 +27,6 @@ import os\n import re\n import subprocess\n import sys\n-from datetime import datetime\n from pathlib import Path\n \n # Add hooks directory to path for shared imports\n\nINSTRUCTIONS:\n- Only update docs that are actually affected by this change\n- Keep updates concise and accurate\n- Don't add unnecessary documentation\n- If the change is purely code (no architectural/API changes), you may skip doc updates\n- Focus on: API changes, new features, architectural decisions, configuration changes\n\nUse the /heavy skill if you need multiple perspectives on what to document.\n"
+}

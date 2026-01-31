@@ -246,6 +246,8 @@ Search queries should reflect this. "AI best practices" returns stale content; "
 
 **When Exa AI MCP is available, agents MUST use it instead of WebSearch.**
 
+**ToolSearch discovery**: Exa MCP tools may be lazy-loaded via ToolSearch (`ENABLE_TOOL_SEARCH=auto`). If Exa tools are not visible in the current session, use `ToolSearch(query: "exa")` to discover and load them before falling back to WebSearch.
+
 | Task | Required Tool | Fallback (only if Exa unavailable) |
 |------|--------------|-------------------------------------|
 | Code patterns, GitHub repos | `get_code_context_exa` | WebSearch with `site:github.com` |
