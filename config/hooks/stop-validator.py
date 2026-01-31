@@ -205,12 +205,8 @@ def main():
             "ALLOWING STOP: checkpoint valid on first stop", hook_name="stop-validator"
         )
 
-        # Compound reminder: suggest /compound for non-trivial fixes
-        if checkpoint.get("self_report", {}).get("code_changes_made", False):
-            print(
-                "\n[stop-validator] If you solved a non-trivial problem, "
-                "consider running /compound to capture it for future sessions."
-            )
+        # Auto-capture: archive checkpoint as memory event
+        _auto_capture_memory(cwd, checkpoint)
 
         # Sticky session: clean only checkpoint, keep mode state for next task
         deleted = cleanup_checkpoint_only(cwd)
@@ -254,12 +250,8 @@ def main():
         parsed_data={"checkpoint": checkpoint},
     )
 
-    # Compound reminder: suggest /compound for non-trivial fixes
-    if checkpoint.get("self_report", {}).get("code_changes_made", False):
-        print(
-            "\n[stop-validator] If you solved a non-trivial problem, "
-            "consider running /compound to capture it for future sessions."
-        )
+    # Auto-capture: archive checkpoint as memory event
+    _auto_capture_memory(cwd, checkpoint)
 
     # Sticky session: clean only checkpoint, keep mode state for next task
     deleted = cleanup_checkpoint_only(cwd)
@@ -276,6 +268,71 @@ def main():
             hook_name="stop-validator",
         )
     sys.exit(0)
+
+
+def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
+    """Archive completion checkpoint as a memory event.
+
+    This is the PRIMARY capture path — zero user effort.
+    Runs on every successful stop with code changes.
+    """
+    try:
+        from _memory import append_event
+    except ImportError:
+        return
+
+    self_report = checkpoint.get("self_report", {})
+    reflection = checkpoint.get("reflection", {})
+
+    # Quality gate: skip if no meaningful content
+    what_was_done = reflection.get("what_was_done", "")
+    if not what_was_done or len(what_was_done) < 20:
+        return
+
+    # Skip if no code changes
+    if not self_report.get("code_changes_made", False):
+        return
+
+    # Extract entities from changed files
+    entities = []
+    files_changed = self_report.get("files_changed", [])
+    if not files_changed:
+        # Try to get from git
+        files_changed = get_git_diff_files()
+    for f in files_changed[:10]:
+        # Use just the filename, not full path
+        name = f.split("/")[-1] if "/" in f else f
+        if name and name not in entities:
+            entities.append(name)
+
+    # Add skill type as entity
+    skill_used = self_report.get("skill_used", "")
+    if skill_used and skill_used not in entities:
+        entities.append(skill_used)
+
+    try:
+        append_event(
+            cwd=cwd,
+            content=what_was_done,
+            entities=entities,
+            event_type="session_end",
+            source="auto-capture",
+            meta={
+                "skill_used": skill_used,
+                "files_changed": files_changed[:10],
+                "is_job_complete": self_report.get("is_job_complete", False),
+            },
+        )
+        log_debug(
+            "Auto-captured memory event from checkpoint",
+            hook_name="stop-validator",
+            parsed_data={"entities": entities[:5]},
+        )
+    except Exception as e:
+        log_debug(
+            f"Auto-capture failed: {e}",
+            hook_name="stop-validator",
+        )
 
 
 if __name__ == "__main__":
