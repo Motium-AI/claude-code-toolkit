@@ -26,6 +26,7 @@ from _state import (
     is_appfix_active,
     is_mobileappfix_active,
     is_build_active,
+    is_go_active,
     is_autonomous_mode_active,
 )
 
@@ -786,11 +787,21 @@ def validate_checkpoint(
     """Validate checkpoint booleans deterministically.
 
     Orchestrates all sub-validators and auto-resets stale fields.
+
+    SPECIAL CASE: /go mode uses simplified validation (only core completion checks).
+    This enables fast execution without heavyweight verification requirements.
+
     Returns (is_valid, list_of_failures)
     """
     failures = []
     report = checkpoint.get("self_report", {})
     reflection = checkpoint.get("reflection", {})
+
+    # FAST PATH: /go mode uses simplified validation
+    # Only checks is_job_complete and what_remains
+    if is_go_active(cwd):
+        failures.extend(validate_core_completion(report, reflection))
+        return len(failures) == 0, failures
     checkpoint_modified = False
 
     # 1. Version staleness (with auto-reset)

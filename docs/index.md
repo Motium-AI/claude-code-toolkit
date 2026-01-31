@@ -8,10 +8,17 @@
 
 ---
 
-## The Four Core Skills
+## The Five Core Skills
+
+### `/go` — Fast Autonomous Execution
+**Use when**: Quick task, you know exactly what to do.
+```
+/go fix the typo in README.md
+```
+**No planning phase** → ReAct-style direct execution → lints → commits → **8-10x faster than /build**.
 
 ### `/build` — Universal Task Execution
-**Use when**: You have a task and want autonomous execution.
+**Use when**: Complex task that benefits from multi-agent planning.
 ```
 /build add a logout button to the navbar
 ```
@@ -40,10 +47,11 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 ---
 
-## All Slash Commands (14 commands + 4 core skills)
+## All Slash Commands (15 commands + 5 core skills)
 
 | Command | Purpose |
 |---------|---------|
+| `/go` | Fast autonomous execution (no planning, 8-10x faster) |
 | `/build` | Autonomous task execution (with Lite Heavy planning) |
 | `/repair` | Unified debugging router (web → appfix, mobile → mobileappfix) |
 | `/burndown` | Autonomous tech debt elimination (combines /deslop + /qa) |
@@ -64,10 +72,11 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/uximprove` | UX improvement |
 | `/compound` | Capture solved problems as structured markdown for cross-session learning |
 
-## All Skills (22 total)
+## All Skills (23 total)
 
 | Skill | Triggers |
 |-------|----------|
+| `go` | /go, "just go", "go fast", "quick fix", "quick build" |
 | `build` | /build, /godo (legacy), "go do", "just do it", "execute this" |
 | `repair` | /repair, /appfix, /mobileappfix, "fix the app", "debug production" |
 | `burndown` | /burndown, "burn down debt", "clean up codebase", "fix the slop" |
@@ -135,7 +144,7 @@ namshub/        # THIS IS THE SOURCE OF TRUTH
 │   ├── settings.json          # Hook definitions + ENABLE_TOOL_SEARCH=auto
 │   ├── commands/              # 11 skill definition files (+ 3 skill-commands)
 │   ├── hooks/                 # Python/bash hooks (18 registered)
-│   └── skills/                # 21 skills ← EDIT HERE
+│   └── skills/                # 23 skills ← EDIT HERE
 ├── docs/                      # Documentation
 ├── scripts/                   # install.sh, doctor.sh
 └── README.md

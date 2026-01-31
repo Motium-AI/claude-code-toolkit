@@ -41,6 +41,7 @@ from _state import (
 # Deactivation patterns - checked BEFORE activation
 # /repair and /build are the two primary autonomous skills
 DEACTIVATION_PATTERNS = [
+    r"(?:^|\s)/go\s+off\b",  # Fast task execution skill
     r"(?:^|\s)/repair\s+off\b",  # Primary debugging skill
     r"(?:^|\s)/build\s+off\b",  # Primary task execution skill
     r"(?:^|\s)/burndown\s+off\b",  # Tech debt elimination skill
@@ -51,7 +52,7 @@ DEACTIVATION_PATTERNS = [
     r"(?:^|\s)/godo\s+off\b",  # Legacy alias
     r"\bstop autonomous mode\b",
     r"\bdisable auto[- ]?approval\b",
-    r"\bturn off (repair|build|forge|burndown|episode|appfix|mobileappfix|godo)\b",
+    r"\bturn off (go|repair|build|forge|burndown|episode|appfix|mobileappfix|godo)\b",
 ]
 
 # Trigger patterns for each skill
@@ -70,6 +71,13 @@ MOBILE_REPAIR_PATTERNS = [
 ]
 
 SKILL_TRIGGERS = {
+    "go": [  # FAST task execution skill - lightweight /build
+        r"(?:^|\s)/go\b",  # Primary slash command
+        r"\bjust go\b",  # Natural language
+        r"\bgo fast\b",
+        r"\bquick\s+fix\b",
+        r"\bquick\s+build\b",
+    ],
     "repair": [  # PRIMARY debugging skill - unified entry point
         r"(?:^|\s)/repair\b",  # Primary slash command
         r"(?:^|\s)/appfix\b",  # Web variant (internal)
@@ -271,6 +279,10 @@ def create_state_file(cwd: str, skill_name: str, session_id: str = "", is_mobile
 
     # Add skill-specific fields
     if skill_name == "build":
+        project_state["task"] = "Detected from user prompt"
+    elif skill_name == "go":
+        # /go skips planning - set plan_mode_completed from start
+        project_state["plan_mode_completed"] = True
         project_state["task"] = "Detected from user prompt"
 
     success = True
