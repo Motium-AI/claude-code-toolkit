@@ -247,7 +247,7 @@ webapp-testing/
 - Design tokens
 - Responsive behavior specs
 
-### 7. godo
+### 7. build
 
 **Location**: `~/.claude/skills/build/`
 
@@ -259,7 +259,7 @@ webapp-testing/
 - Full fix-verify loop: implement → lint → commit → deploy → browser verify
 - Cannot stop until checkpoint passes
 
-**Guide**: [Godo Guide](../skills/build-guide.md)
+**Guide**: [Build Guide](../skills/build-guide.md)
 
 ### 8. appfix
 
@@ -268,7 +268,7 @@ webapp-testing/
 **Triggers**: /appfix, "fix the app", "debug production", "check staging"
 
 **Coverage**:
-- Autonomous debugging with completion checkpoint (extends godo)
+- Autonomous debugging with completion checkpoint (extends build)
 - Health check all services
 - Collect logs (Azure Container Apps, browser console, LogFire)
 - Diagnose → fix → commit → deploy → verify loop

@@ -35,20 +35,26 @@ This skill requires a Maestro MCP server for test execution. The MCP provides:
 
 ### Pre-Flight: Verify Maestro MCP Available
 
-Before any testing, verify Maestro MCP tools are available:
+Before any testing, verify Maestro MCP tools are available using `ToolSearch(query: "maestro")`.
 
+**Actual MCP tool names** (note the `oli4` suffix from the forked Maestro):
 ```
-Required MCP tools (pattern: mcp__maestro__*):
-- mcp__maestro__run_flow      - Execute Maestro flows
-- mcp__maestro__hierarchy     - Inspect element tree
-- mcp__maestro__screenshot    - Capture screenshots
-- mcp__maestro__tap           - Tap elements
-- mcp__maestro__input         - Enter text
-- mcp__maestro__wait          - Wait for elements
+mcp__maestro-oli4-mcp__list_devices          - List simulators/emulators
+mcp__maestro-oli4-mcp__run_flow              - Execute inline Maestro commands
+mcp__maestro-oli4-mcp__run_flow_files        - Execute Maestro flow YAML files
+mcp__maestro-oli4-mcp__inspect_view_hierarchy - Get element tree
+mcp__maestro-oli4-mcp__take_screenshot       - Capture screenshots
+mcp__maestro-oli4-mcp__tap_on                - Tap elements
+mcp__maestro-oli4-mcp__input_text            - Enter text
 ```
 
 **If Maestro MCP is not available, STOP and inform the user:**
-> "Maestro MCP server is required for /mobileappfix. Please configure the Maestro MCP in your MCP settings before proceeding."
+> "Maestro MCP server is required. See setup guide: ~/.claude/skills/mobileappfix/references/maestro-mcp-setup.md"
+
+**If Android and getting UNAVAILABLE errors:**
+The Maestro driver APKs need to be installed manually. See [maestro-mcp-setup.md](references/maestro-mcp-setup.md) for the required commands.
+
+<reference path="references/maestro-mcp-setup.md" />
 
 ## CRITICAL: Autonomous Execution
 
@@ -67,9 +73,9 @@ Required MCP tools (pattern: mcp__maestro__*):
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PHASE 0: PRE-FLIGHT                                                │
-│     └─► Verify Maestro MCP available (mcp__maestro__* tools)        │
-│     └─► If no MCP: STOP and request user configure Maestro MCP      │
-│     └─► Check simulator: xcrun simctl list devices available        │
+│     └─► ToolSearch(query: "maestro") to find MCP tools              │
+│     └─► mcp__maestro-oli4-mcp__list_devices() to verify connection  │
+│     └─► If Android + UNAVAILABLE: Run setup script (see setup.md)   │
 │     └─► Read mobile-topology.md for project config                  │
 ├─────────────────────────────────────────────────────────────────────┤
 │  PHASE 1: PLAN (First Iteration Only)                               │
@@ -115,8 +121,17 @@ Required MCP tools (pattern: mcp__maestro__*):
 
 ```
 # Use Maestro MCP tools, NOT bash commands:
-mcp__maestro__run_flow(flow: ".maestro/journeys/J2-returning-user-login.yaml")
-mcp__maestro__run_flow(flow: ".maestro/journeys/J3-main-app-navigation.yaml")
+mcp__maestro-oli4-mcp__run_flow_files(
+  device_id: "emulator-5554",  # or iOS simulator ID
+  flow_files: "/absolute/path/to/.maestro/journeys/J2-returning-user-login.yaml"
+)
+
+mcp__maestro-oli4-mcp__run_flow_files(
+  device_id: "emulator-5554",
+  flow_files: "/absolute/path/to/.maestro/journeys/J3-main-app-navigation.yaml"
+)
+
+# IMPORTANT: Use absolute paths for flow_files
 
 # DO NOT USE:
 # maestro test .maestro/journeys/J2-*.yaml  ❌ (bash command)
@@ -128,11 +143,13 @@ mcp__maestro__run_flow(flow: ".maestro/journeys/J3-main-app-navigation.yaml")
 
 | Action | Maestro MCP (Required) | Bash (Fallback Only) |
 |--------|------------------------|----------------------|
-| Run test | `mcp__maestro__run_flow` | `maestro test` ❌ |
-| Inspect UI | `mcp__maestro__hierarchy` | `maestro hierarchy` ❌ |
-| Take screenshot | `mcp__maestro__screenshot` | N/A |
-| Tap element | `mcp__maestro__tap` | N/A |
-| Enter text | `mcp__maestro__input` | N/A |
+| List devices | `mcp__maestro-oli4-mcp__list_devices` | `maestro --device` ❌ |
+| Run test | `mcp__maestro-oli4-mcp__run_flow_files` | `maestro test` ❌ |
+| Run commands | `mcp__maestro-oli4-mcp__run_flow` | `maestro` ❌ |
+| Inspect UI | `mcp__maestro-oli4-mcp__inspect_view_hierarchy` | `maestro hierarchy` ❌ |
+| Take screenshot | `mcp__maestro-oli4-mcp__take_screenshot` | N/A |
+| Tap element | `mcp__maestro-oli4-mcp__tap_on` | N/A |
+| Enter text | `mcp__maestro-oli4-mcp__input_text` | N/A |
 
 ### Simulator Commands (Bash OK)
 
@@ -166,7 +183,11 @@ Before stopping, create `.claude/completion-checkpoint.json`:
     "what_remains": "none"
   },
   "evidence": {
-    "mcp_tools_used": ["mcp__maestro__run_flow", "mcp__maestro__hierarchy"],
+    "mcp_tools_used": [
+      "mcp__maestro-oli4-mcp__run_flow_files",
+      "mcp__maestro-oli4-mcp__take_screenshot",
+      "mcp__maestro-oli4-mcp__inspect_view_hierarchy"
+    ],
     "maestro_flows_tested": [
       "J2-returning-user-login.yaml",
       "J3-main-app-navigation.yaml"
@@ -212,7 +233,8 @@ mcp__maestro__run_flow(flow: "...", output_dir: ".claude/maestro-smoke/")
 
 | Reference | Purpose |
 |-----------|---------|
-| [maestro-mcp-contract.md](references/maestro-mcp-contract.md) | **Maestro MCP requirements and tools** |
+| [maestro-mcp-setup.md](references/maestro-mcp-setup.md) | **SETUP GUIDE - Start here for Maestro MCP setup** |
+| [maestro-mcp-contract.md](references/maestro-mcp-contract.md) | Maestro MCP requirements, tool names, and usage |
 | [mobile-topology.md](references/mobile-topology.md) | Project config, devices, test commands |
 | [checkpoint-schema.md](references/checkpoint-schema.md) | Full checkpoint field reference |
 | [maestro-smoke-contract.md](references/maestro-smoke-contract.md) | Artifact schema |

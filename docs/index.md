@@ -72,7 +72,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/uximprove` | UX improvement |
 | `/compound` | Capture solved problems as structured markdown for cross-session learning |
 
-## All Skills (23 total)
+## All Skills (25 total)
 
 | Skill | Triggers |
 |-------|----------|
@@ -83,6 +83,8 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `appfix` | (Internal: web debugging - prefer /repair) |
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives", "debate this" |
 | `compound` | /compound, "document this solution", "capture this learning", "remember this fix" |
+| `episode` | /episode, "generate an episode", "create educational video", "produce an episode" |
+| `essay` | /essay, "write an essay", "essay about" |
 | `audiobook` | /audiobook, "create an audiobook", "turn this into audio", "make TTS-ready" |
 | `mobileappfix` | (Internal: mobile debugging - prefer /repair) |
 | `skill-sandbox` | /skill-sandbox, "test skill", "sandbox test" |
@@ -110,9 +112,9 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | PreToolUse (Edit/Write) | plan-mode-enforcer | Block until plan done |
 | PreToolUse (Bash) | deploy-enforcer, azure-command-guard | Block deploys, guard Azure CLI |
 | PreToolUse (WebSearch) | exa-search-enforcer | Remind to use Exa MCP instead |
-| PreToolUse (ExitPlanMode) | lite-heavy-enforcer | Block until Lite Heavy done (forge) |
+| PreToolUse (ExitPlanMode) | lite-heavy-enforcer | Block until Lite Heavy done |
 | PostToolUse (Edit/Write) | checkpoint-invalidator | Reset stale flags |
-| PostToolUse (Read/Task) | lite-heavy-tracker | Track Lite Heavy progress (forge) |
+| PostToolUse (Read/Task) | lite-heavy-tracker | Track Lite Heavy progress |
 | PostToolUse (Bash) | bash-version-tracker, doc-updater-async | Track versions, suggest doc updates |
 | PostToolUse (ExitPlanMode) | plan-mode-tracker, plan-execution-reminder | Mark plan done, inject context |
 | PostToolUse (Skill) | skill-continuation-reminder | Continue loop after skill |
@@ -130,7 +132,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | [Hooks](concepts/hooks.md) | Hook lifecycle |
 | [Architecture](architecture.md) | System design |
 | [Appfix Guide](skills/appfix-guide.md) | Complete debugging guide |
-| [Forge Guide](skills/build-guide.md) | Autonomous task execution guide (with Lite Heavy) |
+| [Build Guide](skills/build-guide.md) | Autonomous task execution guide (with Lite Heavy) |
 | [Philosophy](philosophy.md) | Core philosophy and principles |
 | [Settings Reference](reference/settings.md) | Configuration options |
 | [Azure Command Guard](hooks/azure-command-guard.md) | Azure CLI security hook |
@@ -143,8 +145,8 @@ namshub/        # THIS IS THE SOURCE OF TRUTH
 ├── config/
 │   ├── settings.json          # Hook definitions + ENABLE_TOOL_SEARCH=auto
 │   ├── commands/              # 11 skill definition files (+ 3 skill-commands)
-│   ├── hooks/                 # Python/bash hooks (18 registered)
-│   └── skills/                # 23 skills ← EDIT HERE
+│   ├── hooks/                 # Python/bash hooks (21 registered)
+│   └── skills/                # 25 skills ← EDIT HERE
 ├── docs/                      # Documentation
 ├── scripts/                   # install.sh, doctor.sh
 └── README.md
