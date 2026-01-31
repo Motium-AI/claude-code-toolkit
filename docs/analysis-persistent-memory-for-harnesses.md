@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-Five Opus agents analyzed how persistent memory techniques can enhance the halt toolkit's harnesses (`/build`, `/heavy`, `/repair`, `/burndown`). After 3 rounds of analysis -- including adversarial dialogue between First Principles (minimal) and AGI-Pilled (maximal), plus red-team stress testing -- the agents converged on a specific implementation that rejects most of the proposed infrastructure in favor of using Claude Code's native platform features plus one critical fix to existing code.
+Five Opus agents analyzed how persistent memory techniques can enhance the halt toolkit's harnesses (`/melt`, `/heavy`, `/repair`, `/burndown`). After 3 rounds of analysis -- including adversarial dialogue between First Principles (minimal) and AGI-Pilled (maximal), plus red-team stress testing -- the agents converged on a specific implementation that rejects most of the proposed infrastructure in favor of using Claude Code's native platform features plus one critical fix to existing code.
 
 **The core insight**: The toolkit already captures structured session data (completion checkpoints, async task files). It already has a memory file (MEMORIES.md). It already has context injection hooks (read-docs-reminder.py). The problem is not missing infrastructure -- it's a broken pipeline. 27 async task files sit unprocessed because the consumer was never built.
 
@@ -55,7 +55,7 @@ Use Claude Code's native path-scoped rules (YAML frontmatter with `paths:` globs
 | `testing.md` | `config/skills/harness-test/**` | Sandbox workflow, CWD propagation requirement |
 | `general.md` | (no path scope) | Source of truth, commit conventions, hook count warning, state file discipline |
 
-**Critical caveat from red-team**: Task-spawned subagents (the 4 Lite Heavy planning agents in `/build`) do NOT inherit `.claude/rules/` context. The build skill must embed essential rules directly in agent prompts. Path-scoped rules help the main execution agent, not the planning agents.
+**Critical caveat from red-team**: Task-spawned subagents (the 4 Lite Heavy planning agents in `/melt`) do NOT inherit `.claude/rules/` context. The melt skill must embed essential rules directly in agent prompts. Path-scoped rules help the main execution agent, not the planning agents.
 
 ### 3. Enhance MEMORIES.md with Structured Sections
 
@@ -69,7 +69,7 @@ Keep MEMORIES.md human/LLM-curated. Never auto-append mechanically.
 
 ### 4. Embed Memory-Relevant Context in Lite Heavy Agent Prompts
 
-Since path-scoped rules are invisible to Task subagents, update the build skill's Phase 0.5 (Lite Heavy planning) to:
+Since path-scoped rules are invisible to Task subagents, update the melt skill's Phase 0.5 (Lite Heavy planning) to:
 - Read `.claude/rules/` content and paste relevant portions into planning agent prompts
 - Include user preferences and rejected approaches from MEMORIES.md
 - Reference known error patterns when the task touches related files
@@ -99,7 +99,7 @@ Since path-scoped rules are invisible to Task subagents, update the build skill'
 | **Invisible to Task subagents** | Could embed in subagent prompts |
 | Maintenance: Anthropic maintains the platform | Maintenance: 28→32+ hooks, all team-maintained |
 
-**Recommendation**: Use platform-native rules as the primary mechanism, but acknowledge the subagent limitation. Bridge the gap by having the build skill read rules files and embed relevant content in planning agent prompts.
+**Recommendation**: Use platform-native rules as the primary mechanism, but acknowledge the subagent limitation. Bridge the gap by having the melt skill read rules files and embed relevant content in planning agent prompts.
 
 ### Tradeoff 3: How Much Memory Infrastructure
 
@@ -130,7 +130,7 @@ Since path-scoped rules are invisible to Task subagents, update the build skill'
 | File | Change |
 |------|--------|
 | `.claude/MEMORIES.md` | Add structured sections (Error Gotchas, auto-entry sections). Process 27 pending tasks with LLM curation. |
-| `config/skills/build/SKILL.md` | Phase 0.5: Read `.claude/rules/` content and embed in Lite Heavy agent prompts. Reference MEMORIES.md for rejected approaches. |
+| `config/skills/melt/SKILL.md` | Phase 0.5: Read `.claude/rules/` content and embed in Lite Heavy agent prompts. Reference MEMORIES.md for rejected approaches. |
 
 ### Files to Potentially Create (Phase 2)
 
@@ -302,6 +302,6 @@ Since path-scoped rules are invisible to Task subagents, update the build skill'
 
 3. **Soon**: Build a `/remember` slash command that processes pending task files with LLM curation. This closes the broken pipeline without adding hooks.
 
-4. **Soon**: Update the build skill's Phase 0.5 to read `.claude/rules/` content and embed relevant portions in Lite Heavy agent prompts, bridging the subagent visibility gap.
+4. **Soon**: Update the melt skill's Phase 0.5 to read `.claude/rules/` content and embed relevant portions in Lite Heavy agent prompts, bridging the subagent visibility gap.
 
 5. **Later**: Monitor MEMORIES.md growth rate. If it approaches 200 lines, implement section archival. At the current rate (1 curated entry per ~20 commits), this is months away.

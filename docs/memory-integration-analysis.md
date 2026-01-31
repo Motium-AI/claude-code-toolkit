@@ -50,7 +50,7 @@ Also fix: `cleanup_checkpoint_only()` in `_state.py` uses hardcoded `completion-
 {
   "session_id": "2026-01-30T14:22:00",
   "project": {"cwd": "/path/to/project", "git_remote": "github.com/org/repo"},
-  "skill_used": "build",
+  "skill_used": "melt",
   "what_was_done": "Added logout button to navbar",
   "files_changed": ["src/components/Navbar.tsx"],
   "outcome": "completed",
@@ -80,7 +80,7 @@ Also fix: `cleanup_checkpoint_only()` in `_state.py` uses hardcoded `completion-
 ```markdown
 # Session Memory Index
 ## Recent Episodes (newest first)
-- `episodes/session-2026-01-30T14.json` - /build: Added logout button [Navbar.tsx]
+- `episodes/session-2026-01-30T14.json` - /melt: Added logout button [Navbar.tsx]
 - `episodes/session-2026-01-29T09.json` - /heavy: Memory system analysis [7 agents]
 - `episodes/session-2026-01-28T16.json` - /burndown: Fixed 12 slop issues [src/hooks/]
 ```
@@ -120,7 +120,7 @@ Hash of `git_remote_url` or `cwd` as directory name. Prevents cross-pollination 
       session-2026-01-30T14.json
       ...
     profiles/            # Per-skill memory
-      build.md
+      melt.md
       heavy.md
       burndown.md
   {project-hash-2}/
@@ -248,4 +248,4 @@ Total implementation: ~310 lines of Python + ~100 lines of skill markdown. No ne
 | 3 | Consolidation command + INDEX.md | ~120 | Medium |
 | 4 | Decision journal, agent personality (deferred) | TBD | TBD |
 
-**Next step**: `/build` Phase 0 (fix async-tasks cleanup + checkpoint glob pattern).
+**Next step**: `/melt` Phase 0 (fix async-tasks cleanup + checkpoint glob pattern).

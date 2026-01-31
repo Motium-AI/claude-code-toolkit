@@ -28,7 +28,7 @@ We have **six loop functions** operating at different temporal horizons:
 
 | Function | Implementation | Temporal Horizon |
 |----------|---------------|------------------|
-| **ACT** | Skills (`/build`, `/heavy`, `/repair`) | Minutes to hours |
+| **ACT** | Skills (`/melt`, `/heavy`, `/repair`) | Minutes to hours |
 | **ENFORCE** | Validation hooks (`stop-validator`, `plan-mode-enforcer`) | Sub-second |
 | **CAPTURE** | `stop-validator::_auto_capture_memory()` | End of session |
 | **STORE** | `_memory.py` event store | Days to months |
