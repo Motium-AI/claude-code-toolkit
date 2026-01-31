@@ -130,13 +130,37 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 ### How It Works
 
-1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as LESSON-first memory event on every successful stop. Checkpoint requires `key_insight` (>30 chars), `search_terms` (2-7 concept keywords), and `category` (enum).
+1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as LESSON-first memory event on every successful stop. Checkpoint requires `key_insight` (>30 chars), `search_terms` (2-7 concept keywords), `category` (enum), and optional `memory_that_helped` (event IDs from `<m>` tags).
 2. **Manual capture** (deep captures): `/compound` skill for detailed LESSON/PROBLEM/CAUSE/FIX documentation
 3. **Auto-injection**: `compound-context-loader` hook injects top 10 relevant events as structured XML at SessionStart
 4. **Scoring**: 4-signal ranking — entity overlap (35%) + recency (30%) + content quality (20%) + source (15%)
 5. **Entity matching**: File-path entities (basename, stem, dir) + concept entities (from `search_terms`) with substring matching
 6. **Dedup**: Prefix-hash guard (8-event lookback, 60-min window) prevents duplicates
 7. **Bootstrap filter**: Commit-message-level events automatically excluded from injection
+
+### Feedback Loop & Auto-Tuning
+
+Memory System v3 includes a closed feedback loop to improve injection quality over time:
+
+1. **Injection logging**: `compound-context-loader` writes `injection-log.json` at SessionStart, recording which events were injected (prevents hallucinated event IDs in `memory_that_helped`)
+2. **Utility tracking**: `stop-validator` validates `memory_that_helped` field against injection log, then records injection/citation counts in `manifest.json` under `"utility"` key
+3. **Per-event demotion**: Events injected 3+ times with 0 citations receive a 0.5 score penalty (50% demotion), events injected 2 times with 0 citations receive 0.25 penalty
+4. **Auto-tuned MIN_SCORE**: Proportional controller adjusts injection threshold based on aggregate citation rate (target: 15%). Activates after 20+ total injections, bounded to [0.05, 0.25]
+5. **Stale utility cleanup**: Utility entries for deleted events are pruned during retention cleanup to keep manifest bounded
+
+**Utility data structure** (in `manifest.json`):
+```json
+{
+  "utility": {
+    "events": {
+      "evt_20260131T143022-12345-a1b2c3": {"injected": 5, "cited": 2},
+      "evt_20260131T150000-67890-d4e5f6": {"injected": 3, "cited": 0}
+    },
+    "total_injected": 47,
+    "total_cited": 8
+  }
+}
+```
 
 ### Storage
 
