@@ -229,7 +229,7 @@ else
     # Check key hook files
     KEY_HOOKS=(
         "_common.py:Shared utilities"
-        "appfix-auto-approve.py:Auto-approval for appfix/build"
+        "pretooluse-auto-approve.py:Auto-approval for appfix/build"
         "plan-mode-enforcer.py:Blocks Edit/Write on first iteration"
         "stop-validator.py:Completion checkpoint validation"
         "checkpoint-invalidator.py:Resets stale checkpoint flags"
@@ -265,11 +265,11 @@ else
     # Test _common.py imports
     echo ""
     echo -n "  _common.py imports: "
-    if python3 -c "import sys; sys.path.insert(0, '$HOOKS_DIR'); from _common import is_autonomous_mode_active" 2>/dev/null; then
+    if python3 -c "import sys; sys.path.insert(0, '$HOOKS_DIR'); from _state import is_autonomous_mode_active" 2>/dev/null; then
         echo -e "${GREEN}OK${NC}"
     else
         echo -e "${RED}FAILED${NC}"
-        echo "    → Run: python3 -c \"import sys; sys.path.insert(0, '$HOOKS_DIR'); from _common import is_autonomous_mode_active\""
+        echo "    → Run: python3 -c \"import sys; sys.path.insert(0, '$HOOKS_DIR'); from _state import is_autonomous_mode_active\""
     fi
 fi
 
@@ -338,7 +338,7 @@ EOF
     RESULT=$(python3 -c "
 import sys
 sys.path.insert(0, '$HOOKS_DIR')
-from _common import is_autonomous_mode_active
+from _state import is_autonomous_mode_active
 print(is_autonomous_mode_active('$TEST_DIR'))
 " 2>&1)
 
@@ -362,10 +362,10 @@ echo ""
 echo -e "${BLUE}6. AUTO-APPROVAL HOOK${NC}"
 echo "───────────────────────────────────────────────────────────────"
 
-AUTO_APPROVE="$HOOKS_DIR/appfix-auto-approve.py"
+AUTO_APPROVE="$HOOKS_DIR/pretooluse-auto-approve.py"
 
 if [ ! -f "$AUTO_APPROVE" ]; then
-    echo -e "  ${RED}appfix-auto-approve.py not found!${NC}"
+    echo -e "  ${RED}pretooluse-auto-approve.py not found!${NC}"
 else
     # Test with state file present
     TEST_DIR=$(mktemp -d)
@@ -380,7 +380,7 @@ EOF
 
     echo -n "  With state file (empty stdin): "
     RESULT=$(cd "$TEST_DIR" && echo "" | python3 "$AUTO_APPROVE" 2>&1)
-    if echo "$RESULT" | grep -q '"behavior": "allow"'; then
+    if echo "$RESULT" | grep -qE '"(behavior|permissionDecision)": "allow"'; then
         echo -e "${GREEN}ALLOWS${NC}"
     else
         echo -e "${RED}FAILS${NC}"
@@ -389,7 +389,7 @@ EOF
 
     echo -n "  With state file (JSON stdin): "
     RESULT=$(cd "$TEST_DIR" && echo '{"cwd": "'$TEST_DIR'"}' | python3 "$AUTO_APPROVE" 2>&1)
-    if echo "$RESULT" | grep -q '"behavior": "allow"'; then
+    if echo "$RESULT" | grep -qE '"(behavior|permissionDecision)": "allow"'; then
         echo -e "${GREEN}ALLOWS${NC}"
     else
         echo -e "${RED}FAILS${NC}"

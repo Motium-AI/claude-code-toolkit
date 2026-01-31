@@ -1,5 +1,5 @@
 {
-  "name": "auto-approval-in-forge-mode",
+  "name": "auto-approval-in-build-mode",
   "description": "Verify tools are auto-approved when build-state.json exists and is valid",
   "type": "hook",
   "target": "config/hooks/pretooluse-auto-approve.py",
@@ -9,6 +9,9 @@
       "iteration": 1,
       "plan_mode_completed": true,
       "started_at": "2026-01-30T12:00:00Z"
+    },
+    "files": {
+      "src/main.py": "# existing file"
     }
   },
   "prompt": "Read the file src/main.py and then write 'print(\"hello\")' to src/hello.py",

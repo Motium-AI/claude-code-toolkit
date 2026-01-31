@@ -1,5 +1,5 @@
 {
-  "name": "skill-state-initializer-forge",
+  "name": "skill-state-initializer-build",
   "description": "Verify skill-state-initializer creates build-state.json when /build is invoked",
   "type": "hook",
   "target": "config/hooks/skill-state-initializer.py",
