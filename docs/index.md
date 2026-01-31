@@ -47,7 +47,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 ---
 
-## All Slash Commands (15 commands + 5 core skills)
+## All Slash Commands (17 commands + 5 core skills)
 
 | Command | Purpose |
 |---------|---------|
@@ -56,6 +56,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/repair` | Unified debugging router (web → appfix, mobile → mobileappfix) |
 | `/burndown` | Autonomous tech debt elimination (combines /deslop + /qa) |
 | `/heavy` | Multi-agent analysis |
+| `/improve` | Universal recursive improvement (design, UX, performance, a11y) targeting 9/10 |
 | `/audiobook` | Transform documents into TTS-optimized audiobooks |
 | `/harness-test` | Test harness changes (hooks/skills) in sandbox |
 | `/appfix` | Web app debugging |
@@ -68,11 +69,12 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `/mobileaudit` | Vision-based UI audit |
 | `/interview` | Requirements Q&A |
 | `/weboptimizer` | Performance benchmarking |
-| `/designimprove` | UI improvement |
-| `/uximprove` | UX improvement |
+| `/designimprove` | UI improvement (or `/improve design`) |
+| `/uximprove` | UX improvement (or `/improve UX`) |
 | `/compound` | Capture solved problems as memory events for cross-session learning |
+| `/health` | Toolkit health metrics — memory state, injection effectiveness, trends |
 
-## All Skills (25 total)
+## All Skills (27 total)
 
 | Skill | Triggers |
 |-------|----------|
@@ -82,6 +84,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `burndown` | /burndown, "burn down debt", "clean up codebase", "fix the slop" |
 | `appfix` | (Internal: web debugging - prefer /repair) |
 | `heavy` | /heavy, "heavy analysis", "multiple perspectives", "debate this" |
+| `improve` | /improve, "improve design", "improve UX" (enhanced 9/10 target + stall detection) |
 | `compound` | /compound, "document this solution", "capture this learning", "remember this fix" |
 | `episode` | /episode, "generate an episode", "create educational video", "produce an episode" |
 | `essay` | /essay, "write an essay", "essay about" |
@@ -97,16 +100,17 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | `nextjs-tanstack-stack` | Next.js, TanStack |
 | `prompt-engineering-patterns` | Context engineering for prompts, skills, and CLAUDE.md |
 | `ux-designer` | UX design |
-| `design-improver` | UI review |
-| `ux-improver` | UX review |
+| `design-improver` | UI review (or /improve design) |
+| `ux-improver` | UX review (or /improve UX) |
 | `docs-navigator` | Documentation |
 | `revonc-eas-deploy` | /eas, /revonc-deploy, "deploy to testflight", "build ios/android" |
+| `health` | /health, "system health", "how is memory doing", "check health" |
 
-## Registered Hooks (22 scripts)
+## Registered Hooks (23 scripts)
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | auto-update, session-snapshot, compound-context-loader, read-docs-reminder | Init, memory injection, toolkit update |
+| SessionStart | auto-update, session-snapshot, health-aggregator, compound-context-loader, read-docs-reminder | Init, health summary, memory injection, toolkit update |
 | UserPromptSubmit | skill-state-initializer, read-docs-trigger | State files and doc suggestions |
 | PreToolUse (*) | pretooluse-auto-approve | Auto-approve during autonomous mode |
 | PreToolUse (Edit/Write) | plan-mode-enforcer | Block until plan done + /go Read-gate |
@@ -119,7 +123,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | PostToolUse (Bash) | bash-version-tracker, doc-updater-async | Track versions, suggest doc updates |
 | PostToolUse (ExitPlanMode) | plan-mode-tracker, plan-execution-reminder | Mark plan done, inject context |
 | PostToolUse (Skill) | skill-continuation-reminder | Continue loop after skill |
-| Stop | stop-validator | Validate checkpoint, auto-capture memory event |
+| Stop | stop-validator | Validate checkpoint, auto-capture memory event + health snapshot |
 | PermissionRequest | permissionrequest-auto-approve | Auto-approve during autonomous mode |
 
 ---
@@ -193,6 +197,35 @@ grep -riwl "keyword" ~/.claude/memory/*/events/
 
 ---
 
+## Health System
+
+**Self-monitoring instrumentation** for toolkit health. Tracks memory effectiveness, injection quality, and session diagnostics.
+
+### How It Works
+
+1. **Auto-capture** (at Stop): `stop-validator` archives a health snapshot after each successful stop via `_health.py`
+2. **SessionStart summary**: `health-aggregator` hook prints warnings if previous session had low citation rates or excessive demotions
+3. **Sidecar metrics**: `compound-context-loader` writes injection metrics, `session-snapshot` writes cleanup metrics — both read by `_health.py`
+4. **Manual diagnostics**: `/health` skill generates a comprehensive report with memory health, injection effectiveness, and recommendations
+
+### Storage
+
+- **Location**: `~/.claude/health/{project-hash}/snapshots/health_{timestamp}.json`
+- **Isolation**: Same project hash as memory system (SHA256(git_remote_url | repo_root))
+- **Retention**: 30-day TTL, 100 snapshot cap
+- **Schema**: Versioned (v1) with memory, injection, session, and sidecar sections
+
+### Key Metrics
+
+| Metric | Source | Meaning |
+|--------|--------|---------|
+| Citation rate | manifest utility | Fraction of injected memories that were cited (target: 15%) |
+| Demoted count | manifest utility | Events injected 2+ times with 0 citations |
+| MIN_SCORE tuned | proportional controller | Auto-adjusted injection threshold |
+| Score distribution | injection metrics sidecar | Spread of scores for injected events |
+
+---
+
 ## ToolSearch (MCP Lazy Loading)
 
 ToolSearch (`ENABLE_TOOL_SEARCH=auto` in settings.json) defers MCP tool loading until needed, saving 85-95% of context tokens from tool definitions.
@@ -244,6 +277,7 @@ Skills without MCP dependencies (`/go`, `/compound`, `/burndown`, `/qa`, `/deslo
 | [Appfix Guide](skills/appfix-guide.md) | Complete debugging guide |
 | [Build Guide](skills/build-guide.md) | Autonomous task execution guide (with Lite Heavy) |
 | [Philosophy](philosophy.md) | Core philosophy and principles |
+| [Architecture Philosophy](architecture-philosophy.md) | One System, One Loop — the mental model for recursive self-improvement |
 | [Settings Reference](reference/settings.md) | Configuration options |
 | [Azure Command Guard](hooks/azure-command-guard.md) | Azure CLI security hook |
 | [Azure Guard Testing](hooks/azure-guard-testing.md) | Testing the Azure guard |

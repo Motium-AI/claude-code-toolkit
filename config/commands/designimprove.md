@@ -5,6 +5,8 @@ argument-hint: [page-name-or-url]
 
 # /designimprove
 
+> **Tip**: `/improve design` provides an enhanced version with higher target (9/10 vs 8/10), stall detection, and score trajectory tracking.
+
 Use ultrathink to thoroughly analyze and iteratively improve UI design like a world-class designer.
 
 ## Target

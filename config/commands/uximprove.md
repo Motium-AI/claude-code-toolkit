@@ -5,6 +5,8 @@ argument-hint: [page-or-flow]
 
 # /uximprove
 
+> **Tip**: `/improve UX` provides an enhanced version with higher target (9/10 vs 8/10), stall detection, and score trajectory tracking.
+
 Use ultrathink to thoroughly analyze and iteratively improve user experience.
 
 ## Target
