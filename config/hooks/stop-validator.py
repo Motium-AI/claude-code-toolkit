@@ -379,6 +379,62 @@ def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
             hook_name="stop-validator",
         )
 
+    # Record injection utility (feedback loop)
+    _record_injection_utility(cwd, checkpoint)
+
+
+def _record_injection_utility(cwd: str, checkpoint: dict) -> None:
+    """Record which injected memories were cited by the model.
+
+    Reads memory_that_helped from checkpoint, validates IDs against
+    injection-log.json, and updates manifest utility counters.
+    """
+    reflection = checkpoint.get("reflection", {})
+    helped = reflection.get("memory_that_helped", [])
+    if not isinstance(helped, list):
+        helped = []
+
+    # Read injection log
+    log_path = Path(cwd) / ".claude" / "injection-log.json"
+    if not log_path.exists():
+        return
+    try:
+        log_data = json.loads(log_path.read_text())
+    except (json.JSONDecodeError, IOError, OSError):
+        return
+
+    # Staleness guard: cross-check session_id
+    snap_path = Path(cwd) / ".claude" / "session-snapshot.json"
+    if snap_path.exists():
+        try:
+            snap = json.loads(snap_path.read_text())
+            if log_data.get("session_id") and snap.get("session_id"):
+                if log_data["session_id"] != snap["session_id"]:
+                    return  # Stale log from a different session
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    injected_ids = [e["id"] for e in log_data.get("events", []) if e.get("id")]
+    if not injected_ids:
+        return
+
+    # Validate helped IDs against injected IDs (drop hallucinated IDs)
+    valid_helped = set(str(h) for h in helped if h) & set(injected_ids)
+
+    try:
+        from _memory import record_utility
+        record_utility(cwd, injected_ids, valid_helped)
+        log_debug(
+            "Recorded injection utility",
+            hook_name="stop-validator",
+            parsed_data={
+                "injected": len(injected_ids),
+                "cited": len(valid_helped),
+            },
+        )
+    except (ImportError, Exception) as e:
+        log_debug(f"Utility recording failed: {e}", hook_name="stop-validator")
+
 
 if __name__ == "__main__":
     main()

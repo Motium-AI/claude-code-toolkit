@@ -379,4 +379,140 @@ def cleanup_old_events(cwd: str) -> int:
             hook_name="memory",
         )
 
+    # Prune stale utility entries for deleted events
+    _cleanup_stale_utility(event_dir)
+
     return removed
+
+
+# ============================================================================
+# Utility Tracking (Feedback Loop)
+# ============================================================================
+
+
+def _get_utility_from_manifest(cwd: str) -> dict:
+    """Read utility data from manifest. Returns empty dict if missing."""
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text())
+            return manifest.get("utility", {})
+    except (json.JSONDecodeError, IOError, OSError):
+        pass
+    return {}
+
+
+def record_utility(cwd: str, injected_ids: list[str], helped_ids: set[str]) -> None:
+    """Record injection/citation counts for utility tracking.
+
+    Called by stop-validator after validating memory_that_helped against
+    the injection log. Updates manifest.utility with per-event and
+    aggregate counters.
+    """
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        manifest = {}
+        if manifest_path.exists():
+            raw = manifest_path.read_text()
+            if raw.strip():
+                manifest = json.loads(raw)
+
+        utility = manifest.get("utility", {})
+        events_util = utility.get("events", {})
+
+        for eid in injected_ids:
+            entry = events_util.get(eid, {"injected": 0, "cited": 0})
+            entry["injected"] = entry.get("injected", 0) + 1
+            if eid in helped_ids:
+                entry["cited"] = entry.get("cited", 0) + 1
+            events_util[eid] = entry
+
+        utility["events"] = events_util
+        utility["total_injected"] = utility.get("total_injected", 0) + len(injected_ids)
+        utility["total_cited"] = utility.get("total_cited", 0) + len(helped_ids)
+        manifest["utility"] = utility
+
+        atomic_write_json(manifest_path, manifest)
+    except (json.JSONDecodeError, IOError, OSError) as e:
+        log_debug(f"record_utility failed: {e}", hook_name="memory")
+
+
+def get_event_demotion(cwd: str, event_id: str) -> float:
+    """Return demotion factor (0.0-0.5) for events injected often with no citations.
+
+    Events injected 3+ times with 0 citations get a 0.5 demotion (50% score penalty).
+    Events injected 2 times with 0 citations get 0.25.
+    Otherwise returns 0.0 (no demotion).
+    """
+    if not event_id:
+        return 0.0
+    utility = _get_utility_from_manifest(cwd)
+    entry = utility.get("events", {}).get(event_id)
+    if not entry:
+        return 0.0
+    injected = entry.get("injected", 0)
+    cited = entry.get("cited", 0)
+    if cited > 0 or injected < 2:
+        return 0.0
+    if injected >= 3:
+        return 0.5
+    return 0.25  # injected == 2, cited == 0
+
+
+def get_tuned_min_score(cwd: str, default: float = 0.12) -> float:
+    """Auto-tune MIN_SCORE based on aggregate citation rate.
+
+    Proportional controller: if citation rate is high, lower the threshold
+    (inject more). If citation rate is low, raise the threshold (be pickier).
+
+    Requires 20+ total injections before activating. Clamped to [0.05, 0.25].
+    """
+    utility = _get_utility_from_manifest(cwd)
+    total_injected = utility.get("total_injected", 0)
+    if total_injected < 20:
+        return default
+
+    total_cited = utility.get("total_cited", 0)
+    citation_rate = total_cited / total_injected  # 0.0 to ~1.0
+
+    # Target citation rate: 0.15 (15% of injected memories are cited)
+    # If actual rate > target: lower threshold (inject more)
+    # If actual rate < target: raise threshold (be pickier)
+    target_rate = 0.15
+    adjustment = (target_rate - citation_rate) * 0.3  # Gentle proportional control
+    tuned = default + adjustment
+
+    return max(0.05, min(0.25, tuned))
+
+
+def _cleanup_stale_utility(event_dir: Path) -> None:
+    """Prune utility entries for events that no longer exist.
+
+    Called during cleanup_old_events to keep utility data bounded.
+    """
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        if not manifest_path.exists():
+            return
+        manifest = json.loads(manifest_path.read_text())
+        utility = manifest.get("utility", {})
+        events_util = utility.get("events", {})
+        if not events_util:
+            return
+
+        # Check which event IDs still have files
+        existing_ids = {f.stem for f in event_dir.glob("evt_*.json")}
+        pruned = {eid: data for eid, data in events_util.items() if eid in existing_ids}
+
+        if len(pruned) < len(events_util):
+            utility["events"] = pruned
+            manifest["utility"] = utility
+            atomic_write_json(manifest_path, manifest)
+            log_debug(
+                f"Pruned {len(events_util) - len(pruned)} stale utility entries",
+                hook_name="memory",
+            )
+    except (json.JSONDecodeError, IOError, OSError):
+        pass

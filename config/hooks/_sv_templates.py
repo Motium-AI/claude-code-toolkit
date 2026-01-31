@@ -34,7 +34,8 @@ GO_CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
     "what_was_done": "...",                  // >20 chars - what you actually did
     "what_remains": "none",                  // Must be empty to allow stop
     "key_insight": "...",                    // >30 chars: reusable lesson for FUTURE sessions. NOT what you did — what you LEARNED.
-    "search_terms": []                       // 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
+    "search_terms": [],                      // 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
+    "memory_that_helped": []                 // Event IDs from <m> tags that helped this session (empty if none)
   }}
 }}"""
 
@@ -55,7 +56,8 @@ CHECKPOINT_SCHEMA_TEMPLATE = """{version_note}
     "what_was_done": "...",                 // Honest summary of work completed
     "what_remains": "none",                 // Must be empty to allow stop
     "key_insight": "...",                   // REQUIRED >30 chars: reusable lesson for FUTURE sessions. NOT what you did — what you LEARNED.
-    "search_terms": []                      // REQUIRED 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
+    "search_terms": [],                     // REQUIRED 2-7 concept keywords for memory retrieval. Tool names, error types, patterns. NOT file paths.
+    "memory_that_helped": []                // Event IDs from <m> tags that helped this session (empty if none)
   }},
   "evidence": {{
     "urls_tested": [],                      // URLs you actually tested

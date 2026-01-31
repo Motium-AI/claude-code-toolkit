@@ -268,7 +268,8 @@ def _format_injection(scored_events: list[tuple[dict, float]]) -> str:
         # Category: top-level first, fall back to meta for backward compatibility
         cat = event.get("category", "") or event.get("meta", {}).get("category", "session")
 
-        attrs = f'files="{files_attr}" age="{age_str}" cat="{cat}"'
+        event_id = event.get("id", "")
+        attrs = f'id="{event_id}" files="{files_attr}" age="{age_str}" cat="{cat}"'
         if tags_attr:
             attrs += f' tags="{tags_attr}"'
         parts.append(f"<m {attrs}>\n{content}\n</m>")
@@ -345,8 +346,24 @@ def main():
     scored = [(event, _score_event(event, basenames, stems, dirs)) for event in events]
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # Apply minimum score threshold (exclude zero-relevance noise)
-    scored = [(e, s) for e, s in scored if s >= MIN_SCORE]
+    # Apply per-event demotion from utility tracking (feedback loop)
+    try:
+        from _memory import get_event_demotion
+        for i, (event, score) in enumerate(scored):
+            demotion = get_event_demotion(cwd, event.get("id", ""))
+            if demotion > 0:
+                scored[i] = (event, score * (1.0 - demotion))
+        scored.sort(key=lambda x: x[1], reverse=True)
+    except (ImportError, Exception):
+        pass
+
+    # Apply minimum score threshold (auto-tuned from utility data)
+    try:
+        from _memory import get_tuned_min_score
+        min_score = get_tuned_min_score(cwd, default=MIN_SCORE)
+    except (ImportError, Exception):
+        min_score = MIN_SCORE
+    scored = [(e, s) for e, s in scored if s >= min_score]
 
     # Take top N
     top_events = scored[:MAX_EVENTS]
@@ -367,6 +384,26 @@ def main():
     )
 
     print(output)
+
+    # Write injection log for feedback loop (read by stop-validator)
+    try:
+        session_id = ""
+        snap_path = Path(cwd) / ".claude" / "session-snapshot.json"
+        if snap_path.exists():
+            session_id = json.loads(snap_path.read_text()).get("session_id", "")
+        log_path = Path(cwd) / ".claude" / "injection-log.json"
+        log_data = {
+            "session_id": session_id,
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "events": [
+                {"id": e.get("id", ""), "score": round(s, 3)}
+                for e, s in top_events if e.get("id")
+            ],
+        }
+        log_path.write_text(json.dumps(log_data, indent=2))
+    except Exception:
+        pass
+
     sys.exit(0)
 
 
