@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-PreCompact Hook - Pre-Compaction Memory Capture
+PreCompact Hook - Pre-Compaction Summary Injection
 
-Archives the full session transcript BEFORE context compaction, ensuring
-no work is lost if the session is later interrupted. Also injects a
-structured summary into the post-compaction context via hookSpecificOutput.
+Builds a deterministic summary from session state and injects it into
+the post-compaction context via hookSpecificOutput. This ensures key
+session context survives context compaction.
 
-Part of the Compound Memory System's three-layer safety net:
-  1. PreCompact: snapshot before compaction (this hook)
+Part of the Compound Memory System's two-layer safety net:
+  1. PreCompact: summary injection before compaction (this hook)
   2. Stop: structured LESSON capture on clean exit
-  3. SessionEnd: raw transcript archive on any exit
-
-Sonnet distillation of the snapshot happens at the next SessionStart
-via distill-trigger.py.
 """
 
 from __future__ import annotations
@@ -25,14 +21,14 @@ from pathlib import Path
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _common import log_debug
+from _common import VERSION_TRACKING_EXCLUSIONS
 
 
 def _get_changed_files(cwd: str) -> list[str]:
     """Get files changed in this session via git diff."""
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
+            ["git", "diff", "--name-only", "HEAD", "--"] + VERSION_TRACKING_EXCLUSIONS,
             capture_output=True, text=True, timeout=5, cwd=cwd,
         )
         return [
@@ -45,7 +41,7 @@ def _get_changed_files(cwd: str) -> list[str]:
 
 def _build_summary(cwd: str, session_id: str) -> str:
     """Build a deterministic summary from session state files (no LLM)."""
-    parts = ["SESSION MEMORY CHECKPOINT (pre-compaction snapshot archived)"]
+    parts = ["SESSION MEMORY CHECKPOINT (pre-compaction)"]
 
     # Autonomous mode state
     try:
@@ -79,10 +75,6 @@ def _build_summary(cwd: str, session_id: str) -> str:
     except (ImportError, Exception):
         pass
 
-    parts.append(
-        "Pre-compaction transcript archived for Sonnet distillation at next session."
-    )
-
     return "\n".join(parts)
 
 
@@ -94,30 +86,10 @@ def main():
     if not cwd:
         sys.exit(0)
 
-    # 1. Archive raw transcript before compaction
-    snapshot_path = None
-    try:
-        from _memory import archive_precompact_snapshot
-        snapshot_path = archive_precompact_snapshot(cwd, session_id)
-        if snapshot_path:
-            log_debug(
-                f"PreCompact snapshot saved: {snapshot_path.name}",
-                hook_name="precompact-capture",
-            )
-    except ImportError:
-        log_debug(
-            "Cannot import _memory module",
-            hook_name="precompact-capture",
-        )
-    except Exception as e:
-        log_debug(
-            f"PreCompact archive failed: {e}",
-            hook_name="precompact-capture",
-        )
-
-    # 2. Build and output summary for post-compaction context
+    # Build summary for post-compaction context
     summary = _build_summary(cwd, session_id)
-    if summary:
+
+    if summary.strip():
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreCompact",

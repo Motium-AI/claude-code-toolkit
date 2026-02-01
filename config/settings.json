@@ -21,11 +21,6 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/health-aggregator.py\"",
-            "timeout": 3
-          },
-          {
-            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/compound-context-loader.py\"",
             "timeout": 15
           },
@@ -33,11 +28,6 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/read-docs-reminder.py\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/distill-trigger.py\"",
-            "timeout": 10
           }
         ]
       },
@@ -56,11 +46,6 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/health-aggregator.py\"",
-            "timeout": 3
-          },
-          {
-            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/compound-context-loader.py\"",
             "timeout": 15
           },
@@ -68,11 +53,6 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/read-docs-reminder.py\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/distill-trigger.py\"",
-            "timeout": 10
           }
         ]
       }
@@ -88,17 +68,7 @@
         ]
       }
     ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/session-end-archiver.py\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
+    "SessionEnd": [],
     "PreCompact": [
       {
         "hooks": [
@@ -153,11 +123,6 @@
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/azure-command-guard.sh\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/commit-lesson-reminder.py\"",
-            "timeout": 5
           }
         ]
       },
@@ -205,11 +170,6 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/citation-reminder.py\"",
-            "timeout": 5
           }
         ]
       },
@@ -219,11 +179,6 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/citation-reminder.py\"",
             "timeout": 5
           }
         ]
@@ -240,6 +195,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
+            "timeout": 5
           }
         ]
       },
@@ -250,6 +210,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
+            "timeout": 5
           }
         ]
       },
@@ -259,6 +224,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
             "timeout": 5
           }
         ]

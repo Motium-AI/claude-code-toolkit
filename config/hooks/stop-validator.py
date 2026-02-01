@@ -222,9 +222,6 @@ def main():
         # Auto-capture: archive checkpoint as memory event
         _auto_capture_memory(cwd, checkpoint)
 
-        # Auto-capture: archive health snapshot
-        _capture_session_health(cwd, checkpoint)
-
         # NOTE: Checkpoint file is intentionally NOT deleted here.
         # Deletion used to cause a race condition: the stop hook would delete
         # the checkpoint, but the stop wouldn't always fully complete (e.g.,
@@ -270,9 +267,6 @@ def main():
     # Auto-capture: archive checkpoint as memory event
     _auto_capture_memory(cwd, checkpoint)
 
-    # Auto-capture: archive health snapshot
-    _capture_session_health(cwd, checkpoint)
-
     # NOTE: Checkpoint file is intentionally NOT deleted here (same as first stop).
     # See comment above for rationale.
 
@@ -294,9 +288,9 @@ def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     v3: Model-provided search_terms as primary entities, lesson-first
     content with truncated context, top-level category, quality metadata.
 
-    v4 (2026-02-01): Raw transcript archival moved to SessionEnd hook
-    (session-end-archiver.py) which fires on ALL exits including crashes.
-    This function now only captures structured memory events.
+    v4 (2026-02-01): Raw transcript archival handled by PreCompact hook.
+    v5 (2026-02-01): SessionEnd archiver removed (redundant with PreCompact).
+    This function captures structured memory events only.
     """
     try:
         from _memory import append_event
@@ -382,206 +376,6 @@ def _auto_capture_memory(cwd: str, checkpoint: dict) -> None:
             f"Auto-capture failed: {e}",
             hook_name="stop-validator",
         )
-
-    # Record injection utility (feedback loop)
-    _record_injection_utility(cwd, checkpoint)
-
-
-def _record_injection_utility(cwd: str, checkpoint: dict) -> None:
-    """Record which injected memories were cited by the model.
-
-    Reads memory_that_helped from checkpoint, validates IDs against
-    injection-log.json, and updates manifest utility counters.
-    """
-    reflection = checkpoint.get("reflection", {})
-    helped = reflection.get("memory_that_helped", [])
-    if not isinstance(helped, list):
-        helped = []
-
-    # Read injection log
-    log_path = Path(cwd) / ".claude" / "injection-log.json"
-    if not log_path.exists():
-        return
-    try:
-        log_data = json.loads(log_path.read_text())
-    except (json.JSONDecodeError, IOError, OSError):
-        return
-
-    # Staleness guard: cross-check session_id
-    snap_path = Path(cwd) / ".claude" / "session-snapshot.json"
-    if snap_path.exists():
-        try:
-            snap = json.loads(snap_path.read_text())
-            if log_data.get("session_id") and snap.get("session_id"):
-                if log_data["session_id"] != snap["session_id"]:
-                    return  # Stale log from a different session
-        except (json.JSONDecodeError, IOError):
-            pass
-
-    injected_events = log_data.get("events", [])
-    injected_ids = [e["id"] for e in injected_events if e.get("id")]
-    if not injected_ids:
-        return
-
-    # Build ref-to-id mapping for short ID resolution (m1 -> evt_...)
-    ref_to_id = {e.get("ref", ""): e.get("id", "") for e in injected_events if e.get("ref")}
-
-    # Resolve helped IDs: accept both short refs (m1) and full IDs (evt_...)
-    valid_helped = set()
-    for h in helped:
-        h_str = str(h).strip()
-        if not h_str:
-            continue
-        # Try direct match first (full ID)
-        if h_str in injected_ids:
-            valid_helped.add(h_str)
-        # Try ref resolution (m1 -> evt_...)
-        elif h_str in ref_to_id:
-            valid_helped.add(ref_to_id[h_str])
-
-    try:
-        from _memory import record_utility
-        record_utility(cwd, injected_ids, valid_helped)
-        log_debug(
-            "Recorded injection utility",
-            hook_name="stop-validator",
-            parsed_data={
-                "injected": len(injected_ids),
-                "cited": len(valid_helped),
-            },
-        )
-    except (ImportError, Exception) as e:
-        log_debug(f"Utility recording failed: {e}", hook_name="stop-validator")
-
-
-def _detect_implicit_usage(cwd: str, checkpoint: dict) -> dict:
-    """Detect implicit memory usage via phrase matching (telemetry only).
-
-    Matches distinctive phrases from injected memories against session output
-    (what_was_done, key_insight). Returns telemetry dict for health metrics.
-
-    This is TELEMETRY ONLY - does not affect demotion or utility tracking.
-    The goal is to measure if memories influence sessions without explicit citation.
-    """
-    result = {"implicit_matches": [], "total_injected": 0, "detection_ran": True}
-
-    # Read injection log
-    log_path = Path(cwd) / ".claude" / "injection-log.json"
-    if not log_path.exists():
-        result["detection_ran"] = False
-        return result
-
-    try:
-        log_data = json.loads(log_path.read_text())
-    except (json.JSONDecodeError, IOError):
-        result["detection_ran"] = False
-        return result
-
-    injected_events = log_data.get("events", [])
-    result["total_injected"] = len(injected_events)
-    if not injected_events:
-        return result
-
-    # Build session output text for matching
-    reflection = checkpoint.get("reflection", {})
-    session_text = " ".join([
-        reflection.get("what_was_done", ""),
-        reflection.get("key_insight", ""),
-    ]).lower()
-
-    if len(session_text) < 20:
-        return result
-
-    # Load actual memory content for phrase extraction
-    try:
-        from _memory import get_memory_dir, safe_read_event
-        event_dir = get_memory_dir(cwd)
-    except ImportError:
-        result["detection_ran"] = False
-        return result
-
-    # Check each injected memory for implicit usage
-    for event_meta in injected_events:
-        event_id = event_meta.get("id", "")
-        ref_id = event_meta.get("ref", "")
-        if not event_id:
-            continue
-
-        event = safe_read_event(event_dir / f"{event_id}.json")
-        if not event:
-            continue
-
-        content = event.get("content", "")
-        # Extract distinctive phrases (lines 20+ chars with technical content)
-        phrases = _extract_distinctive_phrases(content)
-
-        for phrase in phrases:
-            if phrase.lower() in session_text:
-                result["implicit_matches"].append({
-                    "ref": ref_id,
-                    "id": event_id,
-                    "matched_phrase": phrase[:40],
-                })
-                break
-
-    return result
-
-
-def _extract_distinctive_phrases(content: str) -> list[str]:
-    """Extract phrases likely to indicate usage if found in output.
-
-    Targets: technical terms, tool names, error patterns.
-    Avoids: generic words, short phrases.
-    """
-    phrases = []
-    technical_markers = [
-        "error", "fix", "hook", "memory", "config", "api", "crash",
-        "failed", "solved", "pattern", ".py", ".ts", ".json", "async",
-        "sync", "cache", "query", "database", "auth", "token",
-    ]
-
-    for line in content.split("\n"):
-        line = line.strip()
-        if len(line) < 20:
-            continue
-        # Check for technical markers
-        if any(marker in line.lower() for marker in technical_markers):
-            phrases.append(line[:60])
-        if len(phrases) >= 5:
-            break
-
-    return phrases
-
-
-def _capture_session_health(cwd: str, checkpoint: dict) -> None:
-    """Archive health snapshot at session end. Best-effort, never blocks.
-
-    Called after _auto_capture_memory on successful stops. Imports _health
-    lazily to avoid crash cascade if the module is broken.
-    """
-    try:
-        from _health import generate_health_report, archive_health_snapshot
-    except ImportError:
-        return
-    try:
-        report = generate_health_report(cwd)
-        # Enrich with checkpoint data
-        report["session"]["checkpoint_valid"] = True
-        report["session"]["memory_captured"] = True
-        sr = checkpoint.get("self_report", {})
-        report["session"]["code_changes"] = sr.get("code_changes_made", False)
-
-        # Add implicit citation telemetry (P4: measure before enforcing)
-        implicit_telemetry = _detect_implicit_usage(cwd, checkpoint)
-        report["session"]["implicit_citation"] = {
-            "total_injected": implicit_telemetry.get("total_injected", 0),
-            "implicit_matches": len(implicit_telemetry.get("implicit_matches", [])),
-            "detection_ran": implicit_telemetry.get("detection_ran", False),
-        }
-
-        archive_health_snapshot(cwd, report)
-    except Exception as e:
-        log_debug(f"Health capture failed: {e}", hook_name="stop-validator")
 
 
 if __name__ == "__main__":
