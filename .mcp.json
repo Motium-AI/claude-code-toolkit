@@ -1,6 +1,8 @@
 {
   "mcpServers": {
     "maestro": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-maestro"],
       "disabled": true
     }
   }
