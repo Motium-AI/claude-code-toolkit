@@ -14,7 +14,7 @@ Apply a prompt N times. No rubrics. No scoring. Just iterate.
 ```
 
 - `<prompt>` - What to do each iteration (required)
-- `[N]` - Number of iterations (default: 3, max: 10)
+- `[N]` - Number of iterations (default: 3, max: 50)
 
 Examples:
 - `/loopimprove improve the button styling 5`
@@ -23,7 +23,7 @@ Examples:
 
 ## Behavior
 
-1. Parse prompt and N from input (N defaults to 3, capped at 10)
+1. Parse prompt and N from input (N defaults to 3, capped at 50)
 2. For each iteration 1..N:
    - Show: `--- Iteration i/N ---`
    - Apply the prompt
