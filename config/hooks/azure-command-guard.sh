@@ -33,14 +33,17 @@ if [ -z "$COMMAND" ]; then
 fi
 
 # ============================================================================
-# TERRAFORM STATE COMMANDS - ALWAYS BLOCKED
+# TERRAFORM COMMANDS - ALWAYS BLOCKED
 # ============================================================================
-# These commands modify Terraform state and must NEVER be run locally.
-# State is managed by CI/CD only.
+# These commands modify infrastructure or state and must NEVER be run locally.
+# All infrastructure changes go through CI/CD only.
+#
+# Blocked: apply, destroy, import, state, force-unlock, taint, untaint
 #
 # Skip checking git commit messages (they can contain any text)
 if [[ ! "$COMMAND" =~ "git commit" ]]; then
     TERRAFORM_STATE_PATTERNS=(
+        # State manipulation - ALWAYS BLOCKED
         '^terraform import'
         '&& terraform import'
         '; terraform import'
@@ -54,6 +57,13 @@ if [[ ! "$COMMAND" =~ "git commit" ]]; then
         '&& terraform taint'
         '^terraform untaint'
         '&& terraform untaint'
+        # Apply/Destroy - ALWAYS BLOCKED (CI/CD only)
+        '^terraform apply'
+        '&& terraform apply'
+        '; terraform apply'
+        '^terraform destroy'
+        '&& terraform destroy'
+        '; terraform destroy'
     )
 
     for pattern in "${TERRAFORM_STATE_PATTERNS[@]}"; do
@@ -61,23 +71,34 @@ if [[ ! "$COMMAND" =~ "git commit" ]]; then
             cat >&2 <<EOF
 
 ╔════════════════════════════════════════════════════════════════╗
-║  ⛔ BLOCKED: Terraform State Modification Detected             ║
+║  ⛔ BLOCKED: Terraform Operation Requires CI/CD                ║
 ╚════════════════════════════════════════════════════════════════╝
 
 Command: $COMMAND
 
 Pattern matched: $pattern
 
-NEVER modify Terraform state locally. State is managed by CI/CD only.
+BLOCKED OPERATIONS:
+  • terraform apply/destroy — infrastructure changes go through CI/CD only
+  • terraform import — 99% of cases should DELETE the resource instead
+  • terraform state rm/mv — state manipulation is dangerous
+  • terraform taint/untaint — use CI/CD to force recreation
 
-If you encountered a "resource already exists" error:
-  1. Ask the user to DELETE the resource manually in Azure Portal/CLI
-  2. Then re-run CI/CD to create it fresh under Terraform management
+WHAT TO DO INSTEAD:
 
-Example for role assignments:
+For "resource already exists" errors:
+  1. DELETE the resource in Azure Portal/CLI (almost always correct)
+  2. Re-run CI/CD to create it fresh under Terraform management
+
+Example:
   az role assignment delete --ids "/subscriptions/.../roleAssignments/..."
 
-DO NOT use terraform import or import blocks.
+For apply/destroy:
+  1. Push your changes: git add . && git commit -m "..." && git push
+  2. CI will run terraform plan and apply on merge to main
+
+Import is ALMOST NEVER correct. Only consider import for resources that have
+existed for months/years and contain irreplaceable data. Ask user first.
 
 EOF
             exit 2
