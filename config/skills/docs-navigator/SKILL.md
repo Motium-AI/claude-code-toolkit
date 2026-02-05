@@ -15,30 +15,26 @@ Efficiently read project documentation without bloating context.
 
 ## Workflow
 
-### Step 1: Read the Index
+### Step 1: Search for Relevant Docs
 
-Always start with `docs/index.md`:
-- Contains keywords and summaries for all docs
-- Enables smart routing to relevant docs only
+**If QMD MCP is available** (check with `qmd_status`):
+```
+qmd_search "your task description here"
+```
+QMD returns ranked results with excerpts - read the top 1-3 matches.
 
-### Step 2: Match Task to Keywords
+**If QMD unavailable**, fall back to manual index:
+- Read `docs/index.md`
+- Match task keywords to doc keywords in the table
+- Identify 1-3 relevant docs
 
-Look at the **Keywords** column in the index:
-- Identify 1-3 docs that match your current task
-- Don't read docs that don't match
+### Step 2: Read Matched Docs
 
-Example matching:
-- Task: "Fix authentication bug" → Match: auth, login, error handling
-- Task: "Add new API endpoint" → Match: REST, routes, architecture
-- Task: "Deploy to production" → Match: deploy, CI/CD, environments
+- Use `qmd_get "qmd://collection/path/to/doc.md"` for QMD results
+- Or use `Read` tool for manual matches
+- Read the 1-3 most relevant docs fully
 
-### Step 3: Read Only Relevant Docs
-
-- Read the 1-3 matched docs fully
-- Apply patterns and conventions found there
-- Skip unrelated docs to preserve context
-
-### Step 4: Apply What You Learned
+### Step 3: Apply What You Learned
 
 - Follow documented patterns exactly
 - Don't deviate from established conventions
@@ -48,14 +44,14 @@ Example matching:
 
 | Don't Do This | Do This Instead |
 |---------------|-----------------|
-| Read all docs in index | Read only task-relevant docs |
+| Read all docs in index | Use QMD search or read only task-relevant docs |
 | Skim docs superficially | Read relevant docs thoroughly |
-| Ignore index, guess from memory | Always check index first |
+| Ignore index, guess from memory | Always search first (QMD or index) |
 | Read docs once and forget | Re-read when switching tasks |
 
 ## Expected docs/index.md Format
 
-Projects using this skill should have a `docs/index.md` with this structure:
+Projects without QMD should have a `docs/index.md` with this structure:
 
 ```markdown
 # Documentation Index
@@ -84,7 +80,7 @@ Projects using this skill should have a `docs/index.md` with this structure:
 
 This skill complements the hooks:
 - **SessionStart**: Reminds to read docs/index.md
-- **read-docs-trigger**: When user says "read the docs", this skill guides the process
+- **read-docs-trigger**: When user says "read the docs", suggests QMD search or relevant docs
 - **Stop**: Validates work against documented standards
 
 ## Example Session
@@ -92,14 +88,16 @@ This skill complements the hooks:
 ```
 User: Read the docs before we add a new payment endpoint
 
-Claude: [Reads docs/index.md]
+Claude: [Checks qmd_status - QMD available]
 
-I found these relevant docs based on keywords:
-- architecture.md (system design, components)
-- api/endpoints.md (REST, routes, handlers)
-- guides/authentication.md (auth, permissions)
+qmd_search "payment endpoint API routes authentication"
 
-[Reads those 3 docs]
+Results:
+1. api/endpoints.md (score: 0.85) - REST API patterns
+2. guides/authentication.md (score: 0.72) - Auth middleware
+3. architecture.md (score: 0.68) - System overview
+
+[Reads those 3 docs via qmd_get]
 
 Based on the documentation:
 - New endpoints go in src/api/routes/
@@ -112,12 +110,14 @@ Ready to implement the payment endpoint following these patterns.
 
 ## Context Efficiency
 
-This approach optimizes context usage:
-
 | Approach | Context Cost | Effectiveness |
 |----------|--------------|---------------|
 | Read all docs | High (10k+ tokens) | Unfocused |
 | Read index only | Low (500 tokens) | Incomplete |
-| **Index + matched docs** | Medium (2-4k tokens) | **Targeted** |
+| **QMD search + matched docs** | Medium (2-4k tokens) | **Targeted** |
 
-By matching keywords before reading, you get the right context without bloat.
+QMD search is preferred because:
+- Semantic matching finds conceptually related docs
+- No need to read index.md first
+- Returns excerpts, reducing token cost
+- Works across any project with indexed docs

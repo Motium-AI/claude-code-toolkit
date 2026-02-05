@@ -1,15 +1,37 @@
 #!/usr/bin/env python3
 """
 UserPromptSubmit hook - triggers documentation reading when user says "read the docs".
-Also suggests relevant docs based on keywords in the user's message.
+Suggests QMD search when available, falls back to keyword-based doc suggestions.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 
-# Keyword to document mapping for smart doc suggestions
+
+def check_qmd_available() -> bool:
+    """Check if QMD MCP server is configured in .mcp.json."""
+    mcp_paths = [
+        Path.cwd() / ".mcp.json",
+        Path.home() / ".claude" / "settings.json",
+    ]
+    for mcp_path in mcp_paths:
+        if mcp_path.exists():
+            try:
+                with open(mcp_path) as f:
+                    config = json.load(f)
+                    servers = config.get("mcpServers", {})
+                    if "qmd" in servers:
+                        return True
+            except (json.JSONDecodeError, OSError):
+                continue
+    return False
+
+
+# Fallback keyword to document mapping for projects without QMD
 DOC_KEYWORDS = {
     "elasticsearch": ["entities/README.md", "data_models/README.md"],
     "index template": ["entities/README.md", "data_models/README.md"],
@@ -47,7 +69,7 @@ DOC_KEYWORDS = {
 
 
 def suggest_relevant_docs(message: str) -> list[str]:
-    """Return list of docs relevant to the user's message."""
+    """Return list of docs relevant to the user's message (fallback for non-QMD)."""
     suggestions = []
     message_lower = message.lower()
     for keyword, docs in DOC_KEYWORDS.items():
@@ -64,13 +86,30 @@ def main():
         sys.exit(0)
 
     message = input_data.get("message", "").lower()
+    qmd_available = check_qmd_available()
 
-    # Check for keyword-based doc suggestions (always runs)
+    # Check for keyword-based doc suggestions (fallback)
     suggested_docs = suggest_relevant_docs(message)
 
     # Only show full reminder when user explicitly requests doc reading
     if "read the docs" in message:
-        reminder = """Consider using the Skill tool for this task. Relevant skills:
+        if qmd_available:
+            reminder = """Consider using the Skill tool for this task. Relevant skills:
+  - /docs-navigator (matched: 'read the docs')
+
+**QMD is available.** Use semantic search for documentation:
+
+1. Search for relevant docs:
+   qmd_search "your task description"
+
+2. Read the top 1-3 matches:
+   qmd_get "qmd://collection/path/to/doc.md"
+
+3. Apply the patterns and conventions documented there
+
+Do NOT read all docs. Use QMD to find only what's relevant."""
+        else:
+            reminder = """Consider using the Skill tool for this task. Relevant skills:
   - /docs-navigator (matched: 'read the docs')
 
 Before starting this task, you MUST:
@@ -84,8 +123,19 @@ Before starting this task, you MUST:
 
 Do NOT skip this step. Do NOT read all docs. Read smart, not everything."""
         print(reminder)
+    elif qmd_available and suggested_docs:
+        # QMD available + keywords detected - suggest QMD search
+        hint = f"""Consider using the Skill tool for this task. Relevant skills:
+  - /docs-navigator (matched keywords in message)
+
+**QMD is available.** For documentation related to your task, use:
+
+qmd_search "{message[:50]}..."
+
+This will find relevant docs via semantic search."""
+        print(hint)
     elif suggested_docs:
-        # Suggest specific docs based on keywords detected
+        # Fallback: suggest specific docs based on keywords detected
         docs_list = "\n  - ".join(suggested_docs)
         hint = f"""Consider using the Skill tool for this task. Relevant skills:
   - /docs-navigator (matched: 'read the docs')

@@ -224,6 +224,62 @@ Skills without MCP dependencies (`/go`, `/compound`, `/burndown`, `/qa`, `/deslo
 
 ---
 
+## QMD (Documentation Search)
+
+QMD (`tobi/qmd`) is a local markdown search engine that provides semantic search over project documentation. When configured, it's preferred over manual `docs/index.md` reading.
+
+### Setup
+
+```bash
+# Install QMD globally
+bun install -g github:tobi/qmd
+
+# Create collection for your project
+qmd collection add ~/your-project --name myproject
+
+# Add context descriptions
+qmd context add qmd://myproject "Project description for search context"
+
+# Add MCP server to .mcp.json
+{
+  "mcpServers": {
+    "qmd": {
+      "command": "/path/to/.bun/bin/qmd",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Usage
+
+```bash
+# Search for relevant docs (preferred)
+qmd_search "authentication flow"
+
+# Get specific document
+qmd_get "qmd://collection/path/to/doc.md"
+
+# Check index status
+qmd_status
+```
+
+### Integration with Skills
+
+| Skill | QMD Usage |
+|-------|-----------|
+| `docs-navigator` | Primary search method (Step 1) |
+| `appfix` | Phase 0 context gathering |
+| `read-docs-trigger` hook | Suggests QMD when available |
+
+### Fallback Behavior
+
+All QMD integrations include fallback to manual doc reading when QMD is unavailable:
+- If `qmd_status` fails → read `docs/index.md` manually
+- Skills detect QMD via `.mcp.json` configuration
+
+---
+
 ## Deep Dives
 
 | Document | Description |

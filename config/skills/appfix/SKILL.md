@@ -88,9 +88,9 @@ If you deploy at version "abc", then edit code (version becomes "def"), `deploye
 
 State file is created automatically by `skill-state-initializer.py` hook.
 
-1. **Read project documentation** (MANDATORY):
-   - `docs/index.md` — Project overview
-   - `docs/TECHNICAL_OVERVIEW.md` — System architecture
+1. **Read project documentation**:
+   - **If QMD available**: `qmd_search "project architecture overview"` — faster, semantic
+   - **If no QMD**: Read `docs/index.md` and `docs/TECHNICAL_OVERVIEW.md`
 2. Check for `.claude/skills/appfix/references/service-topology.md`
 3. If missing: **STOP and ask user** for service URLs
 4. Check credentials — ask user **ONCE** if missing
@@ -98,9 +98,13 @@ State file is created automatically by `skill-state-initializer.py` hook.
 ### Phase 0.5: Codebase Context (First Iteration Only)
 
 1. Call `EnterPlanMode`
-2. Explore: architecture, recent commits, configs, error patterns
-3. Write understanding to plan file
-4. Call `ExitPlanMode`
+2. **FIRST: Temporal causality checkpoint**
+   - `git log --oneline --since="48 hours ago"` — What changed recently?
+   - Does symptom timing correlate with any recent change?
+   - If correlation exists → that change is your primary hypothesis
+3. Explore: architecture, configs, error patterns
+4. Write understanding to plan file
+5. Call `ExitPlanMode`
 
 ### Phase 0.75: Parallel Task Distribution
 
