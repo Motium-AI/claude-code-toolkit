@@ -14,6 +14,8 @@ import json
 import os
 import subprocess
 import tempfile
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -288,3 +290,56 @@ def get_worktree_info(cwd: str = "") -> dict | None:
         }
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return None
+
+
+# ============================================================================
+# Hook Execution Metrics
+# ============================================================================
+
+HOOK_METRICS_PATH = Path.home() / ".claude" / "hook-metrics.jsonl"
+
+
+def emit_hook_metric(
+    hook_name: str, duration_ms: float, status: str = "ok", **extra,
+) -> None:
+    """Write a structured metric entry to hook-metrics.jsonl (append)."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "hook": hook_name,
+        "duration_ms": round(duration_ms, 1),
+        "status": status,
+    }
+    entry.update(extra)
+    try:
+        HOOK_METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(HOOK_METRICS_PATH, "a") as f:
+            f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+    except (IOError, OSError):
+        pass
+
+
+@contextmanager
+def timed_hook(hook_name: str):
+    """Context manager that times hook execution and emits metrics.
+
+    Usage at script entry point:
+        if __name__ == "__main__":
+            with timed_hook("my-hook"):
+                main()
+
+    Handles SystemExit from sys.exit() gracefully.
+    """
+    metrics = {}
+    start = time.monotonic()
+    status = "ok"
+    try:
+        yield metrics
+    except SystemExit as e:
+        status = "ok" if e.code in (0, None) else "blocked"
+        raise
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        duration_ms = (time.monotonic() - start) * 1000
+        emit_hook_metric(hook_name, duration_ms, status, **metrics)

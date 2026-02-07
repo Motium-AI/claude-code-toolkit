@@ -586,3 +586,71 @@ def compact_assertions(cwd: str) -> int:
         hook_name="memory",
     )
     return removed
+
+
+# ============================================================================
+# Utility Tracking
+# ============================================================================
+
+
+def update_utility_counters(
+    cwd: str, injected_ids: list[str], cited_ids: list[str],
+) -> None:
+    """Update manifest utility counters for injected/cited events.
+
+    Uses same flock + atomic_write_json pattern as _update_manifest.
+    Increments 'injected' for each event shown, 'cited' for each referenced.
+    """
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    lock_path = event_dir.parent / ".manifest.lock"
+
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "w") as lock_file:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (IOError, OSError):
+                return  # Skip if locked — utility tracking is best-effort
+
+            try:
+                manifest = {}
+                if manifest_path.exists():
+                    raw = manifest_path.read_text()
+                    if raw.strip():
+                        manifest = json.loads(raw)
+
+                utility = manifest.get("utility", {})
+
+                for eid in injected_ids:
+                    if eid:
+                        entry = utility.setdefault(eid, {"injected": 0, "cited": 0})
+                        entry["injected"] = entry.get("injected", 0) + 1
+
+                for eid in cited_ids:
+                    if eid:
+                        entry = utility.setdefault(eid, {"injected": 0, "cited": 0})
+                        entry["cited"] = entry.get("cited", 0) + 1
+
+                manifest["utility"] = utility
+                atomic_write_json(manifest_path, manifest)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    except (json.JSONDecodeError, IOError, OSError):
+        pass
+
+
+def get_utility_map(cwd: str) -> dict:
+    """Load utility dict from manifest. Returns {event_id: {injected, cited}}.
+
+    Loaded once per scoring run, not per-event. Returns empty dict on any error.
+    """
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text())
+            return manifest.get("utility", {})
+    except (json.JSONDecodeError, IOError, OSError):
+        pass
+    return {}

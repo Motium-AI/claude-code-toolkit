@@ -22,7 +22,12 @@ from pathlib import Path
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _common import log_debug
+from _common import log_debug, timed_hook
+from _scoring import (
+    build_file_components,
+    score_event,
+    MIN_SCORE_RECALL,
+)
 
 # Throttle constants
 MAX_RECALLS_PER_SESSION = 8
@@ -52,29 +57,6 @@ def _extract_file_paths(tool_input: dict) -> set[str]:
                 paths.add("/".join(dir_parts))
 
     return paths
-
-
-def _build_entity_set(paths: set[str]) -> tuple[set, set, set]:
-    """Build basenames, stems, dirs from extracted paths."""
-    basenames = set()
-    stems = set()
-    dirs = set()
-
-    for p in paths:
-        parts = p.split("/")
-        basename = parts[-1]
-        if basename and "." in basename:
-            basenames.add(basename)
-            stem = basename.rsplit(".", 1)[0]
-            stems.add(stem)
-        elif basename:
-            stems.add(basename)
-
-        for part in parts[:-1]:
-            if part and part != ".":
-                dirs.add(part)
-
-    return basenames, stems, dirs
 
 
 def _check_throttle(cwd: str) -> bool:
@@ -135,7 +117,7 @@ def main():
     if not paths:
         sys.exit(0)
 
-    basenames, stems, dirs = _build_entity_set(paths)
+    basenames, stems, dirs = build_file_components(paths)
     if not (basenames or stems or dirs):
         sys.exit(0)
 
@@ -152,7 +134,7 @@ def main():
     # Get already-injected IDs
     injected_ids = _get_injected_ids(cwd)
 
-    # Score events against new entities
+    # Score events against new entities using unified scoring
     scored = []
     for event in events:
         eid = event.get("id", "")
@@ -163,29 +145,8 @@ def main():
         if event.get("source") in {"async-task-bootstrap", "bootstrap"}:
             continue
 
-        entities = event.get("entities", [])
-        best_match = 0.0
-        for e in entities:
-            is_file = "/" in e or "." in e
-            if is_file:
-                e_base = e.split("/")[-1]
-                if e_base in basenames:
-                    best_match = max(best_match, 1.0)
-                elif (e_base.rsplit(".", 1)[0] if "." in e_base else e_base) in stems:
-                    best_match = max(best_match, 0.6)
-            else:
-                e_lower = e.lower()
-                if e_lower in stems or e_lower in dirs:
-                    best_match = max(best_match, 0.5)
-            if best_match >= 1.0:
-                break
-
-        content = event.get("content", "")
-        has_lesson = content.startswith("LESSON:") or content.startswith("SCHEMA:")
-        quality = 0.8 if has_lesson else 0.3
-
-        score = 0.6 * best_match + 0.4 * quality
-        if score > 0.5:
+        score = score_event(event, basenames, stems, dirs)
+        if score >= MIN_SCORE_RECALL:
             scored.append((event, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -271,4 +232,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with timed_hook("memory-recall"):
+        main()

@@ -7,28 +7,28 @@ Use Exa MCP tools for all web search:
 
 Do not use the built-in WebSearch tool. If Exa tools are not visible, discover them with `ToolSearch(query: 'exa')`.
 
-# Documentation Search (QMD)
+# Documentation Search (QMD) — Always Use First
 
-When QMD MCP is available, prefer semantic search over manual doc reading:
+**QMD is the primary way to find documentation.** Do NOT manually read `docs/index.md`, `TECHNICAL_OVERVIEW.md`, or subdirectory CLAUDE.md files for doc lookup — use QMD search instead.
 
 ```bash
-# Search for relevant docs
+# Search for docs relevant to your task
 qmd_search "authentication flow"
 
-# Get specific document
-qmd_get "qmd://collection/path/to/doc.md"
-
-# Check what's indexed
-qmd_status
+# Get a specific document by path
+qmd_get "motium/cortex/docs/architecture/authentication.md"
 ```
 
-QMD is preferred because:
-- Semantic matching finds conceptually related docs
-- No need to read index.md first
-- Token-efficient (returns excerpts, not full files)
-- Works across any project with indexed docs
+**Why QMD over manual reads:**
+- Searches across all indexed documentation in one query
+- No need to read index.md first — search finds the right doc directly
+- Token-efficient — returns excerpts, not full files
+- `.gitignore` respected — no node_modules pollution
 
-If QMD tools are not visible, fall back to reading `docs/index.md` manually.
+**Only use Read tool for:** `CLAUDE.md` (root) and `.claude/MEMORIES.md` at session start.
+For everything else, search first with QMD.
+
+If QMD tools are not available, fall back to reading `docs/index.md` manually.
 
 # Skill Routing
 

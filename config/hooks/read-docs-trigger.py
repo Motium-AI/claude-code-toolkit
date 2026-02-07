@@ -31,52 +31,43 @@ def check_qmd_available() -> bool:
     return False
 
 
-# Fallback keyword to document mapping for projects without QMD
-DOC_KEYWORDS = {
-    "elasticsearch": ["entities/README.md", "data_models/README.md"],
-    "index template": ["entities/README.md", "data_models/README.md"],
-    "mapping": ["entities/README.md", "pauwels_*.json"],
-    "api": ["entities/open_api/", "pauwels_data_api_openapi.json"],
-    "openapi": ["entities/open_api/", "pauwels_data_api_openapi.json"],
-    "diagram": ["diagrams/INDEX.md"],
-    "architecture": ["diagrams/INDEX.md", "docs/TECHNICAL_OVERVIEW.md"],
-    "integration": ["docs/integrations/README.md"],
-    "bullhorn": ["bullhorn_docs_split/Index.md"],
-    "clerk": ["Clerk/Index.md"],
-    "auth": ["Clerk/Index.md"],
-    "exa": ["Exa-AI/Websets_cleaned/Index.md"],
-    "websets": ["Exa-AI/Websets_cleaned/Index.md"],
-    "logfire": ["Pydantic/Logfire_cleaned/Index.md"],
-    "pydantic": ["Pydantic/PydanticAI_cleaned/Index.md"],
-    "pydanticai": ["Pydantic/PydanticAI_cleaned/Index.md"],
-    "agent": ["Pydantic/PydanticAI_cleaned/Index.md"],
-    "hook": ["prompts/docs/concepts/hooks.md"],
-    "command": ["prompts/docs/concepts/commands.md"],
-    "skill": ["prompts/docs/concepts/skills.md"],
-    "toolkit": ["prompts/README.md", "prompts/docs/index.md"],
-    "person": ["entities/example_data/person.json", "pauwels_person.json"],
-    "company": ["entities/example_data/company.json", "pauwels_company.json"],
-    "vacancy": ["entities/example_data/vacancy.json", "pauwels_vacancy.json"],
-    "match": ["entities/example_data/match.json", "pauwels_match.json"],
-    "placement": ["entities/example_data/placement.json", "pauwels_placement.json"],
-    "time": ["entities/example_data/time.json", "pauwels_time.json"],
-    "appointment": [
-        "entities/example_data/appointment.json",
-        "pauwels_appointment.json",
-    ],
-    "note": ["entities/example_data/note.json", "pauwels_note.json"],
-}
+# Fallback: discover docs dynamically from project structure (no QMD)
+# Used only when QMD is not available — scans for docs/ directories and index files.
+def _discover_doc_paths(cwd: str) -> list[str]:
+    """Find documentation files in the project (max depth 3, limit 10)."""
+    base = Path(cwd) if cwd else Path.cwd()
+    found = []
+    # Priority: docs/index.md, then any docs/*.md, then README.md
+    for pattern in ["docs/index.md", "docs/*.md", "**/docs/index.md", "README.md"]:
+        for p in base.glob(pattern):
+            rel = str(p.relative_to(base))
+            if rel not in found and "node_modules" not in rel:
+                found.append(rel)
+            if len(found) >= 10:
+                return found
+    return found
 
 
-def suggest_relevant_docs(message: str) -> list[str]:
-    """Return list of docs relevant to the user's message (fallback for non-QMD)."""
-    suggestions = []
+def suggest_relevant_docs(message: str, cwd: str = "") -> list[str]:
+    """Return list of docs relevant to the user's message (fallback for non-QMD).
+
+    Uses dynamic file discovery instead of hardcoded paths.
+    """
+    doc_paths = _discover_doc_paths(cwd)
+    if not doc_paths:
+        return []
+    # Match message keywords against doc filenames/paths
     message_lower = message.lower()
-    for keyword, docs in DOC_KEYWORDS.items():
-        if keyword in message_lower:
-            suggestions.extend(docs)
-    # Deduplicate and limit to 3
-    return list(dict.fromkeys(suggestions))[:3]
+    scored = []
+    for path in doc_paths:
+        path_lower = path.lower()
+        # Score by keyword overlap with path components
+        parts = path_lower.replace("/", " ").replace("-", " ").replace("_", " ").replace(".md", "").split()
+        overlap = sum(1 for part in parts if part in message_lower and len(part) > 2)
+        scored.append((path, overlap))
+    # Sort by relevance, then return top 3 (always include docs/index.md if it exists)
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [p for p, _ in scored[:3]]
 
 
 def main():
@@ -86,10 +77,11 @@ def main():
         sys.exit(0)
 
     message = input_data.get("message", "").lower()
+    cwd = input_data.get("cwd", "")
     qmd_available = check_qmd_available()
 
-    # Check for keyword-based doc suggestions (fallback)
-    suggested_docs = suggest_relevant_docs(message)
+    # Check for keyword-based doc suggestions (fallback for non-QMD repos)
+    suggested_docs = suggest_relevant_docs(message, cwd)
 
     # Only show full reminder when user explicitly requests doc reading
     if "read the docs" in message:

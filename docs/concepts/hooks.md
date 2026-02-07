@@ -111,8 +111,8 @@ Location: `~/.claude/settings.json`
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000",
-    "MAX_THINKING_TOKENS": "31999"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "MAX_THINKING_TOKENS": "65536"
   },
   "alwaysThinkingEnabled": true,
   "hooks": {

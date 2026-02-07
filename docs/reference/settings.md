@@ -8,14 +8,14 @@ These variables control Claude Code's behavior:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `64000` | Maximum tokens in Claude's response output |
-| `MAX_THINKING_TOKENS` | `31999` | Maximum tokens allocated for extended thinking |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `128000` | Maximum tokens in Claude's response output |
+| `MAX_THINKING_TOKENS` | `65536` | Maximum tokens allocated for extended thinking |
 
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000",
-    "MAX_THINKING_TOKENS": "31999"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "MAX_THINKING_TOKENS": "65536"
   }
 }
 ```
@@ -91,8 +91,8 @@ The toolkit defines hooks for these events:
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000",
-    "MAX_THINKING_TOKENS": "31999"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "MAX_THINKING_TOKENS": "65536"
   },
   "alwaysThinkingEnabled": true,
   "hooks": {

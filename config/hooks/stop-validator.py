@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _common import get_diff_hash, log_debug, VERSION_TRACKING_EXCLUSIONS
+from _common import get_diff_hash, log_debug, timed_hook, VERSION_TRACKING_EXCLUSIONS
 from _session import (
     load_checkpoint,
     reset_state_for_next_task,
@@ -192,6 +192,51 @@ def _get_git_diff_files(cwd: str) -> list[str]:
         return []
 
 
+def _compute_quality_score(checkpoint: dict) -> float:
+    """Compute continuous 0-1 quality score from checkpoint fields.
+
+    Replaces binary "rich"/"standard" with granular scoring:
+    - insight_length: 50->0.105, 100->0.21, 200+->0.35
+    - entity_count: 2->0.105, 4->0.21, 7+->0.35
+    - has_problem_type: +0.15
+    - has_assertions: +0.10
+    Capped at 1.0.
+    """
+    score = 0.0
+    reflection = checkpoint.get("reflection", {})
+    report = checkpoint.get("self_report", {})
+
+    # Insight length signal
+    insight = reflection.get("key_insight", "")
+    insight_len = len(insight.strip())
+    if insight_len >= 200:
+        score += 0.35
+    elif insight_len >= 100:
+        score += 0.21
+    elif insight_len >= 50:
+        score += 0.105
+
+    # Entity count signal
+    search_terms = reflection.get("search_terms", [])
+    entity_count = len(search_terms) if isinstance(search_terms, list) else 0
+    if entity_count >= 7:
+        score += 0.35
+    elif entity_count >= 4:
+        score += 0.21
+    elif entity_count >= 2:
+        score += 0.105
+
+    # Problem type signal
+    if report.get("problem_type"):
+        score += 0.15
+
+    # Assertions signal
+    if reflection.get("core_assertions"):
+        score += 0.10
+
+    return min(score, 1.0)
+
+
 def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     """Archive checkpoint as a memory event for cross-session learning."""
     try:
@@ -240,9 +285,7 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     if problem_type and problem_type not in valid_problem_types:
         problem_type = ""
 
-    has_lesson = bool(key_insight and len(key_insight.strip()) > 10)
-    has_terms = bool(search_terms and len(search_terms) >= 2)
-    quality = "rich" if (has_lesson and has_terms) else "standard"
+    quality_score = _compute_quality_score(checkpoint)
 
     try:
         append_event(
@@ -252,16 +295,43 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
             event_type="session_end",
             source="auto-capture",
             category=category,
-            meta={"quality": quality},
+            meta={"quality_score": quality_score},
             problem_type=problem_type,
         )
         log_debug(
             "Auto-captured memory event",
             hook_name="stop-validator",
-            parsed_data={"entities": entities[:5], "quality": quality, "category": category},
+            parsed_data={"entities": entities[:5], "quality_score": round(quality_score, 3), "category": category},
         )
     except Exception as e:
         log_debug(f"Auto-capture failed: {e}", hook_name="stop-validator")
+
+    # Update utility counters (feedback loop)
+    try:
+        from _memory import update_utility_counters
+        log_path = Path(cwd) / ".claude" / "injection-log.json"
+        if log_path.exists():
+            log_data = json.loads(log_path.read_text())
+            # Collect all injected event IDs
+            injected_ids = [e.get("id", "") for e in log_data.get("events", [])]
+            injected_ids += [e.get("id", "") for e in log_data.get("recalled_events", [])]
+            # Resolve memory_that_helped refs to event IDs
+            cited_ids = []
+            memory_helped = reflection.get("memory_that_helped", [])
+            if isinstance(memory_helped, list):
+                ref_to_id = {
+                    e.get("ref", ""): e.get("id", "")
+                    for e in log_data.get("events", [])
+                }
+                for ref in memory_helped:
+                    if isinstance(ref, str):
+                        eid = ref_to_id.get(ref, "")
+                        if eid:
+                            cited_ids.append(eid)
+            if injected_ids or cited_ids:
+                update_utility_counters(cwd, injected_ids, cited_ids)
+    except Exception:
+        pass
 
     # Core assertions
     try:
@@ -399,4 +469,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with timed_hook("stop-validator"):
+        main()

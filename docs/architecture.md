@@ -275,8 +275,8 @@ When you modify code containing these patterns, the stop hook shows relevant tes
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000",
-    "MAX_THINKING_TOKENS": "31999"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "MAX_THINKING_TOKENS": "65536"
   },
   "alwaysThinkingEnabled": true,
   "hooks": {

@@ -18,7 +18,7 @@ This directory contains Python hook scripts that extend Claude Code's lifecycle 
 | `tool-usage-logger.py` | PostToolUse (*) | Logs tool usage for post-session behavioral analysis |
 | `memory-recall.py` | PostToolUse (Read/Grep/Glob) | Mid-session memory retrieval (8 recalls/session) |
 | `bash-version-tracker.py` | PostToolUse (Bash) | Tracks version after git commits, updates checkpoint |
-| `doc-updater-async.py` | PostToolUse (Bash) | Suggests async doc updates after git commits |
+| `doc-updater-async.py` | PostToolUse (Bash) | Tracks doc debt after git commits, surfaced at session start |
 | `skill-continuation-reminder.py` | PostToolUse (Skill) | Continues autonomous loop after skill delegation |
 | `stop-validator.py` | Stop | Validates completion checkpoint before allowing session end |
 | `precompact-capture.py` | PreCompact | Injects session summary before context compaction |
@@ -28,8 +28,9 @@ This directory contains Python hook scripts that extend Claude Code's lifecycle 
 
 | Module | Purpose |
 |--------|---------|
-| `_common.py` | Shared utility functions (TTL checks, version tracking, logging, worktree detection) |
-| `_memory.py` | Memory primitives (event store, entity matching, crash-safe writes) |
+| `_common.py` | Shared utility functions (TTL checks, version tracking, logging, worktree detection, hook metrics) |
+| `_scoring.py` | Unified scoring module for memory event ranking (entity 45%, recency 35%, quality 20%) |
+| `_memory.py` | Memory primitives (event store, entity matching, crash-safe writes, utility tracking) |
 | `_session.py` | Unified session state management (autonomous-state.json, checkpoint operations) |
 
 ## Utility Scripts (Not Lifecycle Hooks)
@@ -96,7 +97,7 @@ PostToolUse (Read/Grep/Glob)
 
 PostToolUse (Bash)
     └── bash-version-tracker.py (tracks version after git commits)
-    └── doc-updater-async.py (suggests doc updates)
+    └── doc-updater-async.py (tracks doc debt)
 
 PostToolUse (Skill)
     └── skill-continuation-reminder.py (continues autonomous loop)

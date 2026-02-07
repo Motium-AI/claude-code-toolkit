@@ -37,6 +37,7 @@ from _common import (
     get_diff_hash,
     is_pid_alive,
     log_debug,
+    timed_hook,
 )
 from _session import cleanup_expired_state, cleanup_checkpoint_only
 
@@ -204,6 +205,12 @@ def main():
     except Exception:
         pass
 
+    # 11. Rotate hook execution metrics
+    _rotate_hook_metrics()
+
+    # 12. Clean up old doc-debt entries
+    _cleanup_doc_debt(cwd)
+
     sys.exit(0)
 
 
@@ -328,5 +335,54 @@ def _cleanup_session_env() -> None:
         print(f"[session-cleanup] Removed {deleted_count} empty session-env dir(s)")
 
 
+def _cleanup_doc_debt(cwd: str, max_age_days: int = 7) -> None:
+    """Remove doc-debt entries older than max_age_days."""
+    if not cwd:
+        return
+    debt_path = Path(cwd) / ".claude" / "doc-debt.json"
+    if not debt_path.exists():
+        return
+    try:
+        debt = json.loads(debt_path.read_text())
+        entries = debt.get("entries", [])
+        if not entries:
+            return
+
+        from datetime import timedelta
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        kept = [e for e in entries if e.get("ts", "") > cutoff]
+        if len(kept) < len(entries):
+            debt["entries"] = kept
+            debt_path.write_text(json.dumps(debt, indent=2))
+            log_debug(
+                f"Cleaned doc-debt: {len(entries) - len(kept)} old entries removed",
+                hook_name="session-init",
+            )
+    except (json.JSONDecodeError, IOError):
+        pass
+
+
+def _rotate_hook_metrics(max_entries: int = 100) -> None:
+    """Rotate hook-metrics.jsonl to keep only the most recent entries."""
+    metrics_path = Path.home() / ".claude" / "hook-metrics.jsonl"
+    if not metrics_path.exists():
+        return
+    try:
+        lines = metrics_path.read_text().strip().split("\n")
+        if len(lines) <= max_entries:
+            return
+        kept = lines[-max_entries:]
+        metrics_path.write_text("\n".join(kept) + "\n")
+        log_debug(
+            f"Rotated hook metrics: {len(lines)} -> {len(kept)}",
+            hook_name="session-init",
+        )
+    except (IOError, OSError):
+        pass
+
+
 if __name__ == "__main__":
-    main()
+    with timed_hook("session-init"):
+        main()

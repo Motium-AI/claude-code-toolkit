@@ -24,10 +24,10 @@ interface Manifest {
   total_count?: number;
   recent?: string[];
   updated_at?: string;
-  utility?: {
+  utility?: Record<string, any> & {
     total_injected?: number;
     total_cited?: number;
-    per_event?: Record<string, { injected?: number; cited?: number }>;
+    events?: Record<string, { injected?: number; cited?: number }>;
   };
 }
 
@@ -113,8 +113,11 @@ function syncProject(
           lastEventAt = eventData.ts;
         }
 
-        // Get utility stats from manifest
-        const utilityStats = manifest.utility?.per_event?.[eventData.id] || {};
+        // Get utility stats from manifest (check both legacy nested and current flat format)
+        const utilityStats =
+          manifest.utility?.events?.[eventData.id] ||
+          manifest.utility?.[eventData.id] ||
+          {};
 
         // Check if event exists
         const existing = db
