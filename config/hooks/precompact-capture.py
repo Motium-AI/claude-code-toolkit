@@ -45,7 +45,7 @@ def _build_summary(cwd: str, session_id: str) -> str:
 
     # Autonomous mode state
     try:
-        from _state import get_autonomous_state
+        from _session import get_autonomous_state
         state, mode_type = get_autonomous_state(cwd, session_id)
         if state and mode_type:
             iteration = state.get("iteration", "?")
@@ -62,7 +62,7 @@ def _build_summary(cwd: str, session_id: str) -> str:
 
     # Checkpoint content
     try:
-        from _checkpoint import load_checkpoint
+        from _session import load_checkpoint
         checkpoint = load_checkpoint(cwd)
         if checkpoint:
             reflection = checkpoint.get("reflection", {})

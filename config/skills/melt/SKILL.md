@@ -205,7 +205,7 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  PHASE 0: ACTIVATION                                            │
-│     └─► Create .claude/melt-state.json (enables auto-approval)  │
+│     └─► Create .claude/autonomous-state.json (auto-approval)    │
 │     └─► Identify task from user prompt                          │
 ├─────────────────────────────────────────────────────────────────┤
 │  ╔═══════════════════════════════════════════════════════════╗  │
@@ -253,42 +253,26 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 
 ### State File (Automatic)
 
-**The state file is created automatically by the `skill-state-initializer.py` hook when you invoke `/melt` or `/build`.**
-
-When you type `/melt`, `/build`, "go do", "just do it", or similar triggers, the UserPromptSubmit hook immediately creates:
-- `.claude/melt-state.json` - Project-level state for iteration tracking
-- `~/.claude/melt-state.json` - User-level state for cross-repo detection
-
-This happens BEFORE Claude starts processing, ensuring auto-approval hooks are active from the first tool call.
-
-**You do NOT need to manually create these files.** The hook handles it automatically.
-
-<details>
-<summary>Manual fallback (only if hook fails)</summary>
+**Create the state file at activation to enable auto-approval hooks:**
 
 ```bash
-# Only use this if the automatic hook didn't create the files
-mkdir -p .claude && cat > .claude/melt-state.json << 'EOF'
+mkdir -p .claude && cat > .claude/autonomous-state.json << 'EOF'
 {
+  "mode": "melt",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "task": "user's task description",
+  "last_activity_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "session_id": "",
+  "pid": 0,
   "iteration": 1,
   "plan_mode_completed": false,
-  "parallel_mode": false,
-  "agent_id": null,
-  "worktree_path": null,
+  "origin_project": "$(pwd)",
   "coordinator": true
 }
 EOF
-
-mkdir -p ~/.claude && cat > ~/.claude/melt-state.json << 'EOF'
-{
-  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "origin_project": "$(pwd)"
-}
-EOF
+cp .claude/autonomous-state.json ~/.claude/autonomous-state.json
 ```
-</details>
+
+This enables auto-approval hooks from the first tool call.
 
 ### State File Schema
 
@@ -654,7 +638,7 @@ Update checkpoint and try to stop. If blocked, address the issues and try again.
 
 **Cleanup on completion**: Remove state files when done:
 ```bash
-rm -f ~/.claude/melt-state.json .claude/melt-state.json
+rm -f ~/.claude/autonomous-state.json .claude/autonomous-state.json
 ```
 
 ## Exit Conditions
@@ -796,7 +780,7 @@ COORDINATOR WORKFLOW:
 **How coordination state is detected:**
 - `skill-state-initializer.py` automatically detects worktree context
 - Sets `coordinator: false`, `parallel_mode: true` when in worktree
-- Subagents can check `.claude/appfix-state.json` or `.claude/melt-state.json`
+- Subagents can check `.claude/autonomous-state.json`
 
 ### Garbage Collection for Stale Worktrees
 

@@ -177,7 +177,7 @@ Write `.claude/completion-checkpoint.json` with lightweight 3+1 schema:
 
 ## Integration
 
-- State file: `.claude/improve-state.json` (created by skill-state-initializer)
+- State file: `.claude/autonomous-state.json` with `"mode": "improve"`
 - Auto-approval: Yes (via `is_autonomous_mode_active()`)
 - Plan mode: `plan_mode_completed: true` from start (observe-grade IS the planning)
-- Checkpoint: Lightweight validation via `validate_improve_completion()`
+- Checkpoint: Universal validation via stop-validator

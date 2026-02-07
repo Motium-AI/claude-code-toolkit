@@ -23,11 +23,12 @@ from pathlib import Path
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import get_code_version, get_worktree_info
-from _checkpoint import (
-    invalidate_stale_fields,
-    load_checkpoint,
-    save_checkpoint,
-)
+from _session import load_checkpoint, save_checkpoint
+
+
+def invalidate_stale_fields(checkpoint: dict, current_version: str) -> tuple:
+    """No-op stub — new checkpoint schema has no version-stamped fields."""
+    return checkpoint, []
 
 # Patterns that indicate version-changing commands
 GIT_COMMIT_PATTERNS = [

@@ -28,7 +28,7 @@ from pathlib import Path
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import log_debug
-from _state import is_autonomous_mode_active
+from _session import is_autonomous_mode_active
 
 
 # Patterns that indicate a commit was made

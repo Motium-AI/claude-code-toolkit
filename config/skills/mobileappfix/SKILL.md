@@ -11,7 +11,7 @@ description: Autonomous mobile app debugging using Maestro MCP for E2E tests. Mo
 
 Autonomous debugging for React Native/Expo apps. Iterates until Maestro E2E tests pass.
 
-> **Note**: Both `/mobileappfix` and `/appfix` share the same `appfix-state.json` internally.
+> **Note**: Both `/mobileappfix` and `/appfix` share the same `autonomous-state.json` with `"mode": "repair"`.
 > The `/repair` skill handles the routing automatically.
 
 ## Triggers

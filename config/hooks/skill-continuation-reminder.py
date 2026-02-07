@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
-from _state import is_autonomous_mode_active, is_appfix_active, is_build_active, is_episode_active, is_go_active
+from _session import is_autonomous_mode_active, get_mode
 
 
 def main():
@@ -38,20 +38,18 @@ def main():
         sys.exit(0)
 
     # Determine which mode is active for appropriate messaging
-    if is_appfix_active(cwd):
-        mode_name = "APPFIX"
-        loop_type = "fix-verify"
-    elif is_build_active(cwd):
-        mode_name = "BUILD"
-        loop_type = "task execution"
-    elif is_go_active(cwd):
-        mode_name = "GO"
-        loop_type = "fast execution"
-    elif is_episode_active(cwd):
-        mode_name = "EPISODE"
-        loop_type = "episode generation"
-    else:
+    mode = get_mode(cwd) or "unknown"
+    MODE_INFO = {
+        "repair": ("REPAIR", "fix-verify"),
+        "melt": ("MELT", "task execution"),
+        "go": ("GO", "fast execution"),
+        "episode": ("EPISODE", "episode generation"),
+        "burndown": ("BURNDOWN", "debt elimination"),
+        "improve": ("IMPROVE", "improvement"),
+    }
+    if mode not in MODE_INFO:
         sys.exit(0)
+    mode_name, loop_type = MODE_INFO[mode]
 
     context = f"""
 ╔═══════════════════════════════════════════════════════════════════════════════╗

@@ -18,7 +18,7 @@ Three approaches for testing web applications:
 
 ```
 User task → Is Autonomous Mode active?
-    │       (check: ls .claude/appfix-state.json .claude/melt-state.json 2>/dev/null)
+    │       (check: ls .claude/autonomous-state.json 2>/dev/null)
     │
     ├─ Yes (Autonomous Mode) → Is Surf CLI installed?
     │       │                  (check: which surf)
@@ -57,8 +57,8 @@ When autonomous mode is active, the stop hook requires proof of web testing via 
 ### Detection
 
 ```bash
-# Check for autonomous mode state files
-ls .claude/appfix-state.json .claude/melt-state.json 2>/dev/null && echo "AUTONOMOUS MODE"
+# Check for autonomous mode state file
+ls .claude/autonomous-state.json 2>/dev/null && echo "AUTONOMOUS MODE"
 ```
 
 ### Surf CLI Workflow (Preferred)

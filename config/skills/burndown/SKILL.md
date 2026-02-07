@@ -124,7 +124,7 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  PHASE 0: ACTIVATION                                            │
-│     └─► Create .claude/burndown-state.json (auto-approval)      │
+│     └─► Create .claude/autonomous-state.json (auto-approval)    │
 │     └─► Parse scope from arguments or detect from context       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ╔═══════════════════════════════════════════════════════════╗  │
@@ -181,9 +181,9 @@ Before stopping, you MUST create `.claude/completion-checkpoint.json`:
 
 ### State File (Automatic)
 
-The state file is created automatically by `skill-state-initializer.py` when you invoke `/burndown`.
+Create the state file at activation to enable auto-approval:
 
-**File**: `.claude/burndown-state.json`
+**File**: `.claude/autonomous-state.json` (with `"mode": "burndown"`)
 
 ```json
 {
@@ -426,7 +426,7 @@ Merge overlapping findings, keep highest severity.
 
 ### Iteration Tracking
 
-Update `burndown-state.json` after each batch:
+Update `autonomous-state.json` after each batch:
 - Increment `iteration`
 - Update `batches_completed`
 - Update `issues_fixed` / `issues_remaining`
@@ -519,7 +519,7 @@ cat .claude/web-smoke/summary.json
 
 On successful completion:
 ```bash
-rm -f ~/.claude/burndown-state.json .claude/burndown-state.json
+rm -f ~/.claude/autonomous-state.json .claude/autonomous-state.json
 ```
 
 ## Comparison with /deslop and /qa
@@ -543,7 +543,7 @@ rm -f ~/.claude/burndown-state.json .claude/burndown-state.json
 User: /burndown src/components/
 
 [Phase 0: Activation]
-→ Created .claude/burndown-state.json
+→ Created .claude/autonomous-state.json
 → Scope: {type: "directory", value: "src/components/"}
 
 [Phase 0.5: Lite Heavy Planning]

@@ -40,7 +40,7 @@ AI generation APIs to produce the final video.
 
 ### State File (Automatic)
 
-The `skill-state-initializer.py` hook creates `.claude/episode-state.json` when triggered.
+Create `.claude/autonomous-state.json` with `"mode": "episode"` at activation.
 
 ### Dependency Check
 

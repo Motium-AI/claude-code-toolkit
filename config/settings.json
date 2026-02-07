@@ -2,7 +2,8 @@
   "env": {
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000",
     "MAX_THINKING_TOKENS": "31999",
-    "ENABLE_TOOL_SEARCH": "auto"
+    "ENABLE_TOOL_SEARCH": "auto",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "permissions": {
     "defaultMode": "dontAsk"
@@ -18,7 +19,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/session-snapshot.py\"",
+            "command": "python3 \"$HOME/.claude/hooks/session-init.py\"",
             "timeout": 5
           },
           {
@@ -43,7 +44,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/session-snapshot.py\"",
+            "command": "python3 \"$HOME/.claude/hooks/session-init.py\"",
             "timeout": 5
           },
           {
@@ -88,27 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/pretooluse-auto-approve.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/plan-mode-enforcer.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/plan-mode-enforcer.py\"",
+            "command": "python3 \"$HOME/.claude/hooks/auto-approve.py\"",
             "timeout": 5
           }
         ]
@@ -137,67 +118,12 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/lite-heavy-enforcer.py\"",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/plan-mode-tracker.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/plan-execution-reminder.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/checkpoint-invalidator.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Read",
         "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/lite-heavy-tracker.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
@@ -210,11 +136,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
             "timeout": 5
           }
@@ -225,22 +146,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/go-context-tracker.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/memory-recall.py\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/lite-heavy-tracker.py\"",
             "timeout": 5
           }
         ]
@@ -277,11 +183,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/skill-state-initializer.py\"",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/read-docs-trigger.py\"",
             "timeout": 5
           }
@@ -294,7 +195,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/permissionrequest-auto-approve.py\"",
+            "command": "python3 \"$HOME/.claude/hooks/auto-approve.py\"",
             "timeout": 5
           }
         ]

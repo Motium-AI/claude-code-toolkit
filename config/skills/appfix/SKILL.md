@@ -181,7 +181,7 @@ Artifacts in `.claude/web-smoke/` are validated by the stop hook. If `passed: fa
 
 ## State File
 
-`.claude/appfix-state.json` tracks iteration state (created automatically):
+`.claude/autonomous-state.json` tracks iteration state (created at activation with `"mode": "repair"`):
 
 | Field | Purpose |
 |-------|---------|

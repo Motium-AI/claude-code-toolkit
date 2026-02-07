@@ -38,31 +38,17 @@ from _common import (
     is_pid_alive,
     log_debug,
 )
-from _state import cleanup_expired_state, cleanup_checkpoint_only
+from _session import cleanup_expired_state, cleanup_checkpoint_only
 
 
 def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
-    """Check for concurrent sessions and claim ownership.
-
-    Loads .claude/session-owner.json and checks:
-    - Same session_id → no action (resuming)
-    - Different session_id + PID alive → print warning to stdout
-    - Different session_id + PID dead → take over silently
-    - No file → claim ownership
-
-    Writes new owner data: {session_id, pid, started_at}
-
-    Args:
-        cwd: Working directory containing .claude/
-        session_id: Current session's ID
-    """
+    """Check for concurrent sessions and claim ownership."""
     if not cwd or not session_id:
         return
 
     owner_path = Path(cwd) / ".claude" / "session-owner.json"
     owner_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Check existing owner
     if owner_path.exists():
         try:
             existing = json.loads(owner_path.read_text())
@@ -70,10 +56,8 @@ def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
             existing_pid = existing.get("pid", 0)
 
             if existing_session == session_id:
-                # Same session resuming - just update PID
-                pass
+                pass  # Same session resuming
             elif existing_pid and is_pid_alive(existing_pid):
-                # Different session, still alive - warn
                 print(
                     f"[session-guard] WARNING: Another Claude session is active "
                     f"in this directory (PID {existing_pid}, session "
@@ -81,7 +65,7 @@ def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
                 )
                 log_debug(
                     f"Concurrent session detected: PID {existing_pid} alive",
-                    hook_name="session-snapshot",
+                    hook_name="session-init",
                     parsed_data={
                         "existing_session": existing_session,
                         "existing_pid": existing_pid,
@@ -89,10 +73,9 @@ def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
                     },
                 )
             else:
-                # Previous session died - take over silently
                 log_debug(
                     f"Taking over from dead session (PID {existing_pid})",
-                    hook_name="session-snapshot",
+                    hook_name="session-init",
                     parsed_data={
                         "dead_session": existing_session,
                         "dead_pid": existing_pid,
@@ -100,9 +83,8 @@ def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
                     },
                 )
         except (json.JSONDecodeError, IOError):
-            pass  # Corrupt file - overwrite
+            pass
 
-    # Claim ownership
     owner_data = {
         "session_id": session_id,
         "pid": os.getpid(),
@@ -111,10 +93,7 @@ def _check_and_claim_session_ownership(cwd: str, session_id: str) -> None:
     try:
         owner_path.write_text(json.dumps(owner_data, indent=2))
     except IOError as e:
-        log_debug(
-            f"Failed to write session-owner.json: {e}",
-            hook_name="session-snapshot",
-        )
+        log_debug(f"Failed to write session-owner.json: {e}", hook_name="session-init")
 
 
 def main():
@@ -142,13 +121,11 @@ def main():
     _check_and_claim_session_ownership(cwd, session_id)
 
     # 3. Clean up stale checkpoint from previous session
-    # Checkpoint files now persist through the stop flow (not deleted by
-    # stop-validator) to avoid a race condition. Clean them up here instead.
     checkpoint_deleted = cleanup_checkpoint_only(cwd)
     if checkpoint_deleted:
         log_debug(
             "Cleaned up stale checkpoint from previous session",
-            hook_name="session-snapshot",
+            hook_name="session-init",
             parsed_data={"deleted": checkpoint_deleted},
         )
 
@@ -157,11 +134,11 @@ def main():
     if deleted:
         log_debug(
             "Cleaned up expired/foreign state at session start",
-            hook_name="session-snapshot",
+            hook_name="session-init",
             parsed_data={"deleted": deleted},
         )
         print(
-            f"[session-snapshot] Cleaned up {len(deleted)} expired state file(s) "
+            f"[session-init] Cleaned up {len(deleted)} expired state file(s) "
             f"from previous session."
         )
 
@@ -182,12 +159,12 @@ def main():
         if gc_cleaned:
             log_debug(
                 "Garbage collected stale worktrees",
-                hook_name="session-snapshot",
+                hook_name="session-init",
                 parsed_data={"cleaned": gc_cleaned},
             )
-            print(f"[session-snapshot] Cleaned up {len(gc_cleaned)} stale worktree(s).")
+            print(f"[session-init] Cleaned up {len(gc_cleaned)} stale worktree(s).")
     except ImportError:
-        pass  # worktree-manager not available
+        pass
 
     # 6. Clean up stale async-tasks files (older than 7 days)
     import time
@@ -206,13 +183,12 @@ def main():
         if cleaned_tasks:
             log_debug(
                 "Cleaned up stale async-tasks",
-                hook_name="session-snapshot",
+                hook_name="session-init",
                 parsed_data={"cleaned": len(cleaned_tasks)},
             )
-            print(f"[session-snapshot] Cleaned up {len(cleaned_tasks)} stale async-task(s).")
+            print(f"[session-init] Cleaned up {len(cleaned_tasks)} stale async-task(s).")
 
     # 7. Clean up old session transcript files (prevents ~/.claude bloat)
-    # Keep 20 most recent per project, delete files older than 30 days
     _cleanup_old_sessions()
 
     # 8. Clean up old debug files (older than 7 days)
@@ -232,17 +208,7 @@ def main():
 
 
 def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> None:
-    """Clean up old session transcript .jsonl files to prevent disk bloat.
-
-    Strategy:
-    - Keep at most `max_per_project` sessions per project (by mtime)
-    - Delete any session older than `max_age_days` days
-    - Also clean up orphaned session subdirectories
-
-    Args:
-        max_per_project: Maximum number of session files to keep per project
-        max_age_days: Delete sessions older than this many days
-    """
+    """Clean up old session transcript .jsonl files to prevent disk bloat."""
     import shutil
     import time
 
@@ -259,7 +225,6 @@ def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> 
         if not project_dir.is_dir():
             continue
 
-        # Get all session .jsonl files sorted by mtime (newest first)
         session_files = []
         for f in project_dir.glob("*.jsonl"):
             try:
@@ -270,7 +235,6 @@ def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> 
 
         session_files.sort(key=lambda x: x[1], reverse=True)
 
-        # Delete excess sessions and old sessions
         for i, (session_file, mtime, size) in enumerate(session_files):
             should_delete = i >= max_per_project or mtime < cutoff_time
             if should_delete:
@@ -279,7 +243,6 @@ def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> 
                     total_deleted_files += 1
                     total_bytes_freed += size
 
-                    # Also delete corresponding session directory if exists
                     session_dir = project_dir / session_file.stem
                     if session_dir.is_dir():
                         shutil.rmtree(session_dir, ignore_errors=True)
@@ -291,7 +254,7 @@ def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> 
         mb_freed = total_bytes_freed / (1024 * 1024)
         log_debug(
             "Cleaned up old session transcripts",
-            hook_name="session-snapshot",
+            hook_name="session-init",
             parsed_data={
                 "files_deleted": total_deleted_files,
                 "dirs_deleted": total_deleted_dirs,
@@ -335,7 +298,7 @@ def _cleanup_debug_files(max_age_days: int = 7) -> None:
         mb_freed = bytes_freed / (1024 * 1024)
         log_debug(
             "Cleaned up old debug files",
-            hook_name="session-snapshot",
+            hook_name="session-init",
             parsed_data={"deleted": deleted_count, "mb_freed": round(mb_freed, 1)},
         )
         print(f"[session-cleanup] Removed {deleted_count} old debug file(s), freed {mb_freed:.1f} MB")
@@ -359,7 +322,7 @@ def _cleanup_session_env() -> None:
     if deleted_count > 0:
         log_debug(
             "Cleaned up empty session-env directories",
-            hook_name="session-snapshot",
+            hook_name="session-init",
             parsed_data={"deleted": deleted_count},
         )
         print(f"[session-cleanup] Removed {deleted_count} empty session-env dir(s)")
