@@ -103,7 +103,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | Event | Scripts | Purpose |
 |-------|---------|---------|
 | SessionStart | auto-update (v2), session-init, compound-context-loader, read-docs-reminder | Init, memory injection, smart toolkit update |
-| Stop | stop-validator | Validate checkpoint, auto-capture memory event |
+| Stop | stop-validator, stop-quality-agent | Validate checkpoint + capture memory (command), verify honesty via transcript (agent) |
 | PreToolUse (*) | auto-approve | Auto-approve during autonomous mode |
 | PreToolUse (Bash) | deploy-enforcer, azure-command-guard | Block deploys, guard Azure CLI |
 | PreToolUse (WebSearch) | exa-search-enforcer | Block WebSearch, redirect to Exa MCP |
@@ -230,7 +230,7 @@ A **dedup guard** prevents injecting compound events whose content (>60% word ov
 
 ### How It Works
 
-1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as LESSON-first memory event on every successful stop. Checkpoint requires `key_insight` (>30 chars), `search_terms` (2-7 concept keywords), `category` (enum), optional `problem_type` (controlled vocabulary), optional `core_assertions` (max 5 topic/assertion pairs), and optional `memory_that_helped` (event IDs from `<m>` tags).
+1. **Auto-capture** (primary path): `stop-validator` hook archives checkpoint as LESSON-first memory event on every successful stop. Checkpoint requires `key_insight` (>50 chars), `search_terms` (2-7 concept keywords), `category` (any string), optional `problem_type` (controlled vocabulary), optional `core_assertions` (max 5 topic/assertion pairs). A secondary `stop-quality-agent` hook (agent-type) reads the transcript to verify checkpoint honesty for autonomous sessions.
 2. **Manual capture** (deep captures): `/compound` skill for detailed LESSON/PROBLEM/CAUSE/FIX documentation
 3. **Auto-injection**: `compound-context-loader` hook injects top 5 relevant events as structured XML at SessionStart (budget-aware: 4.5K with native memory, 8K standalone)
 4. **Core assertions**: Persistent `<core-assertions>` block injected before `<memories>` — topic-based dedup (last-write-wins), LRU eviction at 20 entries, compaction at SessionStart

@@ -66,6 +66,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/stop-validator.py\"",
             "timeout": 10
+          },
+          {
+            "type": "agent",
+            "prompt": "You verify that a Claude Code session's completion checkpoint honestly represents the work done.\n\nHook input: $ARGUMENTS\n\nFAST PATH: Use Bash to check if autonomous mode is active:\n  test -f \"{cwd}/.claude/autonomous-state.json\" && echo AUTONOMOUS || echo CASUAL\nIf CASUAL (no autonomous state), return {\"ok\": true} immediately — casual sessions don't need quality evaluation.\n\nAUTONOMOUS EVALUATION:\n1. Read the checkpoint: {cwd}/.claude/completion-checkpoint.json\n2. Sample the transcript ending (use Bash): tail -150 \"{transcript_path}\"\n3. Evaluate THREE things:\n   a) Does what_was_done match actual tool calls visible in the transcript? (Look for Edit, Write, Bash with git commands). Claiming work that never happened = block.\n   b) Is key_insight a genuine transferable lesson, or just restating what_was_done? A lesson teaches something reusable. A restatement just says what happened.\n   c) Are there unresolved errors, acknowledged TODOs, or 'I will do this later' in the transcript tail? If the agent left obvious work unfinished, block.\n\nRETURN {\"ok\": true} if the checkpoint is honest, or {\"ok\": false, \"reason\": \"specific actionable feedback\"} if clearly dishonest or incomplete.\n\nRules: Be pragmatic. Minor omissions are fine. Block ONLY for clear problems. If in doubt, allow. Keep evaluation under 5 tool calls.",
+            "timeout": 90
           }
         ]
       }
