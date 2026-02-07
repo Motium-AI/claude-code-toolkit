@@ -102,7 +102,7 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| SessionStart | auto-update, session-init, compound-context-loader, read-docs-reminder | Init, memory injection, toolkit update |
+| SessionStart | auto-update (v2), session-init, compound-context-loader, read-docs-reminder | Init, memory injection, smart toolkit update |
 | Stop | stop-validator | Validate checkpoint, auto-capture memory event |
 | PreToolUse (*) | auto-approve | Auto-approve during autonomous mode |
 | PreToolUse (Bash) | deploy-enforcer, azure-command-guard | Block deploys, guard Azure CLI |
@@ -114,6 +114,102 @@ Consolidates `/deslop` + `/qa` into autonomous fix loop → 3 detection agents s
 | PreCompact | precompact-capture | Inject session summary before compaction |
 | PermissionRequest | auto-approve | Fallback auto-approve during autonomous mode |
 | UserPromptSubmit | read-docs-trigger | Doc suggestions |
+
+---
+
+## Auto-Update System (v2)
+
+Smart auto-update with customization preservation. The hook detects local modifications, classifies overlap with upstream changes, and chooses the right update strategy automatically.
+
+### Update Flow
+
+```
+Session Start
+  ├─ Rate-limited check (5 min)
+  ├─ git ls-remote vs local HEAD
+  │
+  ├─ Up to date → silent exit
+  ├─ Behind, clean tree → git pull --ff-only
+  ├─ Behind, dirty (no overlap) → stash + pull + pop
+  └─ Behind, dirty (overlap) → backup branch + agent instructions
+```
+
+### Three Update Paths
+
+| Scenario | Strategy | User Sees |
+|----------|----------|-----------|
+| Clean working tree | `git pull --ff-only` | Brief update notification |
+| Dirty files, no upstream overlap | `stash → pull → pop` | "Local changes preserved (no conflicts)" |
+| Dirty files overlap upstream | Backup branch + deferred agent merge | Structured instructions for Claude agent |
+
+### Deferred Agent Pattern
+
+When local modifications overlap with upstream changes, the hook outputs structured YAML instructions that the Claude agent executes as its first action. The hook is the **sensor** (fast, <2s); the agent is the **brain** (semantic understanding).
+
+The agent classifies each user modification:
+- **TEMPLATE_FILL**: User replaced `[YOUR_*]` placeholders → preserve values
+- **PROJECT_GUARD**: User added project-specific conditionals → re-add to new version
+- **FEATURE_ADD**: User added new capability → check if upstream added equivalent
+- **BUG_FIX**: User patched a bug → check if upstream fixed it
+- **CONFIG_OVERRIDE**: User changed defaults → preserve overrides
+
+### File Classification
+
+The hook categorizes each dirty file:
+
+| Category | Detection | Example |
+|----------|-----------|---------|
+| `config` | `*.json` with "settings" | `settings.json` |
+| `hook_module` | `hooks/_*.py` | `_memory.py`, `_scoring.py` |
+| `hook` | `hooks/*.py` | `stop-validator.py` |
+| `skill` | `skills/**` | `melt/SKILL.md` |
+| `command` | `commands/**` | `commit.md` |
+| `instructions` | `*CLAUDE.md` | `config/CLAUDE.md` |
+| template | Contains `[YOUR_*]` placeholders | `service-topology.md` |
+
+### Bootstrap Safety
+
+Before pulling, the hook verifies the upstream `auto-update.py` compiles (`py_compile`). This prevents a broken upstream hook from bricking the update mechanism.
+
+### Settings Local Override (v2)
+
+`config/settings.local.json` provides user overrides that are deep-merged onto `config/settings.json`:
+
+```json
+{
+  "env": { "MY_CUSTOM_VAR": "value" },
+  "permissions": { "defaultMode": "acceptEdits" },
+  "hooks": {
+    "PostToolUse": [{ "matcher": "Bash", "hooks": [{"type": "command", "command": "python3 my-hook.py"}] }]
+  }
+}
+```
+
+**Merge rules**: Objects deep-merge (nested keys preserved). Arrays replace entirely. Keys starting with `_` are stripped. The merged result is written as a real file to `~/.claude/settings.json` (replacing the symlink).
+
+Both `install.sh` and the auto-update hook perform this merge automatically.
+
+### User Overlay Directory (v3)
+
+`config/user/` provides a gitignored home for user-created extensions:
+
+```
+config/user/           # gitignored from upstream
+├── hooks/             # Custom hook scripts
+├── skills/            # Custom skill directories
+├── commands/          # Custom command files
+└── README.md          # Usage guide
+```
+
+When user overlay files exist, `install.sh` converts directory symlinks to per-file symlinks, linking both upstream and user content into `~/.claude/`. This means custom hooks/skills appear alongside upstream ones seamlessly.
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `CLAUDE_TOOLKIT_AUTO_UPDATE=false` | enabled | Disable auto-update via env var |
+| `config/settings.local.json` | absent | User overrides, deep-merged onto base |
+| `config/user/` | empty | User-created hooks, skills, commands |
 
 ---
 
@@ -312,20 +408,26 @@ All QMD integrations include fallback to manual doc reading when QMD is unavaila
 claude-code-toolkit/   # THIS IS THE SOURCE OF TRUTH
 ├── config/
 │   ├── CLAUDE.md              # Global instructions (symlinked to ~/.claude/CLAUDE.md)
-│   ├── settings.json          # Hook definitions + Agent Teams + ToolSearch
+│   ├── settings.json          # Hook definitions + Agent Teams + ToolSearch (upstream-owned)
+│   ├── settings.local.json    # User overrides, deep-merged onto settings.json (gitignored)
+│   ├── settings.local.json.example  # Template for user overrides
 │   ├── commands/              # 15 command files
 │   ├── hooks/                 # Python/bash hooks (14 registered)
 │   ├── scripts/               # Standalone utilities (promote-to-memory-md.py)
-│   └── skills/                # 26 skills ← EDIT HERE
+│   ├── skills/                # 26 skills ← EDIT HERE
+│   └── user/                  # User overlay directory (gitignored)
+│       ├── hooks/             # Custom hook scripts
+│       ├── skills/            # Custom skill directories
+│       └── commands/          # Custom command files
 ├── docs/                      # Documentation
 ├── scripts/                   # install.sh, doctor.sh, skill-tester.sh, test-e2e-*.sh
 └── README.md
 
 ~/.claude/                     # SYMLINKED TO REPO + MEMORY
 ├── CLAUDE.md → config/CLAUDE.md  # Global instructions (search preferences)
-├── skills → config/skills     # Symlink - edits here go to repo
-├── hooks → config/hooks       # Symlink - edits here go to repo
-├── settings.json → config/settings.json
+├── skills → config/skills     # Symlink (or per-skill symlinks if user overlay exists)
+├── hooks → config/hooks       # Symlink (or per-file symlinks if user overlay exists)
+├── settings.json              # Symlink to config/settings.json OR merged real file
 ├── projects/                  # Native Claude Code project data
 │   └── {encoded-path}/
 │       └── memory/
@@ -338,4 +440,4 @@ claude-code-toolkit/   # THIS IS THE SOURCE OF TRUTH
         └── promoted-events.json   # Tracks events promoted to MEMORY.md
 ```
 
-**IMPORTANT**: `~/.claude/skills/` is a symlink to `config/skills/` in this repo. When you edit skill files, you're editing the repo. Commit changes to preserve them.
+**IMPORTANT**: `~/.claude/skills/` is a symlink to `config/skills/` in this repo. When you edit skill files, you're editing the repo. Commit changes to preserve them. For user-created extensions, use `config/user/` instead — it's gitignored from upstream.
