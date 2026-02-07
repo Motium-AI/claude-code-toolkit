@@ -402,12 +402,21 @@ def main():
             block_with_failures(failures)
 
         # Gate: uncommitted changes in autonomous mode
+        # Only block if THIS agent reports code_changes_made — in multi-agent
+        # scenarios, dirty files may belong to another agent's session.
         if is_autonomous and has_uncommitted_changes(cwd):
-            log_debug(
-                "BLOCKING STOP: uncommitted changes in autonomous mode",
-                hook_name="stop-validator",
-            )
-            block_uncommitted_changes(cwd)
+            agent_made_changes = checkpoint.get("self_report", {}).get("code_changes_made", False)
+            if agent_made_changes:
+                log_debug(
+                    "BLOCKING STOP: agent made code changes but didn't commit",
+                    hook_name="stop-validator",
+                )
+                block_uncommitted_changes(cwd)
+            else:
+                log_debug(
+                    "Uncommitted changes exist but agent reports no code changes — allowing stop",
+                    hook_name="stop-validator",
+                )
 
         # Valid - capture memory and allow stop
         log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
@@ -425,11 +434,13 @@ def main():
 
     # Gate: uncommitted changes in autonomous mode (re-check)
     if is_autonomous and has_uncommitted_changes(cwd):
-        log_debug(
-            "BLOCKING STOP: uncommitted changes in autonomous mode (2nd stop)",
-            hook_name="stop-validator",
-        )
-        block_uncommitted_changes(cwd)
+        agent_made_changes = checkpoint.get("self_report", {}).get("code_changes_made", False)
+        if agent_made_changes:
+            log_debug(
+                "BLOCKING STOP: agent made code changes but didn't commit (2nd stop)",
+                hook_name="stop-validator",
+            )
+            block_uncommitted_changes(cwd)
 
     log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
     auto_capture_memory(cwd, checkpoint)
