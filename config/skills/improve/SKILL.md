@@ -36,6 +36,28 @@ Examples:
 | code quality | Suggest `/burndown` instead | — |
 | (no dimension) | Show menu | — |
 
+## Multi-Scope Parallelization
+
+When improving a multi-page scope (e.g., "improve design" without a specific page), parallelize the initial assessment:
+
+1. **Discover routes**: Identify all relevant pages/routes in the application
+2. **Parallel grading**: Launch parallel `Task()` agents, one per page, each running observe + grade
+3. **Synthesize**: Collect grades, identify which pages need the most work
+4. **Fix sequentially**: Apply fixes page-by-page (fixes may touch shared CSS/components)
+
+```
+# Example: 3-page parallel grading
+Task(subagent_type="general-purpose", description="Grade design: /dashboard",
+  prompt="Navigate to localhost:3000/dashboard, screenshot, grade against design rubric (6 dimensions). Return scores + top 3 issues.")
+Task(subagent_type="general-purpose", description="Grade design: /settings",
+  prompt="Navigate to localhost:3000/settings, screenshot, grade against design rubric (6 dimensions). Return scores + top 3 issues.")
+Task(subagent_type="general-purpose", description="Grade design: /profile",
+  prompt="Navigate to localhost:3000/profile, screenshot, grade against design rubric (6 dimensions). Return scores + top 3 issues.")
+# Launch in a SINGLE message, then fix the lowest-scoring page first
+```
+
+For single-page scope, skip parallelization and go directly to the loop.
+
 ## The Loop
 
 ### Phase 1: Observe

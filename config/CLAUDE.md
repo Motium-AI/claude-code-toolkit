@@ -43,6 +43,18 @@ You do not need explicit `/command` invocation. Auto-select based on task signal
 | "analyze", "think deeply", "evaluate" | /heavy | Multi-perspective analysis |
 | No clear task / research only | No skill | Just answer directly |
 
+## Parallelization Strategy
+
+| Condition | Strategy |
+|-----------|----------|
+| Single focused task | Single-agent execution |
+| 2 independent work items | Parallel `Task()` calls in a single message |
+| 3+ independent work items with coordination needs | `TeamCreate` with shared task list + `SendMessage` |
+| Fire-and-forget research or verification | `Task()` subagents (cheaper, simpler) |
+| Agents need to share findings mid-work | `TeamCreate` with peer-to-peer `SendMessage` |
+
+**Default to `Task()`.** Only escalate to `TeamCreate` when agents genuinely need to communicate with each other or coordinate on shared resources. Agent Teams cost ~7x more tokens — use them for execution coordination, not read-only analysis.
+
 ## Skill Fluidity
 
 Skills are capabilities, not cages. If the task evolves, adapt:
@@ -50,6 +62,7 @@ Skills are capabilities, not cages. If the task evolves, adapt:
 - Building (/melt) and discover a critical bug? Fix it inline using /repair techniques. No formal mode switch needed.
 - Debugging (/repair) and find the root cause is tech debt? Apply /burndown patterns to the area.
 - Any task turns out to be architecturally complex? Use /heavy analysis for the sub-problem, then continue.
+- Task decomposes into 3+ independent work items? Spawn a team (`TeamCreate`) inline. No mode switch needed.
 
 The `autonomous-state.json` mode field drives auto-approval and checkpoint enforcement. It does not constrain your cognitive approach. Use the best technique for each sub-problem regardless of which skill activated the session.
 

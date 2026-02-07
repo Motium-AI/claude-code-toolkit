@@ -35,13 +35,13 @@ cp .claude/autonomous-state.json ~/.claude/autonomous-state.json
 
 ## Planning
 
-For complex tasks, consider using **Agent Teams** (`TeamCreate`) for multi-perspective analysis:
+For ambiguous or multi-stakeholder tasks, use `EnterPlanMode` / `ExitPlanMode`. Launch parallel `Task()` agents for multi-perspective analysis:
 
 - **First Principles**: "What can be deleted?" (ruthless simplification)
 - **AGI-Pilled**: "What would god-tier AI do?" (maximum capability)
 - **Task-specific experts**: Generated based on the problem domain
 
-Encouraged for ambiguous or multi-stakeholder tasks. Use `EnterPlanMode` / `ExitPlanMode` when planning. For agent prompts, reference `~/.claude/skills/heavy/SKILL.md`.
+For agent prompts, reference `~/.claude/skills/heavy/SKILL.md`.
 
 ## Execution
 
@@ -51,7 +51,36 @@ Use Edit tool for targeted changes. Keep changes focused on the task.
 
 ### Parallel Work
 
-For 2+ independent work items, use Agent Teams (`TeamCreate`) or parallel `Task()` calls.
+| Independent Items | Strategy |
+|-------------------|----------|
+| 1 | Single-agent execution |
+| 2 | Parallel `Task()` calls in a single message |
+| 3+ | `TeamCreate` with shared task list |
+
+**For 3+ independent work items, use TeamCreate:**
+
+```
+# Create team and tasks
+TeamCreate(team_name="melt-exec", description="[TASK SUMMARY]")
+TaskCreate(subject="Implement [item 1]", description="[full context, file paths, requirements]", activeForm="Implementing [item 1]")
+TaskCreate(subject="Implement [item 2]", description="[full context, file paths, requirements]", activeForm="Implementing [item 2]")
+TaskCreate(subject="Implement [item 3]", description="[full context, file paths, requirements]", activeForm="Implementing [item 3]")
+
+# Set dependencies if needed (e.g., item 3 needs item 1 done first)
+TaskUpdate(taskId="3", addBlockedBy=["1"])
+
+# Spawn teammates — use Sonnet for cost efficiency
+Task(subagent_type="general-purpose", team_name="melt-exec", name="worker-1", model="sonnet",
+  prompt="You are worker-1 on the melt-exec team. Claim available tasks from TaskList, implement them, commit changes, mark complete. Prefer tasks in ID order. Use SendMessage to report blockers.")
+Task(subagent_type="general-purpose", team_name="melt-exec", name="worker-2", model="sonnet",
+  prompt="You are worker-2 on the melt-exec team. Claim available tasks from TaskList, implement them, commit changes, mark complete. Prefer tasks in ID order. Use SendMessage to report blockers.")
+# Launch all in a SINGLE message
+
+# IMPORTANT: Partition file ownership — never assign overlapping files to different workers
+# Monitor via TaskList, synthesize when done, shutdown teammates, TeamDelete
+```
+
+**For 2 items, use parallel `Task()` calls** — simpler and cheaper.
 
 ### Linter Verification (MANDATORY)
 

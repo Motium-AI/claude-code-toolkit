@@ -203,11 +203,10 @@ Create the state file at activation to enable auto-approval:
 
 Use `EnterPlanMode` to explore the scope and plan the approach.
 
-For non-trivial codebases, consider using **Agent Teams** (`TeamCreate`) or parallel `Task()` calls for multi-perspective analysis:
+Launch 2 parallel `Task()` agents for multi-perspective analysis:
 
 - **First Principles**: "What tech debt can be DELETED entirely?"
 - **AGI-Pilled**: "What would a zero-debt version look like?"
-- **Task-specific experts**: Generated based on the codebase domain
 
 Synthesize tradeoffs (what to delete, what to improve, what to leave alone) and write the plan. Call `ExitPlanMode` when ready.
 
@@ -345,7 +344,23 @@ Merge overlapping findings, keep highest severity.
 
 ## Phase 3: Iterative Fix Loop
 
-### Fix Each Batch
+### Parallel Batch Execution
+
+Before starting fixes, check if batches touch **disjoint file sets**. If batch 1 modifies `{fileA, fileB}` and batch 2 modifies `{fileC, fileD}` (no overlap), launch them as parallel `Task()` agents:
+
+```
+# Check file set overlap between batches
+# If disjoint: launch parallel Task() agents, each fixing their batch
+Task(subagent_type="general-purpose", description="Fix batch 1: [files]",
+  prompt="Fix these issues in [fileA, fileB]: [issue list]. Run linters after. Commit: burndown: fix [summary]")
+Task(subagent_type="general-purpose", description="Fix batch 2: [files]",
+  prompt="Fix these issues in [fileC, fileD]: [issue list]. Run linters after. Commit: burndown: fix [summary]")
+# Launch in a SINGLE message
+
+# If overlapping: fix serially (default behavior below)
+```
+
+### Fix Each Batch (Serial Fallback)
 
 1. **Apply fixes** via Edit tool
 2. **Run linters** after each batch:

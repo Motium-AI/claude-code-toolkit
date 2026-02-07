@@ -138,9 +138,56 @@ Output format:
 
 ### 1.4 Launch
 
-**Launch ALL agents in a SINGLE message with multiple Task tool calls.**
+**Default: Launch ALL agents in a SINGLE message with multiple Task tool calls.** This is simpler, cheaper, and sufficient for Standard complexity.
 
-For Agent Teams (persistent coordination): use `TeamCreate` when agents need to share intermediate findings during their research (Deep complexity only).
+**Deep complexity with cross-pollination: Use Agent Teams** when agents need to share intermediate findings during research. This replaces the manual coordinator bottleneck in Phase 2 with real-time peer messaging.
+
+```
+# Step 1: Create team
+TeamCreate(team_name="heavy-analysis", description="Deep analysis: [QUESTION]")
+
+# Step 2: Create tasks (one per agent)
+TaskCreate(
+  subject="[Agent perspective]: [key question]",
+  description="""[PERSPECTIVE FRAMING]
+  Research territory: [WHERE to look]
+  Key question: [WHAT to answer]
+  After completing initial research, use SendMessage to share your top 3 discoveries
+  with other teammates. Then react to their findings.""",
+  activeForm="Researching [territory]"
+)
+# Repeat TaskCreate for each agent...
+
+# Step 3: Spawn teammates (one per task)
+Task(
+  subagent_type="general-purpose",
+  team_name="heavy-analysis",
+  name="archaeologist",
+  model="sonnet",
+  prompt="""You are a teammate on the heavy-analysis team.
+  1. Call TaskList to find available tasks
+  2. Claim a task matching your expertise via TaskUpdate(taskId, status="in_progress", owner="archaeologist")
+  3. Research your territory using all available tools
+  4. Share your top 3 discoveries via SendMessage(type="message", recipient="[other-agent]", content="...", summary="Key findings from [territory]")
+  5. React to findings shared with you — update your position
+  6. Mark your task completed via TaskUpdate(taskId, status="completed")
+  7. Wait for shutdown request"""
+)
+# Launch all teammates in a SINGLE message with multiple Task calls
+
+# Step 4: Monitor and synthesize
+# Teammates share findings via SendMessage peer-to-peer
+# Coordinator receives idle notifications and synthesizes when all complete
+
+# Step 5: Shutdown
+SendMessage(type="shutdown_request", recipient="archaeologist", content="Analysis complete")
+# Wait for shutdown_response from each teammate
+TeamDelete()
+```
+
+**When to use which:**
+- Standard/Quick complexity → parallel `Task()` calls (Phase 1 only, no cross-pollination)
+- Deep complexity → `TeamCreate` (enables real-time cross-pollination via SendMessage)
 
 ---
 
