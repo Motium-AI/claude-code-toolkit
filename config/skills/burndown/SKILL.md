@@ -214,6 +214,8 @@ Synthesize tradeoffs (what to delete, what to improve, what to leave alone) and 
 
 Launch **3 parallel agents** to detect all tech debt issues.
 
+> **Architecture: Task() (not TeamCreate)** — Detection agents scan independent pattern categories (slop, architecture, scalability). They don't benefit from peer communication because their findings are deduplicated by the coordinator in Phase 2, not cross-pollinated.
+
 ### Agent 1: Code Slop Hunter
 
 **Focus**: deslop patterns 1-25 (AI-generated code slop)

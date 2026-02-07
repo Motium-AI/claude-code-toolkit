@@ -68,6 +68,8 @@ For each source document:
 
 **CRITICAL**: Launch ALL 4 agents in a SINGLE message with multiple Task tool calls. This makes them run in parallel.
 
+> **Architecture: Task() (not TeamCreate)** — Agents produce independent analysis artifacts (core insights, narrative structure, TTS constraints, slop watchlist). Coordinator synthesizes tradeoffs in Phase 3.
+
 ### Agent 1: First Principles Analysis
 
 ```

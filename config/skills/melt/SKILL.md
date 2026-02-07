@@ -51,11 +51,11 @@ Use Edit tool for targeted changes. Keep changes focused on the task.
 
 ### Parallel Work
 
-| Independent Items | Strategy |
-|-------------------|----------|
-| 1 | Single-agent execution |
-| 2 | Parallel `Task()` calls in a single message |
-| 3+ | `TeamCreate` with shared task list |
+| Independent Items | Strategy | Why |
+|-------------------|----------|-----|
+| 1 | Single-agent execution | No parallelism needed |
+| 2 | Parallel `Task()` calls in a single message | Independent, no coordination needed |
+| 3+ | `TeamCreate` with shared task list | Workers need task claiming, blocker reporting, file ownership coordination |
 
 **For 3+ independent work items, use TeamCreate:**
 

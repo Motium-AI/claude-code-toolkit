@@ -104,6 +104,8 @@ For each source document:
 
 **CRITICAL**: Launch ALL 5 agents in a SINGLE message with multiple Task tool calls. They run in parallel.
 
+> **Architecture: Task() (not TeamCreate)** — Essay agents produce independent artifacts (angle, structure, voice, skepticism map, slop watchlist). Each agent's output is a self-contained creative brief that the coordinator synthesizes in Phase 3. Peer messaging would not improve individual artifact quality.
+
 ### Agent 1: The Contrarian
 
 ```

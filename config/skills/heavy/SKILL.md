@@ -24,15 +24,21 @@ Before spawning agents, do three things:
 | "Should we...", "Is it a good idea...", "Evaluate whether..." | EVALUATION | Challenge assumptions, explore both sides |
 | "How can we improve...", "Help me design...", "I want to..." | IMPLEMENTATION | Accept goal as given, debate HOW not WHETHER |
 
-### 0.2 Assess Complexity
+### 0.2 Assess Complexity + Bind Architecture
 
-| Complexity | Signal | Agents | Rounds |
-|------------|--------|--------|--------|
-| **Quick** | Binary decision, single concern | 2-3 | 1 |
-| **Standard** | Multi-faceted but bounded | 3-4 | 1 |
-| **Deep** | Architectural, strategic, high-stakes | 4-5 | 1 + cross-pollination |
+| Complexity | Signal | Agents | Architecture | Rationale |
+|------------|--------|--------|-------------|-----------|
+| **Quick** | Binary decision, single concern | 2-3 | `Task()` parallel calls | No cross-pollination needed |
+| **Standard** | Multi-faceted but bounded | 3-4 | `Task()` parallel calls | Coordinator synthesizes |
+| **Deep** | Architectural, strategic, high-stakes | 4-5 | `TeamCreate` with peer messaging | Cross-pollination via SendMessage |
 
 Default to **Standard** unless the question clearly warrants Quick or Deep.
+
+**MANDATORY**: The complexity assessment BINDS the architecture choice. If you assess Deep, you MUST use TeamCreate — do not fall back to Task() for cost savings. The cross-pollination quality gain justifies the cost for Deep questions.
+
+Output your triage result explicitly before proceeding:
+
+> TRIAGE: [MODE] / [COMPLEXITY] → [ARCHITECTURE]
 
 ### 0.3 Prime with Memory
 
@@ -136,11 +142,17 @@ Output format:
 )
 ```
 
-### 1.4 Launch
+### 1.4 Launch (Architecture-Bound)
 
-**Default: Launch ALL agents in a SINGLE message with multiple Task tool calls.** This is simpler, cheaper, and sufficient for Standard complexity.
+**Follow the architecture selected in Phase 0.2.** Do not override the triage.
 
-**Deep complexity with cross-pollination: Use Agent Teams** when agents need to share intermediate findings during research. This replaces the manual coordinator bottleneck in Phase 2 with real-time peer messaging.
+#### Quick / Standard → Parallel Task() Calls
+
+Launch ALL agents in a SINGLE message with multiple Task tool calls. Coordinator synthesizes after all return.
+
+#### Deep → TeamCreate with Peer Messaging
+
+Create a team, assign tasks, spawn teammates, and let them share findings via SendMessage. This replaces the manual coordinator bottleneck with real-time peer discovery sharing.
 
 ```
 # Step 1: Create team
@@ -185,15 +197,19 @@ SendMessage(type="shutdown_request", recipient="archaeologist", content="Analysi
 TeamDelete()
 ```
 
-**When to use which:**
-- Standard/Quick complexity → parallel `Task()` calls (Phase 1 only, no cross-pollination)
-- Deep complexity → `TeamCreate` (enables real-time cross-pollination via SendMessage)
+**Architecture binding (from Phase 0.2):**
+- Quick/Standard → parallel `Task()` calls above (Phase 1 only, coordinator synthesizes)
+- Deep → `TeamCreate` above (real-time cross-pollination via SendMessage, skip Phase 2)
 
 ---
 
 ## Phase 2: Cross-Pollination (Deep complexity only)
 
-**Trigger**: Complexity assessed as Deep, OR Round 1 results sharply diverge on critical points.
+**If using TeamCreate (Deep)**: Cross-pollination happens automatically via SendMessage during Phase 1. Agents share findings peer-to-peer as they research. Skip this phase — proceed directly to Phase 3 Synthesis when all teammates complete.
+
+**If using Task() (Standard, upgraded to Deep after Round 1 divergence)**: Launch follow-up agents with summaries of Round 1 discoveries.
+
+**Trigger for upgrade**: Round 1 results sharply diverge on critical points.
 
 After Round 1 agents return, create a brief summary of each agent's key discoveries (not their full output — just claims + evidence). Then launch follow-up agents:
 

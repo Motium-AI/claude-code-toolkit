@@ -53,7 +53,11 @@ You do not need explicit `/command` invocation. Auto-select based on task signal
 | Fire-and-forget research or verification | `Task()` subagents (cheaper, simpler) |
 | Agents need to share findings mid-work | `TeamCreate` with peer-to-peer `SendMessage` |
 
-**Default to `Task()`.** Only escalate to `TeamCreate` when agents genuinely need to communicate with each other or coordinate on shared resources. Agent Teams cost ~7x more tokens — use them for execution coordination, not read-only analysis.
+**Default to `Task()`.** Escalate to `TeamCreate` when:
+- Agents need to share intermediate findings mid-research (e.g., /heavy Deep cross-pollination)
+- 3+ execution items need coordination on shared resources (e.g., /melt worker teams)
+
+**Trust skill-specific triage.** If a skill's complexity assessment selects TeamCreate, follow it — the skill has determined that peer communication will produce higher quality results. Do not override with cost concerns.
 
 ## Skill Fluidity
 
