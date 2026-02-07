@@ -4,16 +4,14 @@ Reference documentation for implementing global Claude Code hooks that inject co
 
 ## Overview
 
-Claude Code supports a hooks system that executes shell commands in response to lifecycle events. This document covers eight event types:
+Claude Code supports a hooks system that executes shell commands in response to lifecycle events. The system has been consolidated to fewer, more focused hooks:
 
-1. **SessionStart (Context Injection)**: Force Claude to read project documentation before beginning work
+1. **SessionStart (Context Injection)**: Session initialization, cleanup, state management, and doc reading
 2. **Stop (Compliance Blocking)**: Block Claude from stopping until compliance checks are addressed
 3. **UserPromptSubmit (On-Demand Doc Reading)**: Trigger deep documentation reading when user says "read the docs"
-4. **PreToolUse (Tool Interception)**: Auto-answer questions during autonomous execution
-5. **PermissionRequest (Permission Handling)**: Auto-approve tool permissions during appfix
-6. **PostToolUse (Post-Action Context)**: Inject execution context after plan approval or skill completion
-7. **SubagentStop (Agent Validation)**: Validate subagent output quality before accepting
-8. **PostToolUse (Skill Continuation)**: Continue autonomous loop after skill delegation
+4. **PreToolUse (Tool Interception)**: Auto-approve tools and enforce deploy safety during autonomous execution
+5. **PostToolUse (Skill Continuation)**: Continue autonomous loop after skill delegation, log tool usage
+6. **PermissionRequest (Permission Handling)**: Fallback auto-approval for permission dialogs
 
 > **Note**: Status file hooks were removed in January 2025. Anthropic's native Tasks feature now provides better session tracking and coordination. See [Tasks Deprecation Note](#tasks-deprecation-note) below.
 
@@ -123,7 +121,7 @@ Location: `~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/session-snapshot.py",
+            "command": "python3 ~/.claude/hooks/session-init.py",
             "timeout": 5
           },
           {
@@ -188,13 +186,11 @@ ACTION REQUIRED: Exit this session and start a new one.
 
 The hook tracks pending restarts and re-displays the warning on subsequent sessions until the user actually restarts.
 
-### SessionStart Hook: Session Snapshot
+### SessionStart Hook: Session Init
 
-**File**: `~/.claude/hooks/session-snapshot.py`
+**File**: `~/.claude/hooks/session-init.py`
 
-**Purpose**: Captures a snapshot of the git diff state at session start to enable session-specific change detection.
-
-**Why this exists**: Without this, the stop hook would require checkpoints for ANY uncommitted changes, even pre-existing ones from previous sessions. This caused a loop where research-only sessions were blocked because they inherited uncommitted changes.
+**Purpose**: Session initialization — cleanup, state management, memory injection setup.
 
 **How it works**:
 1. At session start, computes SHA1 hash of `git diff HEAD -- ":(exclude).claude/"`
@@ -254,7 +250,7 @@ Cleans up orphaned worktrees from crashed coordinators:
 2. Orphaned directories in `/tmp/claude-worktrees/` not tracked in state
 3. Git worktree metadata (via `git worktree prune`)
 
-Called automatically at session start by `session-snapshot.py`.
+Called automatically at session start by `session-init.py`.
 
 **State file**: `~/.claude/worktree-state.json`
 ```json
@@ -271,62 +267,11 @@ Called automatically at session start by `session-snapshot.py`.
 }
 ```
 
-### UserPromptSubmit Hook: Skill State Initializer
+### Skill State Initialization (No Separate Hook)
 
-**File**: `~/.claude/hooks/skill-state-initializer.py`
+Skills now create their own `.claude/autonomous-state.json` with the appropriate mode at activation. No separate hook is needed.
 
-**Purpose**: Creates state files for autonomous execution skills (`/appfix`, `/build`) immediately when the user's prompt matches trigger patterns. This ensures auto-approval hooks activate from the first tool call.
-
-**Coordinator Detection**:
-
-The hook detects whether the session is running in a git worktree (subagent) or main repo (coordinator):
-
-```python
-def _detect_worktree_context(cwd: str) -> tuple[bool, str | None, str | None]:
-    """Returns: (is_coordinator, agent_id, worktree_path)"""
-```
-
-**Production Deployment Permission Detection**:
-
-The hook also scans the user's prompt for production deployment intent. If detected, it pre-populates `allowed_prompts` in the state file, which the `deploy-enforcer.py` hook checks before blocking.
-
-Recognized patterns:
-- `deploy to prod/production`
-- `push to prod`
-- `release to production`
-- `/deploy-pipeline ... prod`
-
-Example: `/build deploy to prod` creates state with:
-```json
-{
-  "allowed_prompts": [{"tool": "Bash", "prompt": "deploy to production"}]
-}
-```
-
-**State file fields** (`.claude/appfix-state.json` or `.claude/build-state.json`):
-```json
-{
-  "iteration": 1,
-  "started_at": "2026-01-25T10:00:00Z",
-  "session_id": "abc123",
-  "plan_mode_completed": false,
-  "parallel_mode": false,
-  "agent_id": null,
-  "worktree_path": null,
-  "coordinator": true,
-  "allowed_prompts": [{"tool": "Bash", "prompt": "deploy to production"}]
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `coordinator` | boolean | True if main repo (can deploy), false if worktree |
-| `parallel_mode` | boolean | True if running in a worktree |
-| `agent_id` | string\|null | Agent ID if in worktree |
-| `worktree_path` | string\|null | Worktree path if in worktree |
-| `allowed_prompts` | array\|null | Pre-populated permissions from prompt (for deploy-enforcer) |
-
-**Deploy restrictions**: Subagents (`coordinator: false`) should never deploy directly. Only the coordinator agent (in main repo) handles deployments after merging subagent work.
+The state file is `.claude/autonomous-state.json` and is created by the skill's SKILL.md instructions when the skill is invoked.
 
 ### SessionStart Hook: Read Docs Reminder
 
@@ -338,140 +283,17 @@ Forces Claude to read project documentation before executing any user request. U
 - `Actually READ the files` - prevents "I'll summarize from memory" shortcuts
 - `The user expects...` - frames as user requirement, not system preference
 
-### PostToolUse Hook: Checkpoint Invalidator
+### Checkpoint Invalidation (No Separate Hook)
 
-**File**: `~/.claude/hooks/checkpoint-invalidator.py`
+Checkpoint invalidation is now handled within the stop-validator. The separate `checkpoint-invalidator.py` hook was removed during the hook consolidation.
 
-**Purpose**: Proactively resets stale checkpoint flags immediately after code edits, preventing Claude from working with outdated state.
+### Plan Mode Enforcement (Removed)
 
-**Problem this solves**:
-1. Deploy at version A → checkpoint: `deployed=true`
-2. Test finds error → Claude writes fix → version becomes B
-3. WITHOUT this hook: Claude sees `deployed=true`, skips re-deploy
-4. WITH this hook: `deployed` is reset to `false` immediately after edit
+Plan mode enforcement was removed. Skills now self-enforce planning through their SKILL.md instructions.
 
-**Dependency Graph**:
-```
-linters_pass
-     ↓
-  deployed
-     ↓
-┌────┴────┐
-↓         ↓
-web_testing_done
-console_errors_checked
-api_testing_done
-```
+### Plan Mode Tracking (Removed)
 
-When a field becomes stale, all dependent fields are also invalidated:
-- If `linters_pass` is stale → `deployed` is also stale
-- If `deployed` is stale → `web_testing_done`, `console_errors_checked`, `api_testing_done` are also stale
-
-**Trigger**: Fires after every `Edit` or `Write` tool use on code files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, etc.)
-
-#### Version Format
-
-The `get_code_version()` function returns:
-
-| State | Format | Example |
-|-------|--------|---------|
-| Clean commit | `{short_hash}` | `abc1234` |
-| Uncommitted changes | `{short_hash}-dirty` | `abc1234-dirty` |
-| Not a git repo | `unknown` | `unknown` |
-
-**Important**: The dirty indicator is a boolean flag, NOT a content hash. This ensures version stability during development—the version only changes at commit boundaries, not on every file edit. This prevents checkpoint invalidation loops where every edit would change the version and trigger re-verification.
-
-**Output**: Injects a warning message listing invalidated fields:
-```
-⚠️ CODE CHANGE DETECTED - Checkpoint fields invalidated: deployed, web_testing_done
-
-You edited: src/auth.py
-Current version: abc1234-dirty
-
-These fields were reset to false because the code changed since they were set:
-  • deployed: now requires re-verification
-  • web_testing_done: now requires re-verification
-
-Before stopping, you must:
-1. Re-run linters (if linters_pass was reset)
-2. Re-deploy (if deployed was reset)
-3. Re-test in browser (if web_testing_done was reset)
-4. Update checkpoint with new version
-```
-
-### PreToolUse Hook: Plan Mode Enforcer
-
-**File**: `~/.claude/hooks/plan-mode-enforcer.py`
-
-**Purpose**: Blocks Edit/Write tools on the first iteration of godo/appfix until plan mode is completed. Ensures Claude explores the codebase before making changes.
-
-**Trigger**: Fires before `Edit` or `Write` tool use during godo/appfix workflows.
-
-**How it works**:
-1. Receives PreToolUse event with `tool_name: "Edit"` or `"Write"`
-2. Checks if godo or appfix state file exists
-3. If first iteration and `plan_mode_completed: false` → blocks the tool
-4. If plan files (paths containing `/plans/`) → always allows (for writing implementation plans)
-5. If subsequent iteration or plan mode completed → allows the tool
-
-**Configuration**:
-```json
-"PreToolUse": [
-  {
-    "matcher": "Edit",
-    "hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5}]
-  },
-  {
-    "matcher": "Write",
-    "hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5}]
-  }
-]
-```
-
-**Note**: Matchers must be separate entries (one for "Edit", one for "Write"). The `"Edit|Write"` regex-style syntax does NOT work—matchers use exact string matching, not regex patterns.
-
-**Block message** (when enforcing):
-```
-PLAN MODE REQUIRED - FIRST ITERATION
-
-1. Call EnterPlanMode
-2. Explore codebase architecture, recent commits, configs
-3. Write implementation plan to the plan file
-4. Call ExitPlanMode
-
-THEN your edit will be allowed.
-```
-
-### PostToolUse Hook: Plan Mode Tracker
-
-**File**: `~/.claude/hooks/plan-mode-tracker.py`
-
-**Purpose**: Marks plan mode as completed in godo/appfix state files after ExitPlanMode is called, enabling Edit/Write tools to proceed. Also stores `allowedPrompts` from the plan for permission-based bypasses in other hooks.
-
-**Trigger**: Fires after `ExitPlanMode` tool use during godo/appfix workflows.
-
-**How it works**:
-1. Receives PostToolUse event with `tool_name: "ExitPlanMode"`
-2. Extracts `allowedPrompts` from `tool_input` (if present)
-3. Checks if godo or appfix state file exists (`.claude/build-state.json` or `.claude/appfix-state.json`)
-4. Updates the state file with `plan_mode_completed: true` and `allowed_prompts`
-5. The plan-mode-enforcer hook (PreToolUse) then allows Edit/Write tools
-6. Other hooks (e.g., deploy-enforcer) can check `allowed_prompts` for permission bypasses
-
-**State file update**:
-```json
-{
-  "started_at": "2026-01-25T10:00:00Z",
-  "task": "user's task",
-  "iteration": 1,
-  "plan_mode_completed": true,  // ← Set by this hook
-  "allowed_prompts": [          // ← Stored from ExitPlanMode allowedPrompts
-    {"tool": "Bash", "prompt": "deploy to production"}
-  ]
-}
-```
-
-**Why this exists**: The plan-mode-enforcer blocks Edit/Write tools on the first iteration of godo/appfix to ensure Claude explores the codebase before making changes. This hook marks when that exploration is complete. The `allowed_prompts` storage enables other hooks (like deploy-enforcer) to respect permissions explicitly granted by the user in the plan.
+Plan mode tracking was removed along with plan mode enforcement. Skills now manage their own planning lifecycle through SKILL.md instructions without requiring external hook coordination.
 
 ### PostToolUse Hook: Skill Continuation Reminder
 
@@ -507,19 +329,7 @@ THEN your edit will be allowed.
 
 **Injected Context** (when active):
 ```
-APPFIX MODE STILL ACTIVE - SKILL COMPLETED
-
-The skill you invoked has completed. You are STILL in APPFIX autonomous mode.
-
-CONTINUE THE FIX-VERIFY LOOP:
-1. Apply any insights from the completed skill
-2. Execute the planned changes (Edit tool)
-3. Commit and push changes
-4. Deploy if required
-5. Verify in browser
-6. Update completion checkpoint
-
-Do NOT stop here. The fix-verify loop continues until verification is complete.
+You are in autonomous REPAIR mode. The skill completed. Continue your current task. If a sub-problem needs a different approach, adapt inline — you may use techniques from any skill without switching modes.
 ```
 
 ### Stop Hook (Blocking)
@@ -997,12 +807,12 @@ Stop hook error: JSON validation failed
 
 ## Autonomous Execution Hook System
 
-The `/melt` and `/appfix` skills use a coordinated set of hooks to enforce fully autonomous execution. These hooks activate when autonomous mode is detected via:
+Skills use a coordinated set of hooks to enforce fully autonomous execution. These hooks activate when autonomous mode is detected via:
 
-1. **State file existence** (primary): `.claude/melt-state.json` or `.claude/appfix-state.json` exists in the project
+1. **State file existence** (primary): `.claude/autonomous-state.json` exists in the project
 2. **Environment variable** (legacy): `GODO_ACTIVE=true` or `APPFIX_ACTIVE=true`
 
-The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state files automatically when `/melt` or `/appfix` is invoked. State files include a `started_at` timestamp and expire after a configurable TTL (checked by `is_state_expired()` in `_common.py`).
+Skills create `.claude/autonomous-state.json` at activation with the appropriate mode. State files include a `started_at` timestamp and expire after a configurable TTL (checked by `is_state_expired()` in `_session.py`).
 
 ### Architecture
 
@@ -1011,27 +821,18 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 │                   AUTONOMOUS EXECUTION HOOK SYSTEM                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  UserPromptSubmit                                                           │
-│  └─→ skill-state-initializer.py                                             │
-│      └─→ Creates .claude/melt-state.json or .claude/appfix-state.json       │
-│      └─→ Sets started_at timestamp for TTL expiry                          │
-│                                                                             │
-│  PreToolUse(Edit/Write)                                                     │
-│  └─→ plan-mode-enforcer.py                                                  │
-│      └─→ If autonomous + first iteration: DENY until plan mode completed   │
-│      └─→ If not active or plan done: Pass through                          │
+│  PreToolUse(*)                                                              │
+│  └─→ auto-approve.py                                                        │
+│      └─→ If autonomous mode active: Auto-approve ALL tools                 │
+│      └─→ If not active: Silent pass-through                               │
 │                                                                             │
 │  PreToolUse(Bash)                                                           │
 │  └─→ deploy-enforcer.py                                                     │
 │      └─→ If autonomous + coordinator=false: DENY gh workflow run           │
 │      └─→ If production deploy detected: DENY with safety gate              │
 │                                                                             │
-│  PostToolUse(ExitPlanMode)                                                  │
-│  └─→ plan-mode-tracker.py → marks plan mode completed in state file        │
-│  └─→ plan-execution-reminder.py → injects fix-verify loop instructions     │
-│                                                                             │
-│  PostToolUse(Edit/Write)                                                    │
-│  └─→ checkpoint-invalidator.py → resets stale checkpoint flags             │
+│  PostToolUse(*)                                                             │
+│  └─→ tool-usage-logger.py → logs tool usage for behavioral analysis        │
 │                                                                             │
 │  PostToolUse(Bash)                                                          │
 │  └─→ bash-version-tracker.py → invalidates fields on version change        │
@@ -1040,15 +841,14 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 │  └─→ skill-continuation-reminder.py → continues loop after skill           │
 │                                                                             │
 │  PermissionRequest(*)                                                       │
-│  └─→ permissionrequest-auto-approve.py                                     │
+│  └─→ auto-approve.py (fallback)                                            │
 │      └─→ If autonomous mode active: Auto-approve ALL tools                 │
 │      └─→ If not active: Silent pass-through (normal approval)              │
 │                                                                             │
 │  Stop                                                                       │
 │  └─→ stop-validator.py                                                      │
 │      └─→ Validates completion checkpoint (boolean self-report)             │
-│      └─→ Cross-validates web smoke artifacts and deploy artifacts          │
-│      └─→ Cascade invalidation on version mismatch                          │
+│      └─→ Handles checkpoint invalidation inline                            │
 │      └─→ Blocks if is_job_complete=false or what_remains is non-empty      │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -1056,9 +856,9 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 
 ### PreToolUse Hook: Auto-Approve All Tools (Primary)
 
-**File**: `~/.claude/hooks/pretooluse-auto-approve.py`
+**File**: `~/.claude/hooks/auto-approve.py`
 
-**Purpose**: Auto-approve ALL tools during godo/appfix by intercepting at the PreToolUse stage, BEFORE the permission system decides whether to show a dialog.
+**Purpose**: Auto-approve ALL tools during autonomous execution by intercepting at the PreToolUse stage, BEFORE the permission system decides whether to show a dialog.
 
 **Why PreToolUse instead of PermissionRequest?**
 
@@ -1066,7 +866,7 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 
 `PreToolUse` hooks fire for EVERY tool call, allowing us to bypass the permission system entirely by returning `permissionDecision: "allow"`. This ensures auto-approval works both before AND after context compaction.
 
-**Detection**: Uses `is_autonomous_mode_active()` from `_common.py`, which checks for state files with TTL validation.
+**Detection**: Uses `is_autonomous_mode_active()` from `_session.py`, which checks for state files with TTL validation.
 
 **Behavior**:
 1. Reads stdin JSON for `cwd` and `tool_name`
@@ -1093,7 +893,7 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
     "hooks": [
       {
         "type": "command",
-        "command": "python3 ~/.claude/hooks/pretooluse-auto-approve.py",
+        "command": "python3 ~/.claude/hooks/auto-approve.py",
         "timeout": 5
       }
     ]
@@ -1103,7 +903,7 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 
 ### PermissionRequest Hook: Auto-Approve Fallback
 
-**File**: `~/.claude/hooks/permissionrequest-auto-approve.py`
+**File**: `~/.claude/hooks/auto-approve.py`
 
 **Purpose**: Fallback auto-approval for any permission dialogs that still appear (defense in depth).
 
@@ -1116,35 +916,10 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
     "hooks": [
       {
         "type": "command",
-        "command": "python3 ~/.claude/hooks/permissionrequest-auto-approve.py",
+        "command": "python3 ~/.claude/hooks/auto-approve.py",
         "timeout": 5
       }
     ]
-  }
-]
-```
-
-### PreToolUse Hook: Plan Mode Enforcement
-
-**File**: `~/.claude/hooks/plan-mode-enforcer.py`
-
-**Purpose**: Block Edit/Write tools on the first iteration of godo/appfix until plan mode is completed. This ensures Claude explores the codebase before making changes.
-
-**Behavior**:
-1. Checks if autonomous mode is active
-2. If plan mode not yet completed (tracked by `plan-mode-tracker.py`): Returns `permissionDecision: "deny"` with message instructing Claude to enter plan mode first
-3. After plan mode completed: Silent pass-through
-
-**Configuration**:
-```json
-"PreToolUse": [
-  {
-    "matcher": "Edit",
-    "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5 }]
-  },
-  {
-    "matcher": "Write",
-    "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/plan-mode-enforcer.py", "timeout": 5 }]
   }
 ]
 ```
@@ -1165,17 +940,10 @@ The `skill-state-initializer.py` hook (UserPromptSubmit) creates these state fil
 
 **Plan-Based Permission Bypass**:
 
-When ExitPlanMode is called with `allowedPrompts`, the `plan-mode-tracker.py` hook stores these in the state file. The deploy-enforcer then checks for Bash permissions mentioning production:
+When a skill activates, `allowed_prompts` can be set in `.claude/autonomous-state.json`. The deploy-enforcer checks these for Bash permissions mentioning production:
 
 ```json
-// In ExitPlanMode call:
-{
-  "allowedPrompts": [
-    {"tool": "Bash", "prompt": "deploy to production"}
-  ]
-}
-
-// Stored in state file by plan-mode-tracker.py:
+// In autonomous-state.json:
 {
   "allowed_prompts": [
     {"tool": "Bash", "prompt": "deploy to production"}
@@ -1208,19 +976,14 @@ Permission patterns recognized: `prod`, `production`, `deploy to prod`, `push to
     "is_job_complete": true,
     "code_changes_made": true,
     "linters_pass": true,
-    "deployed": true,
-    "web_testing_done": true,
-    "console_errors_checked": true,
-    "api_testing_done": false,
-    "docs_updated": true
+    "category": "bugfix"
   },
   "reflection": {
     "what_was_done": "Fixed CORS config, deployed, verified login works",
-    "what_remains": "none"
-  },
-  "evidence": {
-    "urls_tested": ["https://app.example.com/dashboard"],
-    "console_clean": true
+    "what_remains": "none",
+    "key_insight": "Reusable lesson for future sessions (>50 chars)",
+    "search_terms": ["cors", "deployment", "login"],
+    "memory_that_helped": []
   }
 }
 ```
@@ -1228,52 +991,34 @@ Permission patterns recognized: `prod`, `production`, `deploy to prod`, `push to
 **Blocking Conditions**:
 - `is_job_complete: false` → BLOCKED
 - `what_remains` is non-empty → BLOCKED
-- Version-dependent fields stale (field version != current git version) → cascade reset + BLOCKED
-- Web smoke artifacts missing/failed (cross-validation) → reset `web_testing_done` + BLOCKED
-- Deployment artifacts missing/failed (cross-validation) → reset `deployed` + cascade
+- Missing required fields → BLOCKED
 
-**Cascade Invalidation**: When a field is reset, all downstream fields are also reset:
-- `linters_pass` → resets `deployed` → resets `web_testing_done`, `console_errors_checked`, `api_testing_done`
-- `deployed` → resets `web_testing_done`, `console_errors_checked`, `api_testing_done`
-
-### PostToolUse Hooks: Version Tracking and Checkpoint Management
+### PostToolUse Hooks: Version Tracking and Behavioral Analysis
 
 **bash-version-tracker.py** (PostToolUse/Bash): Detects version-changing commands (git commit, az CLI, gh workflow run) and invalidates stale checkpoint fields. Prevents the scenario where code changes go undetected.
 
-**doc-updater-async.py** (PostToolUse/Bash): Detects git commits during appfix/melt sessions and creates a task file for async documentation updates. Suggests spawning a background Sonnet agent to update relevant docs based on the commit diff. Uses /heavy for multi-perspective analysis of architectural changes.
+**tool-usage-logger.py** (PostToolUse/*): Logs tool usage for behavioral analysis. Tracks which tools are called and their patterns during autonomous execution.
 
-**checkpoint-invalidator.py** (PostToolUse/Edit/Write): Proactively resets stale checkpoint flags when code is edited, before the stop hook checks. Prevents false checkpoint claims.
-
-**plan-execution-reminder.py** (PostToolUse/ExitPlanMode): Injects aggressive autonomous execution context after plan mode completes — the fix-verify loop instructions.
-
-**plan-mode-tracker.py** (PostToolUse/ExitPlanMode): Marks plan mode as completed in the state file so `plan-mode-enforcer.py` stops blocking Edit/Write.
-
-**skill-continuation-reminder.py** (PostToolUse/Skill): After a skill (like `/heavy`) completes within a godo/appfix loop, reminds Claude to continue the autonomous loop.
+**skill-continuation-reminder.py** (PostToolUse/Skill): After a skill completes within an autonomous loop, reminds Claude to continue the autonomous loop.
 
 ### Testing the Hooks
 
 ```bash
 # Test auto-approve with state file
 mkdir -p /tmp/test-project/.claude
-echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /tmp/test-project/.claude/appfix-state.json
-echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/permissionrequest-auto-approve.py
+echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > /tmp/test-project/.claude/autonomous-state.json
+echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/auto-approve.py
 # Expected: JSON with decision.behavior: "allow"
 
 # Test auto-approve without state (should pass through)
 rm -rf /tmp/test-project/.claude
-echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/permissionrequest-auto-approve.py
+echo '{"tool_name":"Bash","cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/auto-approve.py
 # Expected: No output (pass through)
 
 # Test deploy-enforcer blocking subagent deploy
 mkdir -p /tmp/test-project/.claude
-echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "coordinator": false}' > /tmp/test-project/.claude/build-state.json
+echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "coordinator": false}' > /tmp/test-project/.claude/autonomous-state.json
 echo '{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml"},"cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/deploy-enforcer.py
-# Expected: JSON with permissionDecision: "deny"
-
-# Test plan-mode-enforcer blocking Edit before plan mode
-mkdir -p /tmp/test-project/.claude
-echo '{"iteration": 1, "started_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "plan_mode_completed": false}' > /tmp/test-project/.claude/build-state.json
-echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test.py"},"cwd":"/tmp/test-project"}' | python3 ~/.claude/hooks/plan-mode-enforcer.py
 # Expected: JSON with permissionDecision: "deny"
 
 # Cleanup

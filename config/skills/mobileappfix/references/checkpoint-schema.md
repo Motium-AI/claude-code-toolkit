@@ -74,7 +74,7 @@ current_version:                 def5678  <- Different!
 -> STALE: Must re-verify
 ```
 
-The `checkpoint-invalidator.py` hook automatically resets stale fields when you edit code.
+When code changes after verification, you must re-verify before stopping. The stop-validator checks version consistency.
 
 ## Pass Conditions
 

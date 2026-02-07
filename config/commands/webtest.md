@@ -12,7 +12,7 @@ When running in autonomous mode, use Surf CLI for deterministic artifact generat
 
 ```bash
 # Check if autonomous mode is active
-ls .claude/appfix-state.json .claude/melt-state.json 2>/dev/null && echo "AUTONOMOUS MODE ACTIVE"
+ls .claude/autonomous-state.json 2>/dev/null && echo "AUTONOMOUS MODE ACTIVE"
 ```
 
 **If autonomous mode is active, follow Steps 2-4. Otherwise, skip to "Overview" section.**

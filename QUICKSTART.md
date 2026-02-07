@@ -63,7 +63,7 @@ ls -la ~/.claude/  # Check symlinks
 
 ### Auto-approval not working
 ```bash
-cat .claude/appfix-state.json  # Should exist during /melt or /appfix
+cat .claude/autonomous-state.json  # Should exist during /melt, /repair, or /burndown
 ```
 
 ### Debug log

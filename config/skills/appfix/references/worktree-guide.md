@@ -59,7 +59,7 @@ python3 ~/.claude/hooks/worktree-manager.py cleanup <agent-id>
 - Mark `needs_deploy: true` in checkpoint
 
 **Coordination detection:**
-- `skill-state-initializer.py` sets `coordinator: false`, `parallel_mode: true` in worktrees
+- Skills set `coordinator: false`, `parallel_mode: true` in worktree `autonomous-state.json`
 - `deploy-enforcer.py` blocks subagent deploy attempts
 
 ## Garbage Collection

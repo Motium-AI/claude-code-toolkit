@@ -105,44 +105,32 @@ If you answer `false`, you're blocked. If you answer `true` dishonestly, that's 
 
 ### Supporting Hooks
 
-Appfix uses a 3-hook system to enforce autonomous operation:
+Appfix uses a streamlined hook system to enforce autonomous operation:
 
 | Hook | Event | Purpose |
 |------|-------|---------|
-| `plan-execution-reminder.py` | PostToolUse (ExitPlanMode) | Injects autonomous execution context after plan approval |
-| `permissionrequest-auto-approve.py` | PermissionRequest (*) | Auto-approves ALL tools when appfix state file exists |
-| `stop-validator.py` | Stop | Validates completion checkpoint booleans before allowing stop |
+| `auto-approve.py` | PreToolUse (*) / PermissionRequest (*) | Auto-approves ALL tools when autonomous state exists |
+| `skill-continuation-reminder.py` | PostToolUse (Skill) | Reminds Claude to continue the loop after delegating to another skill |
+| `stop-validator.py` | Stop | Validates completion checkpoint before allowing stop |
 
 **How they work together:**
 
 ```
-1. User runs /appfix
-   └─→ Skill creates .claude/appfix-state.json (enables auto-approval)
+1. User runs /appfix (or /repair routes to it)
+   └─→ Skill creates .claude/autonomous-state.json with mode: "repair"
 
-2. Claude enters plan mode, explores, exits
-   └─→ plan-execution-reminder.py injects:
-       • Fix-verify loop requirements
-       • Checkpoint schema
-       • "CONTINUE THE FIX-VERIFY LOOP NOW"
+2. Claude explores, plans, and executes fixes
+   └─→ auto-approve.py detects autonomous state → auto-approves all tools
 
-3. Claude requests Edit/Write/Bash permissions
-   └─→ permissionrequest-auto-approve.py detects state file → auto-approves
+3. If Claude delegates to another skill (e.g., /heavy)
+   └─→ skill-continuation-reminder.py reminds Claude to continue the loop
 
 4. Claude tries to stop
-   └─→ stop-validator.py checks checkpoint booleans
-       • If any required boolean is false → BLOCKED with continuation prompt
-       • If what_remains is not empty → BLOCKED
+   └─→ stop-validator.py checks checkpoint
+       • If any required field invalid → BLOCKED
+       • If what_remains is not "none" → BLOCKED
        • If all pass → ALLOWED
 ```
-
-**Why `plan-execution-reminder.py` matters:**
-
-Without this hook, Claude might:
-- Ask for permission after exiting plan mode
-- Suggest "next steps" instead of continuing
-- Stop after making changes without verifying
-
-The hook injects aggressive context that reminds Claude it's in an autonomous loop and must continue working until the checkpoint passes.
 
 ---
 
@@ -251,7 +239,7 @@ The model:
 
 ```bash
 # Create state file IMMEDIATELY (enables auto-approval hooks)
-mkdir -p .claude && echo '{"iteration":1,"started_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","services":{},"fixes_applied":[],"verification_evidence":null}' > .claude/appfix-state.json
+mkdir -p .claude && echo '{"mode":"repair","started_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > .claude/autonomous-state.json
 ```
 
 Then:
@@ -566,7 +554,7 @@ When using Chrome MCP, you must manually set `web_testing_done: true` in the che
 
 ### Update Both Files After Verification
 
-**`.claude/appfix-state.json`**:
+**`.claude/autonomous-state.json`**:
 ```json
 {
   "verification_evidence": {
@@ -768,7 +756,7 @@ for i in {1..12}; do curl -sf "$HEALTH_URL" && break || sleep 5; done
 ### State File Location
 
 ```
-.claude/appfix-state.json
+.claude/autonomous-state.json
 ```
 
 ### State Schema
@@ -992,7 +980,7 @@ Check:
 
 #### "Verification evidence incomplete"
 
-Check that your appfix-state.json has all 4 required fields:
+Check that your autonomous-state.json has verification evidence with all 4 required fields:
 - `url_verified` - Must NOT be localhost
 - `console_clean` - Must be `true`
 - `verified_at` - Must be an ISO timestamp
@@ -1098,7 +1086,7 @@ Check that your appfix-state.json has all 4 required fields:
 |------|----------|---------|
 | `SKILL.md` | `prompts/config/skills/appfix/SKILL.md` | Main skill definition |
 | Completion checkpoint | `.claude/completion-checkpoint.json` | Boolean self-report |
-| State file | `.claude/appfix-state.json` | Runtime state |
+| State file | `.claude/autonomous-state.json` | Runtime state |
 | Service topology | `.claude/skills/appfix/references/service-topology.md` | Service URLs |
 
 ### Environment Variables

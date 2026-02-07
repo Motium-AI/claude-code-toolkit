@@ -57,4 +57,4 @@ The script will output:
 
 ## Automatic Cleanup
 
-Session cleanup also runs automatically on every session start via the `session-snapshot.py` hook, but with conservative settings. Use `/cleanup` for more aggressive or customized cleanup.
+Session cleanup also runs automatically on every session start via the `session-init.py` hook, but with conservative settings. Use `/cleanup` for more aggressive or customized cleanup.

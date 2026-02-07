@@ -253,7 +253,7 @@ webapp-testing/
 
 **Coverage**:
 - Task-agnostic autonomous execution with completion checkpoint
-- Lite Heavy planning (4 parallel Opus agents) before implementation
+- Optional Agent Teams planning before implementation
 - Full fix-verify loop: implement → lint → commit → deploy → browser verify
 - Cannot stop until checkpoint passes
 
@@ -280,8 +280,8 @@ webapp-testing/
 **Triggers**: /heavy, "heavy analysis", "multiple perspectives", "debate this"
 
 **Coverage**:
-- Multi-perspective analysis with 5 parallel Opus agents
-- 2 required (First Principles + AGI-Pilled) + 1 fixed (Critical Reviewer) + 2 dynamic
+- Multi-perspective analysis with 3-5 parallel Opus agents
+- First Principles + AGI-Pilled always, Critical Reviewer + dynamic agents as needed
 - Self-educating agents via codebase + web + vendor docs
 - Structured disagreements and adversarial dialogue
 
@@ -395,18 +395,7 @@ audiobook/
 └── SKILL.md                    # Complete workflow + voice guide + stop-slop reference
 ```
 
-### 19. go
-
-**Location**: `~/.claude/skills/go/`
-
-**Triggers**: /go, "just go", "go fast", "quick fix", "quick build"
-
-**Coverage**:
-- Fast autonomous execution without multi-agent planning
-- Read-gated editing (must read before editing)
-- Lightweight 3+1 checkpoint
-
-### 20. repair
+### 19. repair
 
 **Location**: `~/.claude/skills/repair/`
 
@@ -416,7 +405,7 @@ audiobook/
 - Unified debugging router (auto-detects web vs mobile)
 - Routes to /appfix (web) or /mobileappfix (mobile)
 
-### 21. burndown
+### 20. burndown
 
 **Location**: `~/.claude/skills/burndown/`
 
@@ -427,7 +416,7 @@ audiobook/
 - 3 detection agents scan for slop and architecture issues
 - Iterative fix loop until clean
 
-### 22. compound
+### 21. compound
 
 **Location**: `~/.claude/skills/compound/`
 
@@ -437,7 +426,7 @@ audiobook/
 - Manual deep memory capture (LESSON/PROBLEM/CAUSE/FIX)
 - Cross-session learning via append-only event store
 
-### 23. episode
+### 22. episode
 
 **Location**: `~/.claude/skills/episode/`
 
@@ -447,7 +436,7 @@ audiobook/
 - Educational video episode generation with Minecraft-style graphics
 - Orchestrates fal.ai, ElevenLabs TTS, and FFmpeg
 
-### 24. essay
+### 23. essay
 
 **Location**: `~/.claude/skills/essay/`
 
@@ -457,7 +446,7 @@ audiobook/
 - Long-form essay writing with 5-agent heavy analysis
 - Anti-slop enforcement and self-scoring rubric
 
-### 25. harness-test
+### 24. harness-test
 
 **Location**: `~/.claude/skills/harness-test/`
 
@@ -467,7 +456,7 @@ audiobook/
 - Test hook/skill changes in isolated sandbox
 - Auto-triggers in /melt when modifying toolkit
 
-### 26. health
+### 25. health
 
 **Location**: `~/.claude/skills/health/`
 
@@ -477,7 +466,7 @@ audiobook/
 - Toolkit health metrics and memory state diagnostics
 - Injection effectiveness and session state
 
-### 27. improve
+### 26. improve
 
 **Location**: `~/.claude/skills/improve/`
 

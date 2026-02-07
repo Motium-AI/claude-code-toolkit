@@ -9,25 +9,7 @@ Autonomous tech debt elimination skill that combines `/deslop` (AI slop detectio
 
 ## Architecture: Iterative Fix-Verify Loop
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  COMPLETION CHECKPOINT VALIDATION                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Load .claude/completion-checkpoint.json                         │
-│                                                                  │
-│  Check booleans deterministically:                               │
-│    - scan_complete: false → BLOCKED                              │
-│    - critical_fixed: false → BLOCKED                             │
-│    - linters_pass: false → BLOCKED                               │
-│    - re_scan_verified: false → BLOCKED                           │
-│    - is_job_complete: false → BLOCKED                            │
-│                                                                  │
-│  If blocked → continue fixing                                    │
-│  All checks pass → exit(0) → Allow stop                          │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+Scan for issues, prioritize by severity, fix iteratively, re-scan to verify. The stop-validator enforces a universal checkpoint schema — `is_job_complete`, `linters_pass`, `what_remains: "none"` must all pass.
 
 ## CRITICAL: Autonomous Execution
 
@@ -64,60 +46,46 @@ Autonomous tech debt elimination skill that combines `/deslop` (AI slop detectio
 
 ## Completion Checkpoint Schema
 
-Before stopping, you MUST create `.claude/completion-checkpoint.json`:
+Before stopping, create `.claude/completion-checkpoint.json`:
 
 ```json
 {
   "self_report": {
+    "is_job_complete": true,
     "code_changes_made": true,
-    "scan_complete": true,
-    "scan_complete_at_version": "abc1234",
-    "critical_fixed": true,
-    "critical_fixed_at_version": "def5678",
-    "high_fixed": true,
     "linters_pass": true,
-    "linters_pass_at_version": "def5678",
-    "re_scan_verified": true,
-    "re_scan_verified_at_version": "def5678",
-    "browser_verification_skipped": true,
-    "browser_verification_skip_reason": "pure_refactoring",
-    "is_job_complete": true
+    "category": "refactor"
   },
   "reflection": {
     "what_was_done": "Fixed 17 critical/high issues across 8 files. Reduced debt score from 47 to 6.",
-    "what_remains": "6 low-priority issues (verbose variables, minor naming inconsistencies)",
-    "blockers": null
+    "what_remains": "none",
+    "key_insight": "Reusable lesson about debt patterns found (>50 chars)",
+    "search_terms": ["tech-debt", "refactor", "code-slop"],
+    "memory_that_helped": []
   },
   "burndown_metrics": {
     "issues_at_start": 47,
     "issues_at_end": 6,
     "debt_reduction_percentage": 87.2,
     "iterations_required": 3,
-    "files_modified": 8,
-    "by_severity": {
-      "critical_fixed": 5,
-      "high_fixed": 12,
-      "medium_fixed": 20,
-      "low_remaining": 6
-    }
-  },
-  "evidence": {
-    "scan_artifacts": ".claude/burndown-scan.json",
-    "fix_log": ".claude/burndown-fixes.json"
+    "files_modified": 8
   }
 }
 ```
 
-| Field | Type | Required | When Blocked |
-|-------|------|----------|--------------|
-| `scan_complete` | bool | yes | Detection scan not finished |
-| `critical_fixed` | bool | yes | Critical issues remain unfixed |
-| `high_fixed` | bool | no | High issues remain (warning, not blocking) |
-| `linters_pass` | bool | yes | Linter errors exist |
-| `re_scan_verified` | bool | yes | Haven't verified fixes via re-scan |
-| `browser_verification_skipped` | bool | conditional | Must be true with valid reason if skipping |
-| `is_job_complete` | bool | yes | Self-reported incomplete |
-| `what_remains` | string | yes | Must be "none" OR only low/medium issues |
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `is_job_complete` | bool | yes | Is the job actually done? |
+| `code_changes_made` | bool | yes | Were code files modified? |
+| `linters_pass` | bool | if code changed | Did all linters pass? |
+| `category` | enum | yes | bugfix, gotcha, architecture, pattern, config, refactor |
+| `what_was_done` | string | yes | >20 chars describing work |
+| `what_remains` | string | yes | Must be "none" to allow stop |
+| `key_insight` | string | yes | >50 chars — the reusable LESSON |
+| `search_terms` | list | yes | 2-7 concept keywords |
+| `memory_that_helped` | list | no | Which memories were useful |
+
+Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validator ignores unknown keys.
 
 ## Workflow
 
@@ -231,45 +199,17 @@ Create the state file at activation to enable auto-approval:
 }
 ```
 
-## Phase 0.5: Lite Heavy Planning (MANDATORY)
+## Phase 0.5: Planning
 
-Uses `/heavy`'s required agents to determine what should be deleted vs improved.
+Use `EnterPlanMode` to explore the scope and plan the approach.
 
-### Workflow
+For non-trivial codebases, consider using **Agent Teams** (`TeamCreate`) or parallel `Task()` calls for multi-perspective analysis:
 
-1. **Call `EnterPlanMode`**
+- **First Principles**: "What tech debt can be DELETED entirely?"
+- **AGI-Pilled**: "What would a zero-debt version look like?"
+- **Task-specific experts**: Generated based on the codebase domain
 
-2. **Explore the scope**:
-   - What files are in scope?
-   - What patterns already exist?
-   - What recent changes were made?
-
-3. **Launch 2 parallel Opus agents** (from heavy/SKILL.md):
-
-   **First Principles Agent**:
-   > "What tech debt can be DELETED entirely? What code is over-engineered?
-   > What abstractions exist that shouldn't? Apply the Elon Musk algorithm:
-   > Question every requirement, delete aggressively, simplify what remains."
-
-   **AGI-Pilled Agent**:
-   > "What would a zero-debt version of this codebase look like?
-   > Where are we being too conservative? What patterns would a god-tier
-   > engineer use? What constraints are arbitrary?"
-
-4. **Synthesize tradeoffs**:
-   ```
-   TRADEOFF: [component/pattern]
-   - First Principles: Delete entirely because [reason]
-   - AGI-Pilled: Improve to [target state] because [capability argument]
-   - Resolution: [chosen approach]
-   ```
-
-5. **Write plan with scope decisions**:
-   - What to delete (First Principles wins)
-   - What to improve (AGI-Pilled wins)
-   - What to leave alone (not worth the effort)
-
-6. **Call `ExitPlanMode`**
+Synthesize tradeoffs (what to delete, what to improve, what to leave alone) and write the plan. Call `ExitPlanMode` when ready.
 
 ## Phase 1: Multi-Agent Detection Scan
 
@@ -483,37 +423,15 @@ cat .claude/web-smoke/summary.json
 
 ## Phase 6: Completion
 
-### Update Checkpoint
-
-```json
-{
-  "self_report": {
-    "scan_complete": true,
-    "critical_fixed": true,
-    "linters_pass": true,
-    "re_scan_verified": true,
-    "is_job_complete": true
-  },
-  "reflection": {
-    "what_was_done": "Burned down 41 issues (5 critical, 12 high, 20 medium, 4 low). Split userService.ts, fixed N+1 queries, removed dead code.",
-    "what_remains": "6 low-priority issues: verbose variables in utils.ts, naming consistency in tests"
-  },
-  "burndown_metrics": {
-    "issues_at_start": 47,
-    "issues_at_end": 6,
-    "debt_reduction_percentage": 87.2
-  }
-}
-```
+Update checkpoint with universal schema (see Completion Checkpoint Schema above) and try to stop. If blocked, address issues and retry.
 
 ### Exit Conditions
 
 | Condition | Result |
 |-----------|--------|
-| `critical_fixed: true` AND `linters_pass: true` AND `re_scan_verified: true` | SUCCESS - stop allowed |
-| Any required boolean false | BLOCKED - continue fixing |
-| `what_remains` lists critical issues | BLOCKED - continue fixing |
-| `what_remains` lists only low issues | SUCCESS - acceptable |
+| All required fields valid, `what_remains: "none"` | SUCCESS - stop allowed |
+| Any required field invalid | BLOCKED - continue fixing |
+| Missing credentials | ASK USER (once) |
 
 ### Cleanup
 
@@ -580,12 +498,16 @@ User: /burndown src/components/
 → Console: 0 errors
 
 [Phase 6: Completion]
-→ Checkpoint: critical_fixed=true, linters_pass=true, re_scan_verified=true
-→ what_remains: "6 low-priority issues in Button.tsx, utils.ts"
+→ Checkpoint: is_job_complete=true, linters_pass=true, category=refactor
+→ what_remains: "none"
 → Stop hook validates → PASS
 → debt_burned_percentage: 81.25%
 → Session complete
 ```
+
+## Skill Fluidity
+
+You may use techniques from any skill for sub-problems without switching modes. Your autonomous state and checkpoint remain governed by /burndown.
 
 ## Reference Files
 

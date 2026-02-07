@@ -169,18 +169,17 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 ```json
 {
   "self_report": {
+    "is_job_complete": true,
     "code_changes_made": true,
-    "maestro_mcp_used": true,
-    "full_journeys_validated": true,
-    "maestro_tests_passed": true,
-    "maestro_tests_passed_at_version": "abc1234",
     "linters_pass": true,
-    "linters_pass_at_version": "abc1234",
-    "is_job_complete": true
+    "category": "bugfix"
   },
   "reflection": {
     "what_was_done": "Fixed auth guard timing, login flow works",
-    "what_remains": "none"
+    "what_remains": "none",
+    "key_insight": "Reusable lesson for future sessions (>50 chars)",
+    "search_terms": ["auth", "maestro", "mobile"],
+    "memory_that_helped": []
   },
   "evidence": {
     "mcp_tools_used": [
@@ -198,7 +197,19 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 }
 ```
 
-<reference path="references/checkpoint-schema.md" />
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `is_job_complete` | bool | yes | Is the job actually done? |
+| `code_changes_made` | bool | yes | Were code files modified? |
+| `linters_pass` | bool | if code changed | Did all linters pass? |
+| `category` | enum | yes | bugfix, gotcha, architecture, pattern, config, refactor |
+| `what_was_done` | string | yes | >20 chars describing work |
+| `what_remains` | string | yes | Must be "none" to allow stop |
+| `key_insight` | string | yes | >50 chars — the reusable LESSON |
+| `search_terms` | list | yes | 2-7 concept keywords |
+| `memory_that_helped` | list | no | Which memories were useful |
+
+Extra fields (evidence, mcp_tools_used, etc.) are allowed — the stop-validator ignores unknown keys.
 
 ## Maestro MCP Artifacts
 
@@ -229,6 +240,10 @@ run_flow(flow: "...", output_dir: ".claude/maestro-smoke/")
 | All booleans true, `what_remains: "none"` | SUCCESS - stop allowed |
 | Any required boolean false | BLOCKED - continue working |
 | Missing credentials | ASK USER (once) |
+
+## Skill Fluidity
+
+You may use techniques from any skill for sub-problems without switching modes. Your autonomous state and checkpoint remain governed by /mobileappfix.
 
 ## Reference Files
 

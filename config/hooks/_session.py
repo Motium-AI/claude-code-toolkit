@@ -176,7 +176,7 @@ def write_autonomous_state(
         "session_id": session_id,
         "pid": os.getpid(),
         "iteration": 1,
-        "plan_mode_completed": mode == "go",  # /go skips planning
+        "plan_mode_completed": False,
         "origin_project": str(Path(cwd).resolve()) if cwd else "",
         **kwargs,
     }
@@ -359,9 +359,7 @@ def reset_state_for_next_task(cwd: str) -> bool:
         "%Y-%m-%dT%H:%M:%SZ"
     )
 
-    # /go keeps plan_mode_completed=True (skips planning by design)
-    if state.get("mode") != "go":
-        state["plan_mode_completed"] = False
+    state["plan_mode_completed"] = False
 
     if not _atomic_write(state_path, state):
         return False

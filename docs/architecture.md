@@ -218,14 +218,14 @@ Claude stops → Hook blocks → Claude addresses → Claude stops → Hook allo
 
 This toolkit includes two UserPromptSubmit hooks:
 
-#### Skill State Initializer (skill-state-initializer.py)
+#### Skill State Management
 
-**Purpose**: Creates state files for `/melt` and `/appfix` to enable auto-approval.
+**Purpose**: Skills now create their own state files at activation. The unified state file is `.claude/autonomous-state.json` with a `mode` field (melt, repair, burndown, improve, episode).
 
 **Behavior**:
-1. Detects `/melt`, `/build`, `/appfix`, `/repair`, or `/go` in user prompt
-2. Creates corresponding state file (e.g., `.claude/melt-state.json`)
-3. Returns exit code 0 (non-blocking)
+1. When a skill is activated (e.g., `/melt`, `/build`, `/appfix`, `/repair`), the skill itself creates `.claude/autonomous-state.json`
+2. The `mode` field indicates the active skill mode
+3. No separate hook is needed — the previous `skill-state-initializer.py` hook has been removed
 
 #### Documentation Trigger Hook (read-docs-trigger.py)
 

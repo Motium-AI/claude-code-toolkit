@@ -23,10 +23,14 @@ from pathlib import Path
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+import glob as glob_mod
+import re
+
 from _common import log_debug, VERSION_TRACKING_EXCLUSIONS
 
 MAX_EVENTS = 5
-MAX_CHARS = 8000
+MAX_CHARS_STANDALONE = 8000   # No native MEMORY.md present
+MAX_CHARS_INTEGRATED = 4500   # Native MEMORY.md consuming ~4-6K chars
 MIN_SCORE = 0.12  # Below this: zero entity overlap + low recency = noise
 
 # Budget tiers: higher-scoring events get more space
@@ -36,6 +40,98 @@ BUDGET_LOW = 200      # score < 0.35
 
 # Bootstrap sources to filter out (commit-message-level, near-zero learning value)
 BOOTSTRAP_SOURCES = frozenset({"async-task-bootstrap", "bootstrap"})
+
+
+# ============================================================================
+# Native Memory Detection
+# ============================================================================
+
+
+def _detect_native_memory(cwd: str) -> tuple[bool, str]:
+    """Detect if Claude's native MEMORY.md exists and return its content.
+
+    Encodes the repo path the same way Claude Code does (replace / with -,
+    strip leading -). Falls back to glob if exact encoding fails.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5, cwd=cwd,
+        )
+        repo_root = result.stdout.strip()
+        if not repo_root:
+            return False, ""
+
+        # Encode path the same way Claude Code does:
+        # /Users/foo/my_bar → -Users-foo-my-bar (replace / and _ with -)
+        encoded = repo_root.replace("/", "-").replace("_", "-").lstrip("-")
+        memory_path = (
+            Path.home() / ".claude" / "projects"
+            / f"-{encoded}" / "memory" / "MEMORY.md"
+        )
+
+        if memory_path.exists():
+            content = memory_path.read_text(encoding="utf-8").strip()
+            if content:
+                return True, content
+
+        # Glob fallback: if encoding changed, find by project name
+        pattern = str(
+            Path.home() / ".claude" / "projects"
+            / "*-claude-code-toolkit" / "memory" / "MEMORY.md"
+        )
+        for match in glob_mod.glob(pattern):
+            p = Path(match)
+            if p.exists():
+                content = p.read_text(encoding="utf-8").strip()
+                if content:
+                    return True, content
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, IOError):
+        pass
+    return False, ""
+
+
+# ============================================================================
+# MEMORY.md Dedup Guard
+# ============================================================================
+
+# Words too common to be meaningful for dedup matching
+_STOP_WORDS = frozenset({
+    "the", "this", "that", "with", "from", "have", "been", "were", "will",
+    "when", "what", "which", "where", "their", "there", "about", "would",
+    "could", "should", "does", "into", "than", "then", "them", "these",
+    "those", "other", "after", "before", "because", "between", "through",
+    "during", "each", "every", "only", "also", "just", "more", "most",
+    "some", "such", "very", "same", "make", "made", "like", "over",
+    "using", "used", "first", "need", "instead", "rather",
+})
+
+
+def _build_memory_tokens(content: str) -> set[str]:
+    """Extract significant words from MEMORY.md for dedup matching.
+
+    Returns lowercased words >4 chars, minus stop words.
+    """
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{4,}", content.lower())
+    return {w for w in words if w not in _STOP_WORDS}
+
+
+def _event_overlaps_memory(event: dict, memory_tokens: set[str]) -> bool:
+    """Check if >60% of an event's significant words already appear in MEMORY.md.
+
+    Conservative threshold: only filters near-duplicates where the lesson
+    is already well-documented in native memory.
+    """
+    if not memory_tokens:
+        return False
+    content = event.get("content", "")
+    event_words = re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{4,}", content.lower())
+    event_tokens = {w for w in event_words if w not in _STOP_WORDS}
+    if len(event_tokens) < 3:
+        return False  # Too few words to judge
+    overlap = event_tokens & memory_tokens
+    return len(overlap) / len(event_tokens) > 0.6
 
 
 # ============================================================================
@@ -323,6 +419,11 @@ def main():
     if not cwd:
         sys.exit(0)
 
+    # Detect native MEMORY.md and adjust context budget
+    has_native_memory, native_content = _detect_native_memory(cwd)
+    effective_max_chars = MAX_CHARS_INTEGRATED if has_native_memory else MAX_CHARS_STANDALONE
+    memory_tokens = _build_memory_tokens(native_content) if has_native_memory else set()
+
     # Import memory primitives
     try:
         from _memory import get_recent_events, cleanup_old_events
@@ -393,6 +494,7 @@ def main():
     basenames, stems, dirs = _build_file_components(changed_files)
     scored = []
     gated_count = 0
+    dedup_count = 0
     for event in events:
         entity_score = _entity_overlap_score(event, basenames, stems, dirs)
         # Entity gate: reject events with zero entity overlap outright.
@@ -400,6 +502,10 @@ def main():
         # old feedback loop (demotion + auto-tuned MIN_SCORE).
         if entity_score == 0.0:
             gated_count += 1
+            continue
+        # Dedup guard: skip events whose content overlaps MEMORY.md
+        if memory_tokens and _event_overlaps_memory(event, memory_tokens):
+            dedup_count += 1
             continue
         score = _score_event(event, basenames, stems, dirs)
         if score >= MIN_SCORE:
@@ -414,13 +520,14 @@ def main():
     if not output:
         sys.exit(0)
 
-    # Enforce total budget
-    if len(output) > MAX_CHARS:
-        output = output[:MAX_CHARS - 15] + "\n</memories>"
-
     # Prepend core assertions before memories
     if assertions_block:
         output = assertions_block + "\n\n" + output
+
+    # Enforce total budget (dynamic based on native MEMORY.md presence)
+    if len(output) > effective_max_chars:
+        # Truncate memories portion, preserve assertions + closing tag
+        output = output[:effective_max_chars - 15] + "\n</memories>"
 
     log_debug(
         "Injecting memory context",
@@ -428,6 +535,9 @@ def main():
         parsed_data={
             "events_count": len(top_events),
             "gated_count": gated_count,
+            "dedup_count": dedup_count,
+            "native_memory_detected": has_native_memory,
+            "effective_budget": effective_max_chars,
             "assertions_count": len(assertions) if assertions_block else 0,
             "output_chars": len(output),
         },
@@ -446,6 +556,9 @@ def main():
         log_data = {
             "session_id": session_id,
             "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "native_memory_detected": has_native_memory,
+            "effective_budget": effective_max_chars,
+            "dedup_count": dedup_count,
             "events": [
                 {"ref": f"m{i+1}", "id": e.get("id", ""), "score": round(s, 3)}
                 for i, (e, s) in enumerate(top_events) if e.get("id")

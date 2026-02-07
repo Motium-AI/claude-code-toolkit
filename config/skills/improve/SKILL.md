@@ -175,6 +175,10 @@ Write `.claude/completion-checkpoint.json` with lightweight 3+1 schema:
 - **Web application running** (default: `localhost:3000`) — required for visual dimensions
 - **Codebase access** — required for all dimensions
 
+## Skill Fluidity
+
+You may use techniques from any skill for sub-problems without switching modes. Your autonomous state and checkpoint remain governed by /improve.
+
 ## Integration
 
 - State file: `.claude/autonomous-state.json` with `"mode": "improve"`

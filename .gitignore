@@ -3,38 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Claude Code session state (transient files)
-.claude/completion-checkpoint.json
-.claude/session-snapshot.json
-.claude/appfix-state.json
-.claude/forge-state.json
-.claude/build-state.json
-.claude/melt-state.json
-.claude/burndown-state.json
-.claude/godo-state.json
-.claude/go-state.json
-.claude/session-owner.json
-.claude/web-smoke/
-.claude/compacted.*.marker
-.claude/validation-tests/
-.claude/toolkit-update-state.json
-.claude/injection-log.json
-.claude/health-*.json
-.claude/citation-reminded.json
-.claude/async-tasks/
-.claude/skills/
-
-# Nested .claude/ directories (e.g., config/hooks/.claude/)
-**/.claude/completion-checkpoint.json
-**/.claude/session-snapshot.json
-**/.claude/appfix-state.json
-**/.claude/forge-state.json
-**/.claude/build-state.json
-**/.claude/melt-state.json
-**/.claude/burndown-state.json
-**/.claude/godo-state.json
-**/.claude/session-owner.json
-**/.claude/web-smoke/
+# Claude Code session/runtime data (entire directory)
+.claude/
 
 # OS
 .DS_Store

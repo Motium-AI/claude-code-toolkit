@@ -171,14 +171,12 @@ Use your tools to check API definitions, network calls, and service interactions
 4. **Synthesize findings** into your debugging plan
 5. **Call ExitPlanMode** with the plan
 
-## Keywords for Agent Detection
+## Agent Naming Conventions
 
-The `lite-heavy-tracker.py` hook detects agents by description keywords:
+Use descriptive keywords in Task descriptions for clarity:
 
-| Agent Type | Keywords in Description |
-|------------|------------------------|
+| Agent Type | Recommended Keywords |
+|------------|---------------------|
 | Research | "research", "root cause", "hypothesis", "investigate" |
 | First Principles | "first principles", "first-principles" |
 | Dynamic | "perspective", "analysis", "review", "expert" |
-
-Make sure your Task descriptions include these keywords!

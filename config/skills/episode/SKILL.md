@@ -248,12 +248,17 @@ episodes/EP001/episode.mp4
 ```json
 {
   "self_report": {
+    "is_job_complete": true,
     "code_changes_made": true,
-    "is_job_complete": true
+    "linters_pass": true,
+    "category": "pattern"
   },
   "reflection": {
     "what_was_done": "Generated 3-min episode 'How Photosynthesis Works' with 15 scenes",
-    "what_remains": "none"
+    "what_remains": "none",
+    "key_insight": "Reusable lesson about episode generation approach (>50 chars)",
+    "search_terms": ["episode", "video-generation", "minecraft"],
+    "memory_that_helped": []
   },
   "evidence": {
     "episode_path": "episodes/EP001/episode.mp4",
@@ -322,6 +327,10 @@ open episodes/EP001/episode.mp4
 
 # 5. Update checkpoint and complete
 ```
+
+## Skill Fluidity
+
+You may use techniques from any skill for sub-problems without switching modes. Your autonomous state and checkpoint remain governed by /episode.
 
 ## Philosophy
 

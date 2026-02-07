@@ -137,7 +137,7 @@ Hooks may read/write state files in `.claude/`:
 | File | Purpose |
 |------|---------|
 | `.claude/testing-state.json` | Records /webtest execution evidence |
-| `.claude/appfix-state.json` | Tracks appfix skill activation |
+| `.claude/autonomous-state.json` | Tracks autonomous skill activation (mode: melt/repair/burndown/improve/episode) |
 | `.claude/compliance-checklist.md` | Stop hook compliance output |
 
 ## Related Documentation

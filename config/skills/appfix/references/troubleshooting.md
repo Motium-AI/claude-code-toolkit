@@ -12,11 +12,11 @@
 
 **Symptom**: Auto-approval returns silent passthrough instead of allow.
 
-**Cause**: `is_autonomous_mode_active()` walks up directory tree looking for `.claude/appfix-state.json`. If not found, auto-approval is disabled.
+**Cause**: `is_autonomous_mode_active()` walks up directory tree looking for `.claude/autonomous-state.json`. If not found, auto-approval is disabled.
 
-**Fix**: State file is created automatically by `skill-state-initializer.py` on `/appfix`. If missing:
-1. Check hook is registered in settings.json under UserPromptSubmit
-2. Verify file exists: `ls ~/.claude/hooks/skill-state-initializer.py`
+**Fix**: State file is created automatically by the skill activation (e.g., `/appfix` writes `autonomous-state.json` with `"mode": "repair"`). If missing:
+1. Re-invoke the skill (e.g., `/appfix`)
+2. Or manually create: `echo '{"mode":"repair"}' > .claude/autonomous-state.json`
 3. Start a NEW session
 
 ## Auto-Approval After Context Compaction
@@ -25,15 +25,15 @@
 
 **Cause**: `PermissionRequest` hooks only fire on permission dialogs. After `ExitPlanMode` grants `allowedPrompts`, many tools are pre-approved natively. After compaction, `allowedPrompts` are lost.
 
-**Fix**: `pretooluse-auto-approve.py` (PreToolUse:*) fires for EVERY tool call, bypassing this issue entirely.
+**Fix**: `auto-approve.py` (PreToolUse:*) fires for EVERY tool call, bypassing this issue entirely.
 
 ## Cross-Repo Detection
 
-**Symptom**: Switching to infra repo loses appfix mode.
+**Symptom**: Switching to infra repo loses autonomous mode.
 
 **Cause**: State file walk-up doesn't cross repo boundaries.
 
-**Fix**: User-level state file at `~/.claude/appfix-state.json` persists across repos (created automatically by `skill-state-initializer.py`).
+**Fix**: User-level state file at `~/.claude/autonomous-state.json` persists across repos (created automatically by skill activation).
 
 ## Debug Log
 

@@ -153,7 +153,7 @@ Don't read explanations. Read exemplary skills:
 | System | How It Connects |
 |--------|----------------|
 | **Memory** | stop hook auto-captures session outcomes; compound-context-loader injects relevant events at SessionStart |
-| **Hooks** | Enforce behavioral contracts (stop-validator checks booleans, plan-mode-enforcer blocks premature edits) |
+| **Hooks** | Enforce behavioral contracts (stop-validator checks checkpoint booleans, auto-approve enables autonomous execution) |
 | **Subagents** | Task() provides the ISOLATE primitive — each agent gets its own context window |
 | **/compound** | When you discover a prompt anti-pattern, capture it. If the same fix applies 3+ times, modify the skill itself |
 

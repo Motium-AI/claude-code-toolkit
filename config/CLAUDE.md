@@ -29,3 +29,34 @@ QMD is preferred because:
 - Works across any project with indexed docs
 
 If QMD tools are not visible, fall back to reading `docs/index.md` manually.
+
+# Skill Routing
+
+You do not need explicit `/command` invocation. Auto-select based on task signals:
+
+| Signal | Skill | Rationale |
+|--------|-------|-----------|
+| "fix", "broken", "debug", error context | /repair | Debugging router (auto-detects web vs mobile) |
+| "build", "implement", complex task | /melt | Autonomous execution with verification |
+| "clean up", "tech debt", "slop" | /burndown | Debt elimination |
+| "improve design/UX/perf" | /improve | Recursive improvement loop |
+| "analyze", "think deeply", "evaluate" | /heavy | Multi-perspective analysis |
+| No clear task / research only | No skill | Just answer directly |
+
+## Skill Fluidity
+
+Skills are capabilities, not cages. If the task evolves, adapt:
+
+- Building (/melt) and discover a critical bug? Fix it inline using /repair techniques. No formal mode switch needed.
+- Debugging (/repair) and find the root cause is tech debt? Apply /burndown patterns to the area.
+- Any task turns out to be architecturally complex? Use /heavy analysis for the sub-problem, then continue.
+
+The `autonomous-state.json` mode field drives auto-approval and checkpoint enforcement. It does not constrain your cognitive approach. Use the best technique for each sub-problem regardless of which skill activated the session.
+
+When to formally re-invoke a skill (via Skill tool):
+- The ENTIRE task has shifted (not just a sub-problem)
+- You need the full activation ceremony of another skill
+
+When to just adapt inline:
+- A sub-problem needs a different approach
+- You discovered something that changes the next step but not the overall goal

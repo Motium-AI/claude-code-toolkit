@@ -39,18 +39,17 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 ```json
 {
   "self_report": {
+    "is_job_complete": true,
     "code_changes_made": true,
-    "web_testing_done": true,
-    "web_testing_done_at_version": "abc1234",
-    "deployed": true,
-    "deployed_at_version": "abc1234",
     "linters_pass": true,
-    "linters_pass_at_version": "abc1234",
-    "is_job_complete": true
+    "category": "bugfix"
   },
   "reflection": {
     "what_was_done": "Fixed CORS config, deployed, verified login works",
-    "what_remains": "none"
+    "what_remains": "none",
+    "key_insight": "Reusable lesson for future sessions (>50 chars)",
+    "search_terms": ["cors", "deployment", "login"],
+    "memory_that_helped": []
   },
   "evidence": {
     "urls_tested": ["https://staging.example.com/dashboard"],
@@ -59,34 +58,25 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 }
 ```
 
-**Key rules:**
-- `is_job_complete: false` → BLOCKED
-- `what_remains` not empty → BLOCKED
-- `web_testing_done: true` without Surf artifacts → BLOCKED
-- `deployed: false` with code changes → BLOCKED
-- Version-dependent fields need `*_at_version` matching current git version
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `is_job_complete` | bool | yes | Is the job actually done? |
+| `code_changes_made` | bool | yes | Were code files modified? |
+| `linters_pass` | bool | if code changed | Did all linters pass? |
+| `category` | enum | yes | bugfix, gotcha, architecture, pattern, config, refactor |
+| `what_was_done` | string | yes | >20 chars describing work |
+| `what_remains` | string | yes | Must be "none" to allow stop |
+| `key_insight` | string | yes | >50 chars — the reusable LESSON |
+| `search_terms` | list | yes | 2-7 concept keywords |
+| `memory_that_helped` | list | no | Which memories were useful |
 
-<reference path="references/checkpoint-schema.md" />
-
-## Cascade Invalidation
-
-Checkpoint fields are **automatically reset** when code changes:
-
-```
-linters_pass → deployed → web_testing_done
-```
-
-- **Edit/Write hook** (`checkpoint-invalidator.py`): Detects file edits, resets stale fields
-- **Bash hook** (`bash-version-tracker.py`): Detects git commits / az CLI, resets stale fields
-- **Stop hook** (`stop-validator.py`): Final validation before allowing stop
-
-If you deploy at version "abc", then edit code (version becomes "def"), `deployed` and `web_testing_done` are automatically reset to false. You MUST re-deploy and re-test.
+Extra fields (evidence, urls_tested, etc.) are allowed — the stop-validator ignores unknown keys.
 
 ## Workflow
 
 ### Phase 0: Pre-Flight Check
 
-State file is created automatically by `skill-state-initializer.py` hook.
+Create `.claude/autonomous-state.json` with `"mode": "repair"` at activation.
 
 1. **Read project documentation**:
    - **If QMD available**: `qmd_search "project architecture overview"` — faster, semantic
@@ -215,6 +205,10 @@ All other actions proceed autonomously.
 | All booleans true, `what_remains: "none"` | SUCCESS — stop allowed |
 | Any required boolean false | BLOCKED — continue working |
 | Missing credentials | ASK USER (once) |
+
+## Skill Fluidity
+
+You may use techniques from any skill for sub-problems without switching modes. Your autonomous state and checkpoint remain governed by /appfix.
 
 ## Reference Files
 

@@ -26,7 +26,7 @@ $ARGUMENTS
 
 ---
 
-## Agents (5 Total)
+## Agents (3-5 Recommended)
 
 **Launch ALL agents in a SINGLE message with multiple Task tool calls.**
 
@@ -39,6 +39,8 @@ $ARGUMENTS
 | Dynamic 2 | Adversarial/alternative view | Generated based on question |
 
 All agents: **Opus**, **full tool access**, **must research before opining**.
+
+**Execution options**: Use parallel `Task()` calls (default) or `TeamCreate` for Agent Teams when you want persistent coordination between agents.
 
 ---
 

@@ -1,16 +1,17 @@
 # /melt - Task-Agnostic Autonomous Execution
 
-Complete guide to the `/melt` skill for autonomous task execution with Lite Heavy planning and completion validation. (`/build` is a legacy alias.)
+Complete guide to the `/melt` skill for autonomous task execution with optional Agent Teams planning and completion validation. (`/build` is a legacy alias.)
 
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [When to Use](#when-to-use)
-3. [Lite Heavy Planning](#lite-heavy-planning)
+3. [Planning](#planning)
 4. [Workflow](#workflow)
 5. [Completion Checkpoint](#completion-checkpoint)
 6. [Comparison with /appfix](#comparison-with-appfix)
-7. [Troubleshooting](#troubleshooting)
+7. [Skill Fluidity](#skill-fluidity)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -18,7 +19,7 @@ Complete guide to the `/melt` skill for autonomous task execution with Lite Heav
 
 `/melt` is the universal autonomous execution skill. It provides:
 
-- **Lite Heavy Planning** - 4 parallel Opus agents (First Principles + AGI-Pilled + 2 dynamic) before execution
+- **Optional Agent Teams Planning** - Encouraged for complex tasks, not mandated
 - **100% Autonomous Operation** - No permission prompts, no confirmation requests
 - **Completion Checkpoint** - Deterministic boolean validation before stopping
 - **Browser Verification** - Mandatory testing in real browser
@@ -28,7 +29,7 @@ Complete guide to the `/melt` skill for autonomous task execution with Lite Heav
 
 | Feature | Description |
 |---------|-------------|
-| Lite Heavy planning | 4-agent planning phase to prevent over/under-engineering |
+| Agent Teams planning | Encouraged for complex tasks via TeamCreate |
 | Auto-approval hooks | All tool permissions granted automatically |
 | Stop hook validation | Cannot stop until checkpoint booleans pass |
 | Checkpoint invalidation | Stale fields reset when code changes |
@@ -58,23 +59,24 @@ Complete guide to the `/melt` skill for autonomous task execution with Lite Heav
 
 ---
 
-## Lite Heavy Planning
+## Planning
 
-Lite Heavy is a streamlined version of `/heavy` that uses `/heavy`'s 2 **required** agents to ensure optimal implementation planning.
+For complex tasks, spawn an Agent Team to ensure optimal implementation planning. Use `TeamCreate` to coordinate parallel agents, or launch parallel `Task()` calls directly.
 
-### The Two Agents (from /heavy)
+### Recommended Agents (3-5)
 
 | Agent | Role | Key Question |
 |-------|------|--------------|
 | **First Principles** | Simplification | "What can be deleted? What's over-engineered?" |
 | **AGI-Pilled** | Capability | "What would god-tier AI implementation look like?" |
+| **Task-specific experts** | Domain knowledge | 1-3 additional agents tailored to the problem |
 
-**Important**: Forge reads the agent prompts directly from `~/.claude/skills/heavy/SKILL.md` at runtime. This ensures prompts stay in sync - when heavy improves, forge automatically benefits.
+**Important**: Forge reads the core agent prompts from `~/.claude/skills/heavy/SKILL.md` at runtime. This ensures prompts stay in sync - when heavy improves, forge automatically benefits.
 
-### Why These 2 Agents?
+### Why Agent Teams?
 
-| Without Lite Heavy | With Lite Heavy |
-|-------------------|-----------------|
+| Without Planning | With Agent Teams |
+|-----------------|-----------------|
 | Over-engineering | First Principles asks "delete this?" |
 | Under-ambition | AGI-Pilled asks "why constrain the model?" |
 | Scope creep | First Principles enforces simplicity |
@@ -82,7 +84,7 @@ Lite Heavy is a streamlined version of `/heavy` that uses `/heavy`'s 2 **require
 
 ### Synthesis Output
 
-After both agents return, synthesize their insights:
+After agents return, synthesize their insights:
 
 ```
 TRADEOFF: [topic]
@@ -98,20 +100,19 @@ TRADEOFF: [topic]
 ### Phase 0: Activation
 
 ```bash
-# State file is created AUTOMATICALLY by skill-state-initializer.py hook
-# You do NOT need to run this manually
-mkdir -p .claude && cat > .claude/melt-state.json << 'EOF'
-{"started_at": "2025-01-26T10:00:00Z", "task": "user task"}
+# The skill creates the state file on activation
+mkdir -p .claude && cat > .claude/autonomous-state.json << 'EOF'
+{"mode": "melt", "started_at": "2025-01-26T10:00:00Z", "task": "user task"}
 EOF
 
-mkdir -p ~/.claude && cat > ~/.claude/melt-state.json << 'EOF'
-{"started_at": "2025-01-26T10:00:00Z", "origin_project": "/path/to/project"}
+mkdir -p ~/.claude && cat > ~/.claude/autonomous-state.json << 'EOF'
+{"mode": "melt", "started_at": "2025-01-26T10:00:00Z", "origin_project": "/path/to/project"}
 EOF
 ```
 
-### Phase 0.5: Lite Heavy Planning (MANDATORY)
+### Phase 0.5: Planning
 
-**This phase is required before making any changes.**
+**Encouraged for complex tasks before making any changes.**
 
 1. `EnterPlanMode` - Switch to planning mode
 2. **Explore the codebase**:
@@ -120,7 +121,7 @@ EOF
    - Environment and deployment configs
    - Relevant code patterns for the task
    - Existing tests and validation
-3. **Launch 4 parallel Opus agents in a SINGLE message** (First Principles + AGI-Pilled + 2 dynamic perspectives)
+3. **Spawn Agent Team** via `TeamCreate` or parallel `Task()` calls (First Principles + AGI-Pilled + task-specific experts, 3-5 recommended)
 4. **Synthesize tradeoffs** and write to plan file
 5. `ExitPlanMode` - Get plan approved
 
@@ -159,52 +160,34 @@ Create `.claude/completion-checkpoint.json`:
 ```json
 {
   "self_report": {
+    "is_job_complete": true,
     "code_changes_made": true,
-    "web_testing_done": true,
-    "web_testing_done_at_version": "abc1234",
-    "deployed": true,
-    "deployed_at_version": "abc1234",
-    "console_errors_checked": true,
-    "console_errors_checked_at_version": "abc1234",
     "linters_pass": true,
-    "linters_pass_at_version": "abc1234",
-    "preexisting_issues_fixed": true,
-    "is_job_complete": true
+    "category": "refactor"
   },
   "reflection": {
-    "what_was_done": "Implemented feature X",
-    "what_remains": "none"
-  },
-  "evidence": {
-    "urls_tested": ["https://staging.example.com/feature"],
-    "console_clean": true
+    "what_was_done": "Implemented feature X, deployed to staging, verified in browser",
+    "what_remains": "none",
+    "key_insight": "Reusable lesson for future sessions (>50 chars)",
+    "search_terms": ["keyword1", "keyword2"],
+    "memory_that_helped": []
   }
 }
 ```
 
 ### Required Fields
 
-| Field | When Required | Meaning |
-|-------|---------------|---------|
-| `is_job_complete` | Always | Is the task fully done? |
-| `web_testing_done` | Always | Did you verify in browser? |
-| `code_changes_made` | Always | Did you modify code? |
-| `deployed` | If code changed | Did you deploy? |
-| `linters_pass` | If code changed | Do all linters pass? |
-| `console_errors_checked` | Always | Did you check console? |
-| `what_remains` | Always | Must be "none" or empty |
-
-### Version Tracking
-
-Version-dependent fields include `*_at_version` to detect staleness:
-
-```
-deployed: true
-deployed_at_version: "abc1234"
-
-# If code changes to "def5678", deployed becomes STALE
-# Must re-deploy and update version
-```
+| Field | Type | Requirement |
+|-------|------|-------------|
+| `is_job_complete` | boolean | Is the task fully done? |
+| `code_changes_made` | boolean | Did you modify code? |
+| `linters_pass` | boolean | Do all linters pass? |
+| `category` | enum | `bugfix`, `gotcha`, `architecture`, `pattern`, `config`, `refactor` |
+| `what_was_done` | string | >20 chars describing work completed |
+| `what_remains` | string | Must be `"none"` to pass |
+| `key_insight` | string | >50 chars, reusable lesson for future sessions |
+| `search_terms` | array | 2-7 keywords for future discovery |
+| `memory_that_helped` | array | Optional, memories that aided this task |
 
 ---
 
@@ -213,7 +196,7 @@ deployed_at_version: "abc1234"
 | Aspect | /melt | /appfix |
 |--------|-------|---------|
 | **Purpose** | Any task | Debugging failures |
-| **Lite Heavy planning** | Yes (4 agents) | No |
+| **Agent Teams planning** | Encouraged | No |
 | **docs_read_at_start** | Not required | Required |
 | **Health check phase** | No | Yes |
 | **Log collection** | No | Yes |
@@ -222,7 +205,13 @@ deployed_at_version: "abc1234"
 | **Browser verification** | Required | Required |
 | **Checkpoint schema** | Same | Same |
 
-`/melt` is the universal base with Lite Heavy planning. `/appfix` adds debugging-specific phases.
+`/melt` is the universal base with optional Agent Teams planning. `/appfix` adds debugging-specific phases.
+
+---
+
+## Skill Fluidity
+
+Skills are capabilities, not cages. You may use techniques from any skill for sub-problems without switching modes.
 
 ---
 
@@ -230,24 +219,17 @@ deployed_at_version: "abc1234"
 
 ### "Checkpoint validation failed"
 
-Your checkpoint has incomplete booleans. Check:
+Your checkpoint has incomplete fields. Check:
 1. `is_job_complete` - Are you honestly done?
-2. `web_testing_done` - Did you verify in browser?
-3. `linters_pass` - Did all linters pass?
-4. `what_remains` - Is it empty?
+2. `linters_pass` - Did all linters pass?
+3. `what_remains` - Is it `"none"`?
+4. `key_insight` - Is it >50 chars?
 
 ### "Stop hook blocked me"
 
 This is expected when work is incomplete:
 - If `is_job_complete: false` → you're blocked
 - Complete the work, update checkpoint, try again
-
-### "Field is STALE"
-
-A checkpoint was set at an older code version:
-1. Re-run that step with current code
-2. Get current version: `git rev-parse --short HEAD`
-3. Update checkpoint with new version
 
 ### "linters_pass is false"
 
@@ -268,13 +250,13 @@ ruff check --fix . && pyright
 
 | File | Purpose |
 |------|---------|
-| `.claude/melt-state.json` | Enables auto-approval hooks |
+| `.claude/autonomous-state.json` | Enables auto-approval hooks (`"mode": "melt"`) |
 | `.claude/completion-checkpoint.json` | Boolean self-report for validation |
-| `~/.claude/melt-state.json` | User-level state for cross-repo work |
+| `~/.claude/autonomous-state.json` | User-level state for cross-repo work |
 
 ### Cleanup
 
 Remove state files when done:
 ```bash
-rm -f ~/.claude/melt-state.json .claude/melt-state.json
+rm -f ~/.claude/autonomous-state.json .claude/autonomous-state.json
 ```

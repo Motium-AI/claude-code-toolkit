@@ -42,7 +42,6 @@ def main():
     MODE_INFO = {
         "repair": ("REPAIR", "fix-verify"),
         "melt": ("MELT", "task execution"),
-        "go": ("GO", "fast execution"),
         "episode": ("EPISODE", "episode generation"),
         "burndown": ("BURNDOWN", "debt elimination"),
         "improve": ("IMPROVE", "improvement"),
@@ -51,23 +50,7 @@ def main():
         sys.exit(0)
     mode_name, loop_type = MODE_INFO[mode]
 
-    context = f"""
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║  {mode_name} MODE STILL ACTIVE - SKILL COMPLETED                               ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-
-The skill you invoked has completed. You are STILL in {mode_name} autonomous mode.
-
-CONTINUE THE {loop_type.upper()} LOOP:
-1. Apply any insights from the completed skill
-2. Execute the planned changes (Edit tool)
-3. Commit and push changes
-4. Deploy if required
-5. Verify in browser
-6. Update completion checkpoint
-
-Do NOT stop here. The {loop_type} loop continues until verification is complete.
-"""
+    context = f"""You are in autonomous {mode_name} mode. The skill completed. Continue your current task. If a sub-problem needs a different approach, adapt inline — you may use techniques from any skill without switching modes."""
 
     output = {
         "hookSpecificOutput": {
