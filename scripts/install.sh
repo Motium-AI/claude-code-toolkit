@@ -705,11 +705,43 @@ fi
 # Create symlinks
 echo "Creating symlinks..."
 
-# Settings file
+# Settings file (with optional settings.local.json merge)
 if [ -f "$CONFIG_DIR/settings.json" ]; then
     rm -f "$HOME/.claude/settings.json"
-    ln -sf "$CONFIG_DIR/settings.json" "$HOME/.claude/settings.json"
-    echo "  ✓ settings.json"
+    if [ -f "$CONFIG_DIR/settings.local.json" ]; then
+        # Merge base + local overrides into a real file (not symlink)
+        echo "  Merging settings.json + settings.local.json..."
+        python3 -c "
+import json, sys
+from copy import deepcopy
+
+def deep_merge(base, override):
+    result = deepcopy(base)
+    for key, value in override.items():
+        if key.startswith('_'):
+            continue
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = deepcopy(value)
+    return result
+
+base = json.loads(open('$CONFIG_DIR/settings.json').read())
+local = json.loads(open('$CONFIG_DIR/settings.local.json').read())
+merged = deep_merge(base, local)
+open('$HOME/.claude/settings.json', 'w').write(json.dumps(merged, indent=2) + '\n')
+" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "  ✓ settings.json (merged with local overrides)"
+        else
+            echo -e "  ${YELLOW}⚠ settings.local.json merge failed, falling back to symlink${NC}"
+            ln -sf "$CONFIG_DIR/settings.json" "$HOME/.claude/settings.json"
+            echo "  ✓ settings.json (symlink, no merge)"
+        fi
+    else
+        ln -sf "$CONFIG_DIR/settings.json" "$HOME/.claude/settings.json"
+        echo "  ✓ settings.json"
+    fi
 fi
 
 # Commands directory
@@ -745,6 +777,179 @@ echo "Making hooks executable..."
 if [ -d "$CONFIG_DIR/hooks" ]; then
     chmod +x "$CONFIG_DIR/hooks"/*.py 2>/dev/null || true
     echo "  ✓ hooks/*.py"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
+# USER OVERLAY DIRECTORY (v3)
+# ═══════════════════════════════════════════════════════════════════════════
+
+echo ""
+echo "Setting up user overlay directory..."
+USER_DIR="$CONFIG_DIR/../config/user"
+# Normalize path
+USER_DIR="$(cd "$REPO_DIR" && echo "$REPO_DIR/config/user")"
+
+# Create overlay structure if it doesn't exist
+mkdir -p "$USER_DIR/hooks" "$USER_DIR/skills" "$USER_DIR/commands" 2>/dev/null
+
+# Create README for the user overlay directory
+if [ ! -f "$USER_DIR/README.md" ]; then
+    cat > "$USER_DIR/README.md" << 'USEREOF'
+# User Customizations
+
+This directory holds YOUR custom hooks, skills, and commands.
+Files here are gitignored from the upstream toolkit repo.
+
+## Structure
+
+```
+config/user/
+├── hooks/       # Custom hook scripts (auto-linked to ~/.claude/hooks/)
+├── skills/      # Custom skill directories (auto-linked to ~/.claude/skills/)
+├── commands/    # Custom command files (auto-linked to ~/.claude/commands/)
+└── README.md    # This file
+```
+
+## How It Works
+
+- Files in `config/user/hooks/` are symlinked into `~/.claude/hooks/` alongside upstream hooks
+- Skill directories in `config/user/skills/` are symlinked into `~/.claude/skills/`
+- Command files in `config/user/commands/` are symlinked into `~/.claude/commands/`
+- Custom hooks must be registered in `config/settings.local.json` (not settings.json)
+- Run `./scripts/install.sh` after adding new files to create symlinks
+
+## Example: Adding a Custom Hook
+
+1. Create your hook: `config/user/hooks/my-custom-hook.py`
+2. Register it in `config/settings.local.json`:
+   ```json
+   {
+     "hooks": {
+       "PostToolUse": [
+         {
+           "matcher": "Bash",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "python3 \"$HOME/.claude/hooks/my-custom-hook.py\"",
+               "timeout": 5
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+3. Run `./scripts/install.sh` to create symlinks and merge settings.
+
+## Example: Adding a Custom Skill
+
+1. Create your skill directory: `config/user/skills/my-skill/`
+2. Add `SKILL.md` inside it with the skill definition
+3. Run `./scripts/install.sh` to create symlinks
+USEREOF
+    echo "  ✓ created config/user/ with README"
+fi
+
+# Symlink user overlay files into ~/.claude/ (alongside base symlinks)
+# For hooks and commands: need per-file symlinks since base is already a dir symlink
+# For skills: same approach
+
+_link_user_overlay() {
+    local TYPE="$1"          # hooks, skills, commands
+    local USER_SRC="$USER_DIR/$TYPE"
+    local TARGET_DIR="$HOME/.claude/$TYPE"
+
+    if [ ! -d "$USER_SRC" ]; then
+        return
+    fi
+
+    # Count files/dirs to link
+    local COUNT=0
+
+    if [ "$TYPE" = "skills" ]; then
+        # Skills are directories — symlink each skill dir
+        for skill_dir in "$USER_SRC"/*/; do
+            [ -d "$skill_dir" ] || continue
+            local skill_name="$(basename "$skill_dir")"
+            # Skip if upstream already has this skill
+            if [ -e "$TARGET_DIR/$skill_name" ] && [ ! -L "$TARGET_DIR/$skill_name" ]; then
+                echo -e "  ${YELLOW}⚠ Skipped user skill '$skill_name' (conflicts with upstream)${NC}"
+                continue
+            fi
+            # Only create if target dir is a symlink (to base) or real dir
+            if [ -L "$TARGET_DIR" ]; then
+                # Target is a symlink to config/skills/ — we need to convert to real dir
+                # with per-skill symlinks for both base and user skills
+                local REAL_BASE="$(readlink -f "$TARGET_DIR")"
+                rm -f "$TARGET_DIR"
+                mkdir -p "$TARGET_DIR"
+                # Re-link all base skills
+                for base_skill in "$REAL_BASE"/*/; do
+                    [ -d "$base_skill" ] || continue
+                    local bs_name="$(basename "$base_skill")"
+                    ln -sf "$base_skill" "$TARGET_DIR/$bs_name" 2>/dev/null
+                done
+                # Now link user skill
+                ln -sf "$skill_dir" "$TARGET_DIR/$skill_name" 2>/dev/null
+                COUNT=$((COUNT + 1))
+            elif [ -d "$TARGET_DIR" ]; then
+                ln -sf "$skill_dir" "$TARGET_DIR/$skill_name" 2>/dev/null
+                COUNT=$((COUNT + 1))
+            fi
+        done
+    else
+        # Hooks and commands — symlink individual files
+        for user_file in "$USER_SRC"/*; do
+            [ -f "$user_file" ] || continue
+            local fname="$(basename "$user_file")"
+            if [ -L "$TARGET_DIR" ]; then
+                # Target is a symlink to config/hooks/ or config/commands/
+                # Convert to real dir with per-file symlinks
+                local REAL_BASE="$(readlink -f "$TARGET_DIR")"
+                rm -f "$TARGET_DIR"
+                mkdir -p "$TARGET_DIR"
+                # Re-link all base files
+                for base_file in "$REAL_BASE"/*; do
+                    [ -f "$base_file" ] || [ -d "$base_file" ] || continue
+                    local bf_name="$(basename "$base_file")"
+                    ln -sf "$base_file" "$TARGET_DIR/$bf_name" 2>/dev/null
+                done
+                # Now link user file
+                ln -sf "$user_file" "$TARGET_DIR/$fname" 2>/dev/null
+                COUNT=$((COUNT + 1))
+            elif [ -d "$TARGET_DIR" ]; then
+                # Already a real dir (converted previously)
+                if [ -e "$TARGET_DIR/$fname" ] && [ ! -L "$TARGET_DIR/$fname" ]; then
+                    echo -e "  ${YELLOW}⚠ Skipped user $TYPE '$fname' (conflicts with upstream)${NC}"
+                    continue
+                fi
+                ln -sf "$user_file" "$TARGET_DIR/$fname" 2>/dev/null
+                COUNT=$((COUNT + 1))
+            fi
+        done
+    fi
+
+    if [ $COUNT -gt 0 ]; then
+        echo "  ✓ linked $COUNT user $TYPE"
+    fi
+}
+
+# Only run overlay linking if user has custom files
+HAS_USER_FILES=false
+for check_dir in "$USER_DIR/hooks" "$USER_DIR/skills" "$USER_DIR/commands"; do
+    if [ -d "$check_dir" ] && [ "$(ls -A "$check_dir" 2>/dev/null)" ]; then
+        HAS_USER_FILES=true
+        break
+    fi
+done
+
+if [ "$HAS_USER_FILES" = true ]; then
+    _link_user_overlay "hooks"
+    _link_user_overlay "skills"
+    _link_user_overlay "commands"
+else
+    echo "  (no user overlay files found — add files to config/user/ to use)"
 fi
 
 # Initialize auto-update state file

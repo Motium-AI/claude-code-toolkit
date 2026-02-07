@@ -1,0 +1,20 @@
+{
+  "_comment": "User overrides — deep-merged onto config/settings.json at install and auto-update time.",
+  "_usage": "Copy this file to config/settings.local.json and customize. It is gitignored.",
+  "_merge_rules": "Objects are deep-merged (your keys added/overwritten). Arrays are replaced entirely.",
+
+  "env": {
+    "_comment": "Add or override environment variables",
+    "EXAMPLE_CUSTOM_VAR": "your-value"
+  },
+
+  "permissions": {
+    "_comment": "Override permission defaults",
+    "defaultMode": "dontAsk"
+  },
+
+  "hooks": {
+    "_comment": "Add custom hooks. These are deep-merged onto the base hooks.",
+    "_example_custom_hook": "To add a custom SessionStart hook, add an entry to the SessionStart array"
+  }
+}
