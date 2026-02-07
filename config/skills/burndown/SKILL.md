@@ -60,8 +60,7 @@ Before stopping, create `.claude/completion-checkpoint.json`:
     "what_was_done": "Fixed 17 critical/high issues across 8 files. Reduced debt score from 47 to 6.",
     "what_remains": "none",
     "key_insight": "Reusable lesson about debt patterns found (>50 chars)",
-    "search_terms": ["tech-debt", "refactor", "code-slop"],
-    "memory_that_helped": []
+    "search_terms": ["tech-debt", "refactor", "code-slop"]
   },
   "burndown_metrics": {
     "issues_at_start": 47,
@@ -83,7 +82,6 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 | `what_remains` | string | yes | Must be "none" to allow stop |
 | `key_insight` | string | yes | >50 chars — the reusable LESSON |
 | `search_terms` | list | yes | 2-7 concept keywords |
-| `memory_that_helped` | list | no | Which memories were useful |
 
 Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validator ignores unknown keys.
 

@@ -179,7 +179,6 @@ Write `.claude/completion-checkpoint.json` with lightweight 3+1 schema:
     "is_job_complete": true,
     "code_changes_made": true,
     "linters_pass": true,
-    "linters_pass_at_version": "abc1234",
     "category": "refactor"
   },
   "reflection": {

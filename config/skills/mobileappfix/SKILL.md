@@ -178,8 +178,7 @@ Before stopping, create `.claude/completion-checkpoint.json`:
     "what_was_done": "Fixed auth guard timing, login flow works",
     "what_remains": "none",
     "key_insight": "Reusable lesson for future sessions (>50 chars)",
-    "search_terms": ["auth", "maestro", "mobile"],
-    "memory_that_helped": []
+    "search_terms": ["auth", "maestro", "mobile"]
   },
   "evidence": {
     "mcp_tools_used": [
@@ -207,7 +206,6 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 | `what_remains` | string | yes | Must be "none" to allow stop |
 | `key_insight` | string | yes | >50 chars — the reusable LESSON |
 | `search_terms` | list | yes | 2-7 concept keywords |
-| `memory_that_helped` | list | no | Which memories were useful |
 
 Extra fields (evidence, mcp_tools_used, etc.) are allowed — the stop-validator ignores unknown keys.
 

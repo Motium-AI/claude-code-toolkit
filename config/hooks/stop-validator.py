@@ -3,9 +3,8 @@
 Activity-Based Stop Validator
 
 Task-agnostic stop hook that validates based on what the session DID,
-not what skill mode is active. Replaces the old mode-specific validation
-(4 paths: /go, /improve, default-web, default-mobile) with a single
-universal path.
+not what skill mode is active. Single validation path — no first/second
+stop distinction.
 
 Rules:
 1. If session made no code changes -> allow stop (still capture memory)
@@ -15,7 +14,6 @@ Rules:
    - what_remains: "none"
    - key_insight: >50 chars (for cross-session memory)
    - search_terms: 2-7 keywords (for memory retrieval)
-   - category: enum (for memory categorization)
 3. No mode-specific paths - one schema fits all
 
 Exit codes:
@@ -41,11 +39,6 @@ from _session import (
 )
 
 
-# Valid categories for memory events
-VALID_CATEGORIES = frozenset({
-    "bugfix", "gotcha", "architecture", "pattern", "config", "refactor",
-})
-
 CHECKPOINT_SCHEMA = """\
 {
   "self_report": {
@@ -58,8 +51,7 @@ CHECKPOINT_SCHEMA = """\
     "what_was_done": "...",
     "what_remains": "none",
     "key_insight": "...",
-    "search_terms": [],
-    "memory_that_helped": []
+    "search_terms": []
   }
 }"""
 
@@ -96,7 +88,7 @@ def requires_checkpoint(cwd: str) -> bool:
     - Non-autonomous but this session made code changes
 
     Checkpoint NOT required for:
-    - Read-only sessions (even in autonomous mode) <- THE KEY FIX
+    - Read-only sessions (even in autonomous mode)
     - Sessions at HOME directory
     """
     if cwd:
@@ -166,12 +158,6 @@ def validate_checkpoint(checkpoint: dict) -> tuple[bool, list[str]]:
     elif len(search_terms) > 7:
         failures.append("search_terms has too many entries (max 7)")
 
-    category = report.get("category", "")
-    if not category or category.lower() not in VALID_CATEGORIES:
-        failures.append(
-            f"category must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
-        )
-
     return len(failures) == 0, failures
 
 
@@ -196,7 +182,11 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     """Archive checkpoint as a memory event for cross-session learning."""
     try:
         from _memory import append_event, append_assertion
-    except ImportError:
+    except ImportError as e:
+        log_debug(
+            f"Memory module import failed — memory event NOT captured: {e}",
+            hook_name="stop-validator",
+        )
         return
 
     reflection = checkpoint.get("reflection", {})
@@ -230,7 +220,8 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
 
     entities = list(dict.fromkeys(entities))  # dedup preserving order
 
-    category = report.get("category", "session")
+    # Category: accept any value, default to "session"
+    category = report.get("category", "session") or "session"
     problem_type = report.get("problem_type", "")
     valid_problem_types = {
         "race-condition", "config-mismatch", "api-change", "import-resolution",
@@ -286,7 +277,8 @@ def has_uncommitted_changes(cwd: str) -> bool:
 def block_uncommitted_changes(cwd: str) -> None:
     """Block stop - uncommitted changes in autonomous mode."""
     print(
-        "BLOCKED: Uncommitted changes detected. Commit your work before stopping.",
+        "BLOCKED: Uncommitted changes. Commit before stopping:\n"
+        "  git add <files> && git commit -m \"feat/fix/refactor: [description]\"",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -299,7 +291,11 @@ def block_no_checkpoint(cwd: str) -> None:
         if cwd else ".claude/completion-checkpoint.json"
     )
     print(
-        f"BLOCKED: Create {checkpoint_path} (schema in your skill prompt) and stop again.",
+        f"BLOCKED: Create {checkpoint_path} before stopping:\n\n"
+        f"{CHECKPOINT_SCHEMA}\n\n"
+        "RULES: is_job_complete=true, what_was_done >20 chars, what_remains=\"none\",\n"
+        "key_insight >50 chars (LESSON, not what you did), search_terms 2-7 keywords.\n"
+        "linters_pass required only if code_changes_made is true.",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -309,7 +305,8 @@ def block_with_failures(failures: list[str]) -> None:
     """Block stop - checkpoint validation failed."""
     failure_list = "\n".join(f"  * {f}" for f in failures)
     print(
-        f"BLOCKED: Checkpoint failed:\n{failure_list}\nFix and stop again.",
+        f"BLOCKED: Checkpoint failed:\n{failure_list}\n"
+        "Fix these, update .claude/completion-checkpoint.json, then stop again.",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -321,7 +318,11 @@ def block_with_failures(failures: list[str]) -> None:
 
 
 def main():
-    """Main stop hook entry point."""
+    """Main stop hook entry point.
+
+    Single validation path — no first/second stop distinction.
+    The stop_hook_active flag is ignored; validation is idempotent.
+    """
     fleet_role = os.environ.get("FLEET_ROLE", "")
     if fleet_role in ("knowledge_sync", "scheduled_job"):
         sys.exit(0)
@@ -335,7 +336,6 @@ def main():
         sys.exit(0)
 
     cwd = input_data.get("cwd", "")
-    stop_hook_active = input_data.get("stop_hook_active", False)
 
     # Check if checkpoint is required for this session
     if not requires_checkpoint(cwd):
@@ -349,43 +349,8 @@ def main():
             auto_capture_memory(cwd, checkpoint)
         sys.exit(0)
 
+    # Load and validate checkpoint
     checkpoint = load_checkpoint(cwd)
-
-    is_autonomous = is_autonomous_mode_active(cwd)
-
-    # FIRST STOP: require checkpoint file
-    if not stop_hook_active:
-        if checkpoint is None:
-            block_no_checkpoint(cwd)
-
-        is_valid, failures = validate_checkpoint(checkpoint)
-        if not is_valid:
-            block_with_failures(failures)
-
-        # Gate: uncommitted changes in autonomous mode
-        # Only block if THIS agent reports code_changes_made — in multi-agent
-        # scenarios, dirty files may belong to another agent's session.
-        if is_autonomous and has_uncommitted_changes(cwd):
-            agent_made_changes = checkpoint.get("self_report", {}).get("code_changes_made", False)
-            if agent_made_changes:
-                log_debug(
-                    "BLOCKING STOP: agent made code changes but didn't commit",
-                    hook_name="stop-validator",
-                )
-                block_uncommitted_changes(cwd)
-            else:
-                log_debug(
-                    "Uncommitted changes exist but agent reports no code changes — allowing stop",
-                    hook_name="stop-validator",
-                )
-
-        # Valid - capture memory and allow stop
-        log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
-        auto_capture_memory(cwd, checkpoint)
-        reset_state_for_next_task(cwd)
-        sys.exit(0)
-
-    # SECOND STOP (stop_hook_active=True): re-validate
     if checkpoint is None:
         block_no_checkpoint(cwd)
 
@@ -393,16 +358,25 @@ def main():
     if not is_valid:
         block_with_failures(failures)
 
-    # Gate: uncommitted changes in autonomous mode (re-check)
+    # Gate: uncommitted changes in autonomous mode
+    # Only block if THIS agent reports code_changes_made — in multi-agent
+    # scenarios, dirty files may belong to another agent's session.
+    is_autonomous = is_autonomous_mode_active(cwd)
     if is_autonomous and has_uncommitted_changes(cwd):
         agent_made_changes = checkpoint.get("self_report", {}).get("code_changes_made", False)
         if agent_made_changes:
             log_debug(
-                "BLOCKING STOP: agent made code changes but didn't commit (2nd stop)",
+                "BLOCKING STOP: agent made code changes but didn't commit",
                 hook_name="stop-validator",
             )
             block_uncommitted_changes(cwd)
+        else:
+            log_debug(
+                "Uncommitted changes exist but agent reports no code changes — allowing stop",
+                hook_name="stop-validator",
+            )
 
+    # Valid - capture memory and allow stop
     log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
     auto_capture_memory(cwd, checkpoint)
     reset_state_for_next_task(cwd)

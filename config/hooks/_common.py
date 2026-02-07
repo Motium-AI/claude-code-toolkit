@@ -3,8 +3,7 @@
 Shared utilities for Claude Code hooks.
 
 Constants, logging, git utilities, TTL checks, and worktree detection.
-For state file operations, see _state.py.
-For checkpoint operations, see _checkpoint.py.
+For state/checkpoint operations, see _session.py.
 """
 
 from __future__ import annotations
@@ -179,20 +178,6 @@ def is_state_expired(state: dict, ttl_hours: int = SESSION_TTL_HOURS) -> bool:
         return (now - ts) > timedelta(hours=ttl_hours)
     except (ValueError, TypeError):
         return True
-
-
-def is_state_for_session(state: dict, session_id: str) -> bool:
-    """Check if a state file belongs to the given session.
-
-    No session_id in state = True (backward compatibility).
-    Empty session_id argument = True (caller doesn't have session info).
-    """
-    if not session_id:
-        return True
-    state_session = state.get("session_id")
-    if not state_session:
-        return True
-    return state_session == session_id
 
 
 # ============================================================================
