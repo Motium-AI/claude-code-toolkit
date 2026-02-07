@@ -15,9 +15,9 @@ Behavior:
 3. Concurrent deploy prevention: If there's already a running/queued workflow,
    blocks new gh workflow run commands to prevent race conditions
 4. Production gate: If command targets environment=production:
-   - Checks if production deployment was explicitly allowed via allowedPrompts
-   - If allowed → permits the command
-   - If not allowed → blocks with safety message
+   - Coordinator (user-facing agent) → allowed (user's instruction IS permission)
+   - Subagent without allowedPrompts → blocked
+   - Subagent with allowedPrompts → allowed
 """
 
 from __future__ import annotations
@@ -258,20 +258,26 @@ def main():
                 reason=f"Concurrent deploy blocked: {len(running_workflows)} workflows already running",
             )
 
-    # Rule 3: Production deploys require explicit permission
+    # Rule 3: Production deploys require explicit permission (subagents only)
+    # Coordinator is exempt — they have the user in the loop, so the user's
+    # conversational instruction IS the permission. Subagents don't talk to
+    # the user, so they need pre-approval via allowedPrompts.
     if is_production_target(command):
-        if not has_production_permission(state):
-            log_debug("Blocking production deploy without explicit permission")
+        is_coordinator = state.get("coordinator") is not False
+        if is_coordinator:
+            log_debug("Production deploy by coordinator — user is in the loop")
+        elif not has_production_permission(state):
+            log_debug("Blocking subagent production deploy without explicit permission")
             block_with_message(
                 message=(
                     "⛔ PRODUCTION DEPLOY BLOCKED\n\n"
                     "This command targets production but was not explicitly permitted in the plan.\n\n"
                     "To deploy to production, you must:\n"
                     "1. Include production deployment in your ExitPlanMode allowedPrompts\n"
-                    "2. Or get explicit user confirmation\n\n"
+                    "2. Or ask the coordinator to handle the production deployment\n\n"
                     f"Command: {command[:200]}"
                 ),
-                reason="Production deployment not explicitly permitted in plan",
+                reason="Subagent production deployment not explicitly permitted in plan",
             )
         else:
             log_debug("Production deploy permitted via allowedPrompts")
