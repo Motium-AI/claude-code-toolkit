@@ -193,24 +193,20 @@ Session starts (or user sends prompt, or Claude tries to stop)
 
 ### Stop Hook
 
-**Purpose**: Ensure compliance checks before Claude stops working.
+**Purpose**: Ensure completion checkpoint is captured before Claude stops working.
 
-The stop-validator.py hook:
-1. Receives JSON input with `stop_hook_active` flag
-2. If `stop_hook_active: false` (first stop attempt):
-   - Scans `git diff` for change types (env vars, auth, links, etc.)
-   - Outputs checklist to stderr
-   - Returns exit code 2 (block)
-3. If `stop_hook_active: true` (second stop attempt):
-   - Auto-captures checkpoint as memory event to `~/.claude/memory/{project-hash}/events/`
-   - Returns exit code 0 (allow)
+The stop-validator.py hook implements single-path idempotent validation:
+1. Receives JSON input with session context
+2. Compares current `git diff` hash vs session start snapshot
+3. If session made code changes:
+   - Validates checkpoint exists with required fields
+   - Blocks if checkpoint invalid/missing (exit 2)
+   - Auto-captures checkpoint as memory event if valid (exit 0)
+4. If no code changes:
+   - Allows stop immediately (exit 0)
+   - Still captures memory event if checkpoint exists
 
-**Loop Prevention**: The `stop_hook_active` flag prevents infinite loops:
-```
-Claude stops → Hook blocks → Claude addresses → Claude stops → Hook allows
-                  ↑                                              ↑
-           stop_hook_active=false                    stop_hook_active=true
-```
+**Activity-Based Validation**: Checkpoint is only required if the session made code changes (detected via diff hash comparison).
 
 ### UserPromptSubmit Hooks
 
@@ -244,29 +240,22 @@ This toolkit includes two UserPromptSubmit hooks:
 
 ## How Change Detection Works
 
-The stop-validator.py uses pattern matching on `git diff`:
+The stop-validator.py uses SHA1 hash comparison on `git diff`:
 
 ```python
-CHANGE_PATTERNS = {
-    "env_var": {
-        "patterns": [r"NEXT_PUBLIC_", r"process\.env\.", r"\.env"],
-        "tests": ["Grep for localhost fallbacks", "Test with production config"]
-    },
-    "auth": {
-        "patterns": [r"clearToken", r"logout", r"useAuth"],
-        "tests": ["Trace token clearing paths", "Test 401 cascade"]
-    },
-    # ... more patterns
-}
+def diff_hash_changed_since_session_start(cwd: str) -> bool:
+    """Compare current diff hash vs session start snapshot."""
+    snapshot = load_session_snapshot(cwd)
+    if not snapshot:
+        return False  # No snapshot = assume no changes
+
+    current_diff = get_git_diff(cwd)
+    current_hash = hashlib.sha1(current_diff.encode()).hexdigest()
+
+    return current_hash != snapshot["diff_hash_at_start"]
 ```
 
-When you modify code containing these patterns, the stop hook shows relevant testing requirements:
-
-```
-⚠️  ENV VAR CHANGES DETECTED:
-   - Grep for fallback patterns: || 'http://localhost'
-   - Test with production config: NEXT_PUBLIC_API_BASE='' npm run dev
-```
+When the hash differs from the session start snapshot, the hook requires a valid checkpoint before allowing stop.
 
 ## Configuration Reference
 

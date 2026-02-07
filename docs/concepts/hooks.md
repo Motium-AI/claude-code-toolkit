@@ -37,20 +37,20 @@ Claude Code loads hooks from **all** settings files and runs them all (additive 
 [session-init] Warning: .claude/settings.json duplicates 3 global hook(s): read-docs-reminder.py, read-docs-trigger.py, stop-validator.py. Remove from project settings to prevent double execution.
 ```
 
-### Two-Phase Stop Flow
+### Single-Path Stop Validation
 
-The Stop hook implements a two-phase blocking pattern to prevent infinite loops:
+The Stop hook implements idempotent validation on every stop attempt:
 
 ```
-First stop (stop_hook_active=false):
-→ Show FULL compliance checklist
-→ Block (exit 2)
-
-Second stop (stop_hook_active=true):
-→ Allow stop (exit 0)
+Every stop invocation:
+→ Compare current git diff hash vs session start hash
+→ If session made code changes: validate checkpoint exists and is complete
+→ If checkpoint valid: auto-capture memory event, allow stop (exit 0)
+→ If checkpoint invalid/missing: block with schema (exit 2)
+→ If no code changes: allow stop (still capture memory if checkpoint exists)
 ```
 
-This ensures Claude sees the full checklist at least once, while preventing infinite loops.
+This ensures consistent validation behavior across all stop attempts, with activity-based checkpoint requirements.
 
 ## Architecture
 
@@ -67,7 +67,7 @@ This ensures Claude sees the full checklist at least once, while preventing infi
 ┌─────────────────────────────────────────────────────────────────┐
 │                 ~/.claude/hooks/stop-validator.py               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Reads stdin JSON → Checks stop_hook_active → Exit code 0 or 2 │
+│  Reads stdin JSON → Validates checkpoint → Exit code 0 or 2    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -375,19 +375,18 @@ Second stop: stop_hook_active=true  → Allow (loop prevention)
 
 Location: `~/.claude/hooks/stop-validator.py`
 
-The stop validator implements two-phase blocking with execution validation:
-
-**Phase 1 (First Stop)**: Shows full compliance checklist with plan verification and change-specific testing
-**Phase 2 (Second Stop)**: Validates execution requirements, auto-captures checkpoint as memory event, then allows stop
+The stop validator implements single-path idempotent validation:
 
 ```python
 #!/usr/bin/env python3
 """
 Global Stop Hook Validator
 
-Two-phase stop flow:
-1. First stop (stop_hook_active=false): Show FULL compliance checklist, block
-2. Second stop (stop_hook_active=true): Validate execution, then allow
+Single validation path on every stop:
+- If session made code changes (diff hash comparison): require valid checkpoint
+- If checkpoint valid: auto-capture memory event, allow stop
+- If checkpoint invalid/missing: block with schema
+- If no code changes: allow stop (still capture memory if checkpoint exists)
 
 Exit codes:
   0 - Allow stop
@@ -397,53 +396,45 @@ import json
 import sys
 from pathlib import Path
 
-def check_plan_execution(cwd: str, session_id: str, file_diffs: dict) -> tuple[bool, str]:
-    """Validate that plan requirements were actually executed."""
-    requirements = parse_plan_requirements(cwd, session_id)
-    testing_state = read_testing_state(cwd, session_id)
-
-    # Auto-detect testing requirement from frontend changes
-    frontend_testing_required = requires_browser_testing(file_diffs)
-    test_required = requirements["test_required"] or frontend_testing_required
-    webtest_executed = testing_state.get("webtest_invoked", False)
-
-    if test_required and not webtest_executed:
-        return False, "BROWSER TESTING NOT EXECUTED - run /webtest"
-    return True, ""
-
 def main():
     input_data = json.load(sys.stdin)
     cwd = input_data.get("cwd", "")
-    session_id = input_data.get("session_id", "")
-    stop_hook_active = input_data.get("stop_hook_active", False)
 
-    file_diffs = get_git_diff()  # Analyze changed files
+    # Compare git diff hash vs session start snapshot
+    session_made_changes = diff_hash_changed_since_session_start(cwd)
 
-    # SECOND STOP: Validate execution before allowing
-    if stop_hook_active:
-        execution_ok, msg = check_plan_execution(cwd, session_id, file_diffs)
-        if not execution_ok:
-            print(f"❌ BLOCKED: {msg}", file=sys.stderr)
-            sys.exit(2)
-        # Auto-capture checkpoint as memory event
-        capture_memory_event(cwd, session_id)
-        sys.exit(0)  # All requirements met
+    if not session_made_changes:
+        # No code changes this session → allow stop
+        # Still capture memory if checkpoint exists
+        if checkpoint_exists(cwd):
+            capture_memory_event(cwd)
+        sys.exit(0)
 
-    # FIRST STOP: Show FULL checklist with plan and change detection
-    change_types = detect_change_types(file_diffs)
-    plan = get_active_plan(cwd, session_id)
-    # ... format checklist with plan verification, testing requirements ...
-    print(instructions, file=sys.stderr)
-    sys.exit(2)
+    # Session made code changes → validate checkpoint
+    checkpoint = load_checkpoint(cwd)
+
+    if not checkpoint:
+        print(CHECKPOINT_SCHEMA_MESSAGE, file=sys.stderr)
+        sys.exit(2)
+
+    # Validate required fields
+    validation_errors = validate_checkpoint(checkpoint)
+    if validation_errors:
+        print(format_validation_errors(validation_errors), file=sys.stderr)
+        sys.exit(2)
+
+    # Checkpoint valid → auto-capture and allow
+    capture_memory_event(cwd)
+    sys.exit(0)
 ```
 
 Key features:
-- **Plan execution validation**: Checks if deployment/testing from plan was actually done
-- **Frontend change detection**: Auto-requires browser testing for .tsx/.jsx changes
-- **Testing state tracking**: Reads `.claude/testing-state.json` to verify /webtest ran
-- **Second stop enforcement**: Blocks if requirements not met (prevents bypass)
+- **Activity-based validation**: Only requires checkpoint if session made code changes
+- **Diff hash comparison**: Compares current `git diff` hash vs session start snapshot
+- **Idempotent validation**: Same validation logic on every stop attempt
+- **Checkpoint schema**: `is_job_complete`, `what_was_done` >20 chars, `what_remains="none"`, `key_insight` >50 chars, `search_terms` 2-7 items, `linters_pass` (if code changed)
+- **No category blocking**: Category field accepts any value
 - **Memory auto-capture**: Archives checkpoint as memory event to `~/.claude/memory/{project-hash}/events/`
-- **Infrastructure bypass**: Skips web testing for infrastructure-only changes
 
 #### Infrastructure Bypass
 
@@ -578,36 +569,38 @@ Read the docs NOW before doing anything else.
 
 ### Stop (Blocking)
 
-When `stop_hook_active=false` (first stop attempt):
+When stop is blocked (checkpoint invalid or missing):
 ```
-Stop hook feedback: Before stopping, complete these checks:
+BLOCKED: Cannot stop without valid completion checkpoint.
 
-1. CLAUDE.md COMPLIANCE (if code written):
-   - boring over clever, local over abstract
-   - small composable units, stateless with side effects at edges
-   - fail loud never silent, tests are truth
-   - type hints everywhere, snake_case files, absolute imports
-   - Pydantic for contracts, files < 400 lines, functions < 60 lines
+Required: .claude/completion-checkpoint.json
 
-2. DOCUMENTATION (if code written):
-   - Read docs/index.md to understand the documentation structure
-   - Identify ALL docs affected by your changes (architecture, API, operations, etc.)
-   - Update those docs to reflect current implementation
-   - Docs are the authoritative source - keep them accurate and current
-   - Add new docs if you created new components/patterns not yet documented
+Schema:
+{
+  "self_report": {
+    "is_job_complete": true,           // REQUIRED: boolean
+    "code_changes_made": true,         // REQUIRED: boolean
+    "linters_pass": true,              // REQUIRED: boolean (if code changed)
+    "category": "bugfix"               // REQUIRED: any string
+  },
+  "reflection": {
+    "what_was_done": "...",            // REQUIRED: >20 chars
+    "what_remains": "none",            // REQUIRED: "none" to allow stop
+    "key_insight": "...",              // REQUIRED: >50 chars
+    "search_terms": ["term1", ...]     // REQUIRED: 2-7 items
+  }
+}
 
-3. UPDATE PROJECT .claude/MEMORIES.md (create if needed):
-   This is NOT a changelog. Only add HIGH-VALUE entries:
-   - User preferences that affect future work style
-   - Architectural decisions with WHY (not what)
-   - Non-obvious gotchas not documented elsewhere
-   - Consolidate/update existing entries rather than append duplicates
-   - If nothing significant learned, skip this step
-
-After completing these checks, you may stop.
+Validation rules:
+- is_job_complete must be true
+- what_remains must be "none"
+- what_was_done must be >20 characters
+- key_insight must be >50 characters
+- search_terms must have 2-7 items
+- linters_pass must be true if code_changes_made is true
 ```
 
-When `stop_hook_active=true` (second stop attempt): Hook allows stop silently.
+When stop is allowed: Hook captures memory event silently and exits 0.
 
 ### UserPromptSubmit Hook (On-Demand)
 
@@ -1001,8 +994,7 @@ Permission patterns recognized: `prod`, `production`, `deploy to prod`, `push to
     "what_was_done": "Fixed CORS config, deployed, verified login works",
     "what_remains": "none",
     "key_insight": "Reusable lesson for future sessions (>50 chars)",
-    "search_terms": ["cors", "deployment", "login"],
-    "memory_that_helped": []
+    "search_terms": ["cors", "deployment", "login"]
   }
 }
 ```

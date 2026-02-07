@@ -72,18 +72,7 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 }
 ```
 
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `is_job_complete` | bool | yes | Is the job actually done? |
-| `code_changes_made` | bool | yes | Were code files modified? |
-| `linters_pass` | bool | if code changed | Did all linters pass? |
-| `category` | enum | yes | bugfix, gotcha, architecture, pattern, config, refactor |
-| `what_was_done` | string | yes | >20 chars describing work |
-| `what_remains` | string | yes | Must be "none" to allow stop |
-| `key_insight` | string | yes | >50 chars — the reusable LESSON |
-| `search_terms` | list | yes | 2-7 concept keywords |
-
-Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validator ignores unknown keys.
+Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validator ignores unknown keys. If validation fails, the blocking message shows exact requirements.
 
 ## Workflow
 
