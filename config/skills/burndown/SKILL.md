@@ -17,7 +17,7 @@ Scan for issues, prioritize by severity, fix iteratively, re-scan to verify. The
 
 1. **NEVER ask for confirmation** - No "Should I fix this?", "Should I commit?"
 2. **Auto-fix all issues** - Apply fixes without asking
-3. **Auto-commit** - Commit after each batch of fixes
+3. **Auto-commit and push** - Commit after each batch of fixes, push after final batch
 4. **Run linters after every batch** - Fix ALL linter errors including pre-existing
 5. **Re-scan to verify** - Confirm fixes worked, catch regressions
 6. **Fill out checkpoint honestly** - The stop hook checks your booleans

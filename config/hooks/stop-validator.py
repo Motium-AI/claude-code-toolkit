@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _common import get_diff_hash, log_debug, timed_hook, VERSION_TRACKING_EXCLUSIONS
+from _common import get_diff_hash, get_code_version, log_debug, timed_hook, VERSION_TRACKING_EXCLUSIONS
 from _session import (
     load_checkpoint,
     reset_state_for_next_task,
@@ -277,6 +277,32 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
 # ============================================================================
 
 
+def has_uncommitted_changes(cwd: str) -> bool:
+    """Check if there are uncommitted code changes in the working tree."""
+    version = get_code_version(cwd)
+    return version.endswith("-dirty")
+
+
+def block_uncommitted_changes(cwd: str) -> None:
+    """Block stop - uncommitted changes in autonomous mode."""
+    print(
+        """
+╔═══════════════════════════════════════════════════════════════╗
+║  UNCOMMITTED CHANGES — COMMIT BEFORE STOPPING                 ║
+╚═══════════════════════════════════════════════════════════════╝
+
+You have uncommitted code changes. In autonomous mode, commit your work
+before stopping:
+
+  git add <files> && git commit -m "feat/fix/refactor: [description]"
+
+Then try stopping again.
+""",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def block_no_checkpoint(cwd: str) -> None:
     """Block stop - no checkpoint file exists."""
     checkpoint_path = (
@@ -364,6 +390,8 @@ def main():
 
     checkpoint = load_checkpoint(cwd)
 
+    is_autonomous = is_autonomous_mode_active(cwd)
+
     # FIRST STOP: require checkpoint file
     if not stop_hook_active:
         if checkpoint is None:
@@ -372,6 +400,14 @@ def main():
         is_valid, failures = validate_checkpoint(checkpoint)
         if not is_valid:
             block_with_failures(failures)
+
+        # Gate: uncommitted changes in autonomous mode
+        if is_autonomous and has_uncommitted_changes(cwd):
+            log_debug(
+                "BLOCKING STOP: uncommitted changes in autonomous mode",
+                hook_name="stop-validator",
+            )
+            block_uncommitted_changes(cwd)
 
         # Valid - capture memory and allow stop
         log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
@@ -386,6 +422,14 @@ def main():
     is_valid, failures = validate_checkpoint(checkpoint)
     if not is_valid:
         block_with_failures(failures)
+
+    # Gate: uncommitted changes in autonomous mode (re-check)
+    if is_autonomous and has_uncommitted_changes(cwd):
+        log_debug(
+            "BLOCKING STOP: uncommitted changes in autonomous mode (2nd stop)",
+            hook_name="stop-validator",
+        )
+        block_uncommitted_changes(cwd)
 
     log_debug("ALLOWING STOP: checkpoint valid", hook_name="stop-validator")
     auto_capture_memory(cwd, checkpoint)

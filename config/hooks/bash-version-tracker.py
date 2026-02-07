@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -126,6 +127,20 @@ Before stopping, you must:
 3. Re-test in browser (if web_testing_done was reset)
 4. Update checkpoint with new version
 """)
+
+    # Push reminder after git commit
+    if is_git_commit:
+        try:
+            result = subprocess.run(
+                ["git", "rev-list", "--count", "@{u}..HEAD"],
+                capture_output=True, text=True, timeout=5, cwd=cwd or None,
+            )
+            if result.returncode == 0:
+                unpushed = int(result.stdout.strip())
+                if unpushed > 0:
+                    print(f"📤 {unpushed} unpushed commit(s) on this branch. Push when ready.")
+        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+            pass  # No upstream tracking or git error — skip silently
 
     sys.exit(0)
 

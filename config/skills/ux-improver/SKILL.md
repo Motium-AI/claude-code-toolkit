@@ -313,6 +313,20 @@ Applying fixes...
 - **auto_continue**: When score < 8.0
 - **auto_stop**: When score >= 8.0 OR iterations >= 5
 
+## Git Operations
+
+After each iteration that makes code changes:
+1. **Commit** with iteration context:
+   ```bash
+   git add <files> && git commit -m "ux: [changes] (iteration N, score X.X)"
+   ```
+
+After the final iteration:
+2. **Push** to trigger CI:
+   ```bash
+   git push
+   ```
+
 ## Integration Notes
 
 This skill integrates with:
