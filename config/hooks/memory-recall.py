@@ -121,13 +121,14 @@ def main():
     if not (basenames or stems or dirs):
         sys.exit(0)
 
-    # Load events
+    # Load events via inverted index (full corpus reach)
     try:
-        from _memory import get_recent_events
+        from _memory import get_events_by_entities
     except ImportError:
         sys.exit(0)
 
-    events = get_recent_events(cwd, limit=30)
+    query_entities = basenames | stems | dirs
+    events = get_events_by_entities(cwd, query_entities, recent_limit=5)
     if not events:
         sys.exit(0)
 

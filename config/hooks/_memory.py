@@ -421,7 +421,8 @@ def get_events_by_entities(
     """Retrieve events matching query entities via inverted index.
 
     Combines index-based retrieval (entity match across full corpus) with
-    recent events (freshness guarantee). Deduplicates by event ID.
+    recent events (freshness guarantee). Expands queries with concept
+    synonyms for semantic reach. Deduplicates by event ID.
 
     Returns events sorted by number of entity matches (descending),
     with recent events appended.
@@ -438,6 +439,16 @@ def get_events_by_entities(
 
     entity_index = manifest.get("entity_index", {})
     recent_ids = manifest.get("recent", [])[:recent_limit]
+
+    # Expand query entities with synonyms
+    try:
+        from _scoring import get_synonyms
+        expanded = set()
+        for entity in query_entities:
+            expanded.update(get_synonyms(entity.lower()))
+        query_entities = query_entities | expanded
+    except ImportError:
+        pass
 
     # Query the inverted index: collect event IDs with match counts
     match_counts: dict[str, int] = {}

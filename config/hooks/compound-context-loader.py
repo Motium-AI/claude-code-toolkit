@@ -339,7 +339,7 @@ def main():
 
     # Import memory primitives
     try:
-        from _memory import get_recent_events, cleanup_old_events
+        from _memory import get_recent_events, get_events_by_entities, cleanup_old_events
     except ImportError:
         log_debug(
             "Cannot import _memory module",
@@ -378,8 +378,19 @@ def main():
     except Exception:
         pass
 
-    # Load recent events (manifest fast-path)
-    events = get_recent_events(cwd, limit=30)
+    # Get changed files for context (needed for both index query and scoring)
+    changed_files = _get_changed_files(cwd)
+    basenames, stems, dirs = build_file_components(changed_files)
+
+    # Build query entities for inverted index lookup
+    query_entities = basenames | stems | dirs
+
+    # Load events via inverted entity index (full corpus reach) + recent fallback
+    if query_entities:
+        events = get_events_by_entities(cwd, query_entities, recent_limit=10)
+    else:
+        events = get_recent_events(cwd, limit=30)
+
     if not events:
         log_debug(
             "No memory events found",
@@ -400,11 +411,7 @@ def main():
         )
         sys.exit(0)
 
-    # Get changed files for context
-    changed_files = _get_changed_files(cwd)
-
-    # 3-signal scoring with time-bound entity gate
-    basenames, stems, dirs = build_file_components(changed_files)
+    # 2-signal scoring with time-bound entity gate
 
     scored = []
     gated_count = 0

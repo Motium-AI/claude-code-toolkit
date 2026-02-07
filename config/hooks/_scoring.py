@@ -25,6 +25,79 @@ ENTITY_GATE_BYPASS_HOURS = 4
 
 
 # ============================================================================
+# Concept Synonym Map
+# ============================================================================
+
+# Bidirectional synonym groups for semantic recall boost.
+# Each group is a frozenset of equivalent terms. When an event entity matches
+# a synonym of a query stem/dir, it scores 0.45 (between concept 0.5 and
+# substring 0.35).
+_SYNONYM_GROUPS: list[frozenset[str]] = [
+    # Concurrency
+    frozenset({"race-condition", "concurrency", "mutex", "deadlock", "lock", "thread-safety", "atomic"}),
+    # State management
+    frozenset({"state-management", "redux", "zustand", "context", "store", "state"}),
+    # Authentication
+    frozenset({"auth", "authentication", "login", "session", "jwt", "oauth", "sso"}),
+    # API patterns
+    frozenset({"api", "endpoint", "route", "handler", "controller", "rest", "graphql"}),
+    # Database
+    frozenset({"database", "db", "sql", "query", "migration", "schema", "orm", "sqlite", "postgres"}),
+    # Testing
+    frozenset({"test", "testing", "spec", "jest", "pytest", "vitest", "e2e", "unit-test"}),
+    # Error handling
+    frozenset({"error", "exception", "crash", "failure", "retry", "fallback", "error-handling"}),
+    # Configuration
+    frozenset({"config", "configuration", "env", "environment", "settings", "dotenv"}),
+    # Caching
+    frozenset({"cache", "caching", "memoize", "memoization", "redis", "invalidation"}),
+    # Deployment
+    frozenset({"deploy", "deployment", "ci-cd", "pipeline", "staging", "production", "release"}),
+    # Performance
+    frozenset({"performance", "optimization", "perf", "latency", "throughput", "profiling", "benchmark"}),
+    # Frontend
+    frozenset({"component", "react", "nextjs", "ui", "frontend", "render", "jsx", "tsx"}),
+    # Styling
+    frozenset({"css", "tailwind", "style", "styling", "theme", "design-system"}),
+    # Build tools
+    frozenset({"build", "webpack", "vite", "bundler", "compile", "transpile", "esbuild"}),
+    # Package management
+    frozenset({"dependency", "package", "npm", "pip", "yarn", "pnpm", "version"}),
+    # Type system
+    frozenset({"type", "typing", "typecheck", "typescript", "mypy", "pydantic", "zod", "schema"}),
+    # Async
+    frozenset({"async", "await", "promise", "asyncio", "concurrent", "parallel", "non-blocking"}),
+    # File system
+    frozenset({"file", "filesystem", "path", "directory", "io", "read", "write", "stream"}),
+    # Git / VCS
+    frozenset({"git", "commit", "branch", "merge", "rebase", "diff", "vcs"}),
+    # Hooks / middleware
+    frozenset({"hook", "hooks", "middleware", "interceptor", "plugin", "extension"}),
+    # Memory / context
+    frozenset({"memory", "context", "injection", "recall", "retrieval", "scoring", "entity"}),
+    # Validation
+    frozenset({"validation", "validator", "sanitize", "parse", "schema", "constraint"}),
+    # Logging / monitoring
+    frozenset({"logging", "log", "monitor", "telemetry", "metrics", "observability", "debug"}),
+    # Security
+    frozenset({"security", "xss", "csrf", "injection", "sanitize", "escape", "vulnerability"}),
+    # Mobile
+    frozenset({"mobile", "ios", "android", "react-native", "expo", "app", "native"}),
+]
+
+# Build lookup: term -> set of all synonyms (excluding self)
+_SYNONYM_LOOKUP: dict[str, frozenset[str]] = {}
+for _group in _SYNONYM_GROUPS:
+    for _term in _group:
+        _SYNONYM_LOOKUP[_term] = _group - {_term}
+
+
+def get_synonyms(term: str) -> frozenset[str]:
+    """Get synonyms for a term. Returns empty frozenset if none."""
+    return _SYNONYM_LOOKUP.get(term.lower(), frozenset())
+
+
+# ============================================================================
 # Component Scores
 # ============================================================================
 
@@ -87,6 +160,11 @@ def entity_overlap_score(
                 e_lower in d.lower() for d in dirs
             ):
                 best = max(best, 0.35)
+            else:
+                # Synonym expansion: check if entity synonyms match stems/dirs
+                syns = get_synonyms(e_lower)
+                if syns and (syns & stems or syns & dirs):
+                    best = max(best, 0.45)
         if best >= 1.0:
             break
     return best
