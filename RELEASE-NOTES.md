@@ -104,7 +104,6 @@ Unified from 24 hooks to 13, reducing ~4500 lines to ~1500:
 {
   "env": {
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "MAX_THINKING_TOKENS": "65536",
     "ENABLE_TOOL_SEARCH": "auto",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },

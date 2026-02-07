@@ -406,13 +406,6 @@ def main():
     # 3-signal scoring with time-bound entity gate
     basenames, stems, dirs = build_file_components(changed_files)
 
-    # Load utility map for scoring bonus
-    try:
-        from _memory import get_utility_map
-        utility_map = get_utility_map(cwd)
-    except (ImportError, Exception):
-        utility_map = None
-
     scored = []
     gated_count = 0
     dedup_count = 0
@@ -427,7 +420,7 @@ def main():
         if memory_tokens and _event_overlaps_memory(event, memory_tokens):
             dedup_count += 1
             continue
-        score = score_event(event, basenames, stems, dirs, utility_map=utility_map)
+        score = score_event(event, basenames, stems, dirs)
         if score >= MIN_SCORE_SESSION_START:
             scored.append((event, score))
     scored.sort(key=lambda x: x[1], reverse=True)

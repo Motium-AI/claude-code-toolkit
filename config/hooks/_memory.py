@@ -237,8 +237,8 @@ def append_event(
     event_path = event_dir / f"{event_id}.json"
     atomic_write_json(event_path, event)
 
-    # Update manifest
-    _update_manifest(event_dir, event_id)
+    # Update manifest (with entity index)
+    _update_manifest(event_dir, event_id, entities)
 
     log_debug(
         f"Event appended: {event_id}",
@@ -249,24 +249,34 @@ def append_event(
     return event_path
 
 
-def _update_manifest(event_dir: Path, new_event_id: str) -> None:
-    """Update manifest with new event ID. Uses file locking for concurrent safety.
+def _normalize_entity_key(entity: str) -> str:
+    """Normalize an entity string for index keys.
 
-    File locking prevents race conditions when parallel Claude sessions
-    both try to update the manifest simultaneously.
+    File entities: lowercase basename (e.g., "src/hooks/stop-validator.py" -> "stop-validator.py")
+    Concept entities: lowercase (e.g., "race-condition" -> "race-condition")
+    """
+    if "/" in entity or "." in entity.split("/")[-1]:
+        return entity.split("/")[-1].lower()
+    return entity.lower().strip()
+
+
+def _update_manifest(
+    event_dir: Path, new_event_id: str, entities: list[str] | None = None,
+) -> None:
+    """Update manifest with new event ID and entity index.
+
+    Maintains an inverted index: entity_key -> [event_ids] for O(1) lookup
+    at retrieval time. File locking prevents concurrent corruption.
     """
     manifest_path = event_dir.parent / MANIFEST_NAME
     lock_path = event_dir.parent / ".manifest.lock"
 
     try:
-        # Create lock file and acquire exclusive lock
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with open(lock_path, "w") as lock_file:
             try:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except (IOError, OSError):
-                # Another process holds the lock - skip this update
-                # Manifest is a cache, will be rebuilt on read miss
                 return
 
             try:
@@ -278,17 +288,39 @@ def _update_manifest(event_dir: Path, new_event_id: str) -> None:
 
                 recent = manifest.get("recent", [])
                 recent.insert(0, new_event_id)
-                recent = recent[:50]  # Keep top 50
+                recent = recent[:50]
 
                 manifest["recent"] = recent
                 manifest["total_count"] = manifest.get("total_count", 0) + 1
                 manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+                # Update inverted entity index
+                if entities:
+                    entity_index = manifest.get("entity_index", {})
+                    for entity in entities:
+                        key = _normalize_entity_key(entity)
+                        if not key:
+                            continue
+                        ids = entity_index.get(key, [])
+                        if new_event_id not in ids:
+                            ids.insert(0, new_event_id)
+                            ids = ids[:30]  # Cap per-entity list
+                        entity_index[key] = ids
+                        # Also index stem for file entities
+                        if "." in key:
+                            stem = key.rsplit(".", 1)[0]
+                            stem_ids = entity_index.get(stem, [])
+                            if new_event_id not in stem_ids:
+                                stem_ids.insert(0, new_event_id)
+                                stem_ids = stem_ids[:30]
+                            entity_index[stem] = stem_ids
+                    manifest["entity_index"] = entity_index
+
                 atomic_write_json(manifest_path, manifest)
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
     except (json.JSONDecodeError, IOError, OSError):
-        pass  # Manifest is a cache — will be rebuilt on read miss
+        pass
 
 
 # ============================================================================
@@ -324,22 +356,49 @@ def get_recent_events(cwd: str, limit: int = 5) -> list[dict]:
 
 
 def _rebuild_and_return(event_dir: Path, limit: int) -> list[dict]:
-    """Scan directory, rebuild manifest, return recent events."""
+    """Scan directory, rebuild manifest with entity index, return recent events."""
     entries = []
+    all_events = []
     for f in event_dir.glob("*.json"):
         if f.name.startswith("."):
             continue
         try:
-            entries.append((f.stat().st_mtime, f.stem))
+            mtime = f.stat().st_mtime
+            event = safe_read_event(f)
+            if event:
+                entries.append((mtime, f.stem))
+                all_events.append(event)
         except OSError:
             continue
 
     entries.sort(reverse=True)
 
+    # Build entity index from all events
+    entity_index: dict[str, list[str]] = {}
+    for event in all_events:
+        eid = event.get("id", "")
+        if not eid:
+            continue
+        for entity in event.get("entities", []):
+            key = _normalize_entity_key(entity)
+            if not key:
+                continue
+            ids = entity_index.get(key, [])
+            if eid not in ids:
+                ids.append(eid)
+            entity_index[key] = ids
+            if "." in key:
+                stem = key.rsplit(".", 1)[0]
+                stem_ids = entity_index.get(stem, [])
+                if eid not in stem_ids:
+                    stem_ids.append(eid)
+                entity_index[stem] = stem_ids
+
     # Rebuild manifest
     manifest = {
         "recent": [eid for _, eid in entries[:50]],
         "total_count": len(entries),
+        "entity_index": entity_index,
         "rebuilt_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -353,6 +412,78 @@ def _rebuild_and_return(event_dir: Path, limit: int) -> list[dict]:
         event = safe_read_event(event_dir / f"{event_id}.json")
         if event:
             events.append(event)
+    return events
+
+
+def get_events_by_entities(
+    cwd: str, query_entities: set[str], recent_limit: int = 10,
+) -> list[dict]:
+    """Retrieve events matching query entities via inverted index.
+
+    Combines index-based retrieval (entity match across full corpus) with
+    recent events (freshness guarantee). Deduplicates by event ID.
+
+    Returns events sorted by number of entity matches (descending),
+    with recent events appended.
+    """
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+
+    try:
+        if not manifest_path.exists():
+            return _rebuild_and_return(event_dir, recent_limit)
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, IOError, OSError):
+        return _rebuild_and_return(event_dir, recent_limit)
+
+    entity_index = manifest.get("entity_index", {})
+    recent_ids = manifest.get("recent", [])[:recent_limit]
+
+    # Query the inverted index: collect event IDs with match counts
+    match_counts: dict[str, int] = {}
+    for entity in query_entities:
+        key = entity.lower().strip()
+        # Try exact key
+        for eid in entity_index.get(key, []):
+            match_counts[eid] = match_counts.get(eid, 0) + 1
+        # Try basename if it looks like a path
+        if "/" in entity:
+            basename_key = entity.split("/")[-1].lower()
+            for eid in entity_index.get(basename_key, []):
+                match_counts[eid] = match_counts.get(eid, 0) + 1
+        # Try stem
+        if "." in key:
+            stem = key.rsplit(".", 1)[0]
+            for eid in entity_index.get(stem, []):
+                match_counts[eid] = match_counts.get(eid, 0) + 1
+
+    # Merge with recent IDs (guaranteed freshness)
+    all_ids = set(match_counts.keys())
+    for rid in recent_ids:
+        all_ids.add(rid)
+
+    # Load events
+    seen = set()
+    events = []
+    # First: index-matched events sorted by match count (most matches first)
+    sorted_matches = sorted(match_counts.items(), key=lambda x: x[1], reverse=True)
+    for eid, _ in sorted_matches:
+        if eid in seen:
+            continue
+        event = safe_read_event(event_dir / f"{eid}.json")
+        if event:
+            events.append(event)
+            seen.add(eid)
+
+    # Then: recent events not already included
+    for eid in recent_ids:
+        if eid in seen:
+            continue
+        event = safe_read_event(event_dir / f"{eid}.json")
+        if event:
+            events.append(event)
+            seen.add(eid)
+
     return events
 
 
@@ -588,69 +719,3 @@ def compact_assertions(cwd: str) -> int:
     return removed
 
 
-# ============================================================================
-# Utility Tracking
-# ============================================================================
-
-
-def update_utility_counters(
-    cwd: str, injected_ids: list[str], cited_ids: list[str],
-) -> None:
-    """Update manifest utility counters for injected/cited events.
-
-    Uses same flock + atomic_write_json pattern as _update_manifest.
-    Increments 'injected' for each event shown, 'cited' for each referenced.
-    """
-    event_dir = get_memory_dir(cwd)
-    manifest_path = event_dir.parent / MANIFEST_NAME
-    lock_path = event_dir.parent / ".manifest.lock"
-
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(lock_path, "w") as lock_file:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except (IOError, OSError):
-                return  # Skip if locked — utility tracking is best-effort
-
-            try:
-                manifest = {}
-                if manifest_path.exists():
-                    raw = manifest_path.read_text()
-                    if raw.strip():
-                        manifest = json.loads(raw)
-
-                utility = manifest.get("utility", {})
-
-                for eid in injected_ids:
-                    if eid:
-                        entry = utility.setdefault(eid, {"injected": 0, "cited": 0})
-                        entry["injected"] = entry.get("injected", 0) + 1
-
-                for eid in cited_ids:
-                    if eid:
-                        entry = utility.setdefault(eid, {"injected": 0, "cited": 0})
-                        entry["cited"] = entry.get("cited", 0) + 1
-
-                manifest["utility"] = utility
-                atomic_write_json(manifest_path, manifest)
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-    except (json.JSONDecodeError, IOError, OSError):
-        pass
-
-
-def get_utility_map(cwd: str) -> dict:
-    """Load utility dict from manifest. Returns {event_id: {injected, cited}}.
-
-    Loaded once per scoring run, not per-event. Returns empty dict on any error.
-    """
-    event_dir = get_memory_dir(cwd)
-    manifest_path = event_dir.parent / MANIFEST_NAME
-    try:
-        if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text())
-            return manifest.get("utility", {})
-    except (json.JSONDecodeError, IOError, OSError):
-        pass
-    return {}

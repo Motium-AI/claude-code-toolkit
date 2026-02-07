@@ -9,16 +9,16 @@ These variables control Claude Code's behavior:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `128000` | Maximum tokens in Claude's response output |
-| `MAX_THINKING_TOKENS` | `65536` | Maximum tokens allocated for extended thinking |
 
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "MAX_THINKING_TOKENS": "65536"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000"
   }
 }
 ```
+
+> **Note**: `MAX_THINKING_TOKENS` was removed — it bleeds into Haiku subagents, exceeding their 64k ceiling. Claude Code manages thinking token allocation per-model automatically.
 
 ## Boolean Flags
 
@@ -91,8 +91,7 @@ The toolkit defines hooks for these events:
 ```json
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "MAX_THINKING_TOKENS": "65536"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000"
   },
   "alwaysThinkingEnabled": true,
   "hooks": {

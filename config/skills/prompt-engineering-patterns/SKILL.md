@@ -134,7 +134,7 @@ When designing prompts for /heavy or /build subagents:
 3. **Minimum viable context transfer.** When passing Agent A's output to Agent B,
    pass claims + evidence, not the full analysis.
 4. **Diminishing returns.** 2 agents = 1 tension. 5 agents = 10 tensions.
-   8+ agents = diminishing returns. Sweet spots: /heavy uses 5, /build uses 4.
+   8+ agents = diminishing returns. Sweet spot: 3-5 agents with distinct research territories.
 
 ## Living References
 
@@ -143,7 +143,7 @@ Don't read explanations. Read exemplary skills:
 | Principle | Read This Skill | What to Notice |
 |-----------|----------------|----------------|
 | Maximum compression | /go (115 lines) | Assumes model competence, no ceremony |
-| Context isolation | /heavy (5 parallel agents) | Each agent gets focused prompt |
+| Context isolation | /heavy (dynamic agents with research territories) | Each agent discovers different facts |
 | Constraint-driven design | /build (checkpoint schema) | Booleans force honest behavior |
 | Memory integration | /compound (95 lines) | Captures learnings, system injects them |
 | Operational checklist | /compound Step 1-4 | Every line drives action, not theory |

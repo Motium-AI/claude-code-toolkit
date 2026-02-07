@@ -5,8 +5,7 @@ Unified scoring module for memory event ranking.
 Shared by compound-context-loader.py (SessionStart) and memory-recall.py (PostToolUse).
 Provides consistent scoring across all retrieval paths.
 
-Weights: entity overlap (45%) + recency (35%) + quality (20%)
-
+2-signal scoring: entity overlap (60%) + recency (40%).
 Entity gate: zero-overlap events older than ENTITY_GATE_BYPASS_HOURS are rejected.
 Fresh events bypass the gate to let recency compensate.
 """
@@ -93,35 +92,6 @@ def entity_overlap_score(
     return best
 
 
-def quality_score(event: dict) -> float:
-    """Continuous 0-1 quality score.
-
-    Uses meta.quality_score (float) if available from stop-validator.
-    Falls back to content analysis for old events without it.
-    """
-    qs = event.get("meta", {}).get("quality_score")
-    if isinstance(qs, (int, float)):
-        return max(0.0, min(1.0, float(qs)))
-    return _content_quality_fallback(event)
-
-
-def _content_quality_fallback(event: dict) -> float:
-    """Content-based quality score for backward compat with old events."""
-    content = event.get("content", "")
-    entities = event.get("entities", [])
-    has_lesson = (
-        content.startswith("LESSON:") or content.startswith("SCHEMA:")
-    ) and len(content.split("\n")[0]) > 35
-    has_terms = len(entities) >= 3
-    if has_lesson and has_terms:
-        return 1.0
-    if has_lesson:
-        return 0.6
-    if has_terms:
-        return 0.4
-    return 0.2
-
-
 # ============================================================================
 # File Components
 # ============================================================================
@@ -152,32 +122,12 @@ def score_event(
     basenames: set,
     stems: set,
     dirs: set,
-    utility_map: dict | None = None,
 ) -> float:
-    """Unified scoring: entity (45%) + recency (35%) + quality (20%) + utility bonus.
+    """2-signal scoring: entity overlap (60%) + recency (40%).
 
-    Optional utility_map adds a weak +0.05 bonus for events with proven
-    citation history (cited/injected >= 0.3 with >= 3 injections).
+    Wider dynamic range than 3-signal — entity overlap provides the
+    relevance gate, recency provides the freshness tiebreaker.
     """
     entity = entity_overlap_score(event, basenames, stems, dirs)
     recency = recency_score(event)
-    qual = quality_score(event)
-    score = 0.45 * entity + 0.35 * recency + 0.20 * qual
-    if utility_map:
-        score += _utility_bonus(event, utility_map)
-    return min(score, 1.0)
-
-
-def _utility_bonus(event: dict, utility_map: dict) -> float:
-    """Weak bonus for events with proven citation history."""
-    eid = event.get("id", "")
-    if not eid or not utility_map:
-        return 0.0
-    stats = utility_map.get(eid)
-    if not stats:
-        return 0.0
-    injected = stats.get("injected", 0)
-    cited = stats.get("cited", 0)
-    if injected >= 3 and cited / max(injected, 1) >= 0.3:
-        return 0.05
-    return 0.0
+    return 0.60 * entity + 0.40 * recency

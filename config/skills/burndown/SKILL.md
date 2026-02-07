@@ -99,8 +99,8 @@ Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validat
 │  ║  PHASE 0.5: LITE HEAVY PLANNING (MANDATORY)               ║  │
 │  ║     └─► EnterPlanMode                                     ║  │
 │  ║     └─► Launch 2 parallel Opus agents (from /heavy):      ║  │
-│  ║         ├─► First Principles: "What debt can be deleted?" ║  │
-│  ║         └─► AGI-Pilled: "What would zero-debt look like?" ║  │
+│  ║         ├─► Reductive Analyst: "What debt can be deleted?"║  │
+│  ║         └─► Capability Maximizer: "Zero-debt look like?" ║  │
 │  ║     └─► Synthesize deletion vs improvement tradeoffs      ║  │
 │  ║     └─► ExitPlanMode                                      ║  │
 │  ╚═══════════════════════════════════════════════════════════╝  │

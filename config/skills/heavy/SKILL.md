@@ -5,340 +5,341 @@ description: Multi-perspective analysis using parallel subagents. Use when asked
 
 # Heavy Multi-Perspective Analysis
 
-You are running in HEAVY mode - a multi-agent analysis system that explores questions from multiple perspectives before synthesizing.
+Multi-agent analysis system that produces **shared synthesis of diverse information** — not diverse opinions on identical information.
 
 ## Input Question
 
 $ARGUMENTS
 
-## Intent Detection
+---
 
-**Before spawning agents, determine the user's intent:**
+## Phase 0: Triage + Memory
+
+Before spawning agents, do three things:
+
+### 0.1 Determine Mode
 
 | Signal | Mode | Agent Behavior |
 |--------|------|----------------|
 | "Should we...", "Is it a good idea...", "Evaluate whether..." | EVALUATION | Challenge assumptions, explore both sides |
 | "How can we improve...", "Help me design...", "I want to..." | IMPLEMENTATION | Accept goal as given, debate HOW not WHETHER |
 
-**IMPLEMENTATION MODE**: Agents disagree on approaches, not goals. Critical Reviewer critiques HOW, not WHETHER.
+### 0.2 Assess Complexity
 
-**EVALUATION MODE**: Agents challenge assumptions. Spawn at least one "don't do this" perspective.
+| Complexity | Signal | Agents | Rounds |
+|------------|--------|--------|--------|
+| **Quick** | Binary decision, single concern | 2-3 | 1 |
+| **Standard** | Multi-faceted but bounded | 3-4 | 1 |
+| **Deep** | Architectural, strategic, high-stakes | 4-5 | 1 + cross-pollination |
+
+Default to **Standard** unless the question clearly warrants Quick or Deep.
+
+### 0.3 Prime with Memory
+
+Check if the memory system has relevant context. Scan the `<memories>` and `<core-assertions>` blocks injected at session start. If any are relevant to the question:
+- Note them as "known context" for agent prompts
+- Agents should build on these, not rediscover them
+- Include the specific assertion or memory ref in each agent's prompt
 
 ---
 
-## Agents (3-5 Recommended)
+## Phase 1: Divergent Discovery
+
+### 1.1 Generate Agent Roster
+
+**ALL agents are dynamic.** Generate 3-5 agents specifically for THIS question. Each agent gets:
+1. A **perspective** (how they think)
+2. A **research territory** (where they look)
+3. A **key question** (what they must answer)
+
+The perspective determines the analytical lens. The research territory ensures agents discover DIFFERENT facts — this is how information diversity emerges. Without territories, all agents grep the same files and search the same queries.
+
+**To generate agents, think:** *What distinct bodies of evidence exist for this question? Who would each body of evidence be most visible to?*
+
+Example roster for "Should we replace our REST API with GraphQL?":
+
+| Agent | Perspective | Research Territory | Key Question |
+|-------|-------------|-------------------|--------------|
+| Internal Archaeologist | What does our code actually do? | Codebase: grep API patterns, read route handlers, check client usage | How entangled is REST in our architecture? |
+| External Scout | What does the industry know? | Web: migration case studies, GraphQL at scale postmortems | Where has this transition succeeded/failed and why? |
+| Reductive Analyst | What's the simplest path? | Codebase + web: identify what can be deleted, what's unnecessary | What problem are we actually solving? Is GraphQL the answer or a symptom? |
+| Adversarial Reviewer | What will break? | Codebase: find edge cases, coupling, implicit contracts | What's the migration cost nobody is counting? |
+
+### 1.2 Agent Template Library
+
+Use these as starting points when generating agents — pick, adapt, or ignore:
+
+**Reductive Analyst** (via negativa):
+```
+Question every requirement. Delete what doesn't need to exist.
+Simplify what remains. Only then accelerate. Only then automate.
+Output: What can be removed? Name specific things to delete.
+```
+
+**Capability Maximizer** (AGI-pilled):
+```
+Assume maximally capable AI and reason from that assumption.
+If you're constraining the model with rules, you're probably doing it wrong.
+Output: The ambitious, capability-maximizing approach. Don't hedge.
+```
+
+**Adversarial Reviewer** (mode-sensitive):
+```
+EVALUATION: Find what will break. "It might not work" is weak.
+"Here's where it failed: [citation]" is strong.
+IMPLEMENTATION: Critique HOW, not WHETHER. Find risks in execution.
+Output: What would make you mass-revert this at 2am?
+```
+
+**Domain Expert** (generated per question):
+```
+You are a [SPECIFIC ROLE]. From YOUR expertise, what do you see
+that others will miss? Ground every claim in evidence.
+Output: Your distinct insight that others are blind to.
+```
+
+### 1.3 Agent Prompt Structure
+
+Every agent prompt MUST include:
+
+```
+Task(
+  subagent_type="general-purpose",
+  description="[Perspective]: [key question in 5 words]",
+  model="opus",
+  prompt="""[PERSPECTIVE FRAMING - 2-3 sentences]
+
+Question: [THE QUESTION]
+
+[KNOWN CONTEXT from memory/assertions if relevant]
+
+YOUR RESEARCH TERRITORY: [WHERE to look, not just WHAT to think]
+- [Specific codebase searches to run]
+- [Specific web queries to make]
+- [Specific files/systems to examine]
+
+You have FULL TOOL ACCESS. You MUST research before forming opinions.
+Research your territory FIRST, then form your position.
+
+Output format:
+## Discoveries
+[What you FOUND that others likely didn't — specific facts, evidence, data]
+
+## Position
+[Your claim, grounded in your discoveries]
+
+## Key Evidence
+[The 2-3 strongest pieces of evidence supporting your position]
+
+## Uncertainties
+[What you're NOT sure about — honest gaps]"""
+)
+```
+
+### 1.4 Launch
 
 **Launch ALL agents in a SINGLE message with multiple Task tool calls.**
 
-| Agent | Role | Key Question |
-|-------|------|--------------|
-| First Principles | Deletion, simplification | "What can be removed?" |
-| AGI-Pilled | Maximum capability | "What would god-tier AI do?" |
-| Critical Reviewer | Mode-sensitive critique | "What will break?" |
-| Dynamic 1 | Task-specific expertise | Generated based on question |
-| Dynamic 2 | Adversarial/alternative view | Generated based on question |
-
-All agents: **Opus**, **full tool access**, **must research before opining**.
-
-**Execution options**: Use parallel `Task()` calls (default) or `TeamCreate` for Agent Teams when you want persistent coordination between agents.
+For Agent Teams (persistent coordination): use `TeamCreate` when agents need to share intermediate findings during their research (Deep complexity only).
 
 ---
 
-### Agent 1: First Principles
+## Phase 2: Cross-Pollination (Deep complexity only)
+
+**Trigger**: Complexity assessed as Deep, OR Round 1 results sharply diverge on critical points.
+
+After Round 1 agents return, create a brief summary of each agent's key discoveries (not their full output — just claims + evidence). Then launch follow-up agents:
 
 ```
 Task(
   subagent_type="general-purpose",
-  description="First Principles Analysis",
+  description="Cross-pollination: [Agent X] reacts",
   model="opus",
-  prompt="""Apply the Elon Musk algorithm:
-1. Question every requirement - Why does this need to exist?
-2. Delete - Remove anything that doesn't obviously need to exist
-3. Simplify - Make what remains as simple as possible
-4. Accelerate - Only after simplifying, speed it up
-5. Automate - Only after the above, automate it
+  prompt="""You originally researched [TERRITORY] and found [SUMMARY].
 
-Question: [INSERT QUESTION]
+Other agents discovered:
+- [Agent A] found: [key discovery]
+- [Agent B] found: [key discovery]
+- [Agent C] found: [key discovery]
 
-You have FULL TOOL ACCESS. Research before forming opinions:
-- Search codebase (Glob/Grep/Read)
-- Search web for SOTA approaches
-- Question each component
+Given these new facts:
+1. What changes about your position?
+2. What new research does this suggest? (Run it)
+3. Where do you now AGREE with another agent you initially wouldn't have?
+4. Where do you DISAGREE more strongly given the new evidence?
 
-Output: A ruthlessly simplified version. Name specific things to delete."""
+Output: Updated position with rationale for what changed and what held."""
 )
 ```
 
-### Agent 2: AGI-Pilled
-
-```
-Task(
-  subagent_type="general-purpose",
-  description="AGI-Pilled Analysis",
-  model="opus",
-  prompt="""Assume maximally capable AI and reason from that assumption.
-
-Core beliefs:
-- Frontier models are smarter than most humans at most tasks
-- If you're constraining the model with rules, you're probably doing it wrong
-- The model knows more than your schema - trust it
-- Optimize for intelligence and capability, never for cost
-
-Question: [INSERT QUESTION]
-
-You have FULL TOOL ACCESS. Research before forming opinions:
-- Search for SOTA AI systems and patterns
-- Find where current approach under-utilizes model intelligence
-- Look for examples of maximally autonomous systems
-
-Output: The ambitious, capability-maximizing approach. Don't hedge."""
-)
-```
-
-### Agent 3: Critical Reviewer
-
-**EVALUATION MODE:**
-```
-Task(
-  subagent_type="general-purpose",
-  description="Critical Reviewer",
-  model="opus",
-  prompt="""Review this proposal as if it were a PR to the main codebase.
-
-Question: [INSERT QUESTION]
-
-You have FULL TOOL ACCESS. Build your case:
-- Search for failure cases and post-mortems
-- Find counterexamples from practitioner blogs
-- Check local codebase constraints
-
-Find what will break, what's over-engineered, what's under-specified.
-"It might not work" is weak. "Here's where it failed: [citation]" is strong.
-
-Output: What would make you mass-revert this PR at 2am?"""
-)
-```
-
-**IMPLEMENTATION MODE:**
-```
-Task(
-  subagent_type="general-purpose",
-  description="Critical Reviewer (Implementation)",
-  model="opus",
-  prompt="""Review the IMPLEMENTATION APPROACH, not the goal itself.
-
-Goal (accept as given): [INSERT GOAL]
-Approach: [INSERT QUESTION]
-
-You have FULL TOOL ACCESS. Find implementation pitfalls:
-- Search for "[approach] gotchas" and issues
-- Find successful implementations in Tier 1 sources
-- Check local patterns to honor
-
-Critique HOW, not WHETHER. Find risks in execution, not strategy.
-
-Output: What implementation details would make you nervous?"""
-)
-```
-
-### Dynamic Agents (2)
-
-Generate 2 perspectives based on the question. Think: *Who would argue about this at a company meeting?*
-
-| Task Type | Example Dynamic 1 | Example Dynamic 2 |
-|-----------|------------------|------------------|
-| Auth feature | Security Engineer | API Consumer |
-| UI component | UX Designer | Accessibility Expert |
-| DB migration | DBA | Application Developer |
-| Architecture | Ops Engineer | Future Maintainer |
-
-```
-Task(
-  subagent_type="general-purpose",
-  description="[PERSPECTIVE] perspective",
-  model="opus",
-  prompt="""You are a [SPECIFIC ROLE].
-
-Question: [INSERT QUESTION]
-
-You have FULL TOOL ACCESS. Research before forming opinions:
-- Search codebase for relevant patterns
-- Search web (prefer Tier 1: anthropics/*, pydantic/*, official docs, practitioner blogs)
-- Avoid: Business press, SEO farms, stale academic papers
-
-From YOUR unique expertise, what do you see that others will miss?
-Ground every claim in evidence. Focus on what's UNIQUE to your perspective.
-
-Output: Your distinct insight that others are blind to."""
-)
-```
+Launch cross-pollination agents in parallel. This is where the highest-value insights emerge — at the intersection of discoveries.
 
 ---
 
-## Execution
+## Phase 3: Synthesis
 
-### Round 1: Parallel Breadth
+This is the hardest and most important phase. Do NOT rush it.
 
-1. **Determine mode** (EVALUATION or IMPLEMENTATION)
-2. **Generate 2 dynamic perspectives** for this specific question
-3. **Launch 5 agents in a SINGLE message** (parallel execution)
-4. **Wait for all agents to return**
+### 3.1 Catalog Discoveries
 
-### Synthesis
+Before forming opinions, list every distinct fact/discovery agents surfaced:
 
-After all agents return:
-
-**Find Consensus** - Where do 3+ agents agree? This is probably true.
-
-**Structure Disagreements** - For each tension:
 ```
-DISAGREEMENT: [topic]
+DISCOVERY LOG:
+1. [Agent X] found: [specific fact] (source: [codebase/web/both])
+2. [Agent Y] found: [specific fact] (source: [codebase/web/both])
+...
+```
+
+### 3.2 Identify Genuine Tensions
+
+Not every disagreement is real. Classify each:
+
+| Type | Test | Action |
+|------|------|--------|
+| **Surface framing** | Agents say the same thing in different words | Merge into consensus |
+| **Different evidence** | Agents found different facts that appear to conflict | Check if both facts can be true simultaneously |
+| **Genuine tension** | Agents disagree even given the same facts | Structure as disagreement with crux |
+
+### 3.3 Find the Crux
+
+For each genuine tension, identify the **crux** — the single empirical question that, if answered, would resolve the disagreement:
+
+```
+TENSION: [topic]
 - [Agent X] claims: [position] because [evidence]
 - [Agent Y] claims: [opposite] because [evidence]
-- The crux: [what would need to be true for one side to be right]
+- THE CRUX: [If we knew ___, this would be resolved]
+- RESOLUTION: [If one emerged] or UNRESOLVED [if genuinely open]
 ```
 
-**Do NOT smooth over disagreements.** The structured conflict IS the insight.
+**Do NOT smooth over disagreements.** Structured conflict IS the insight. An unresolved crux with clearly stated positions is more valuable than a forced consensus.
 
-### Optional Round 1.5: Dialogue
+### 3.4 Produce Actionable Output
 
-**Trigger**: Two agents sharply disagree on a critical point.
+Use the appropriate mode template:
 
-Have them actually debate:
+#### EVALUATION MODE
 
-**Step 1: Defender**
-```
-Task(
-  description="Dialogue: [Agent X] defends",
-  prompt="""You claimed: [X's position]
-[Agent Y] disagrees: [Y's position]
+```markdown
+## Executive Synthesis
+[Coherent narrative that tells a story — not a list of bullet points]
 
-Research to strengthen your defense. Address their strongest point.
-- What new evidence supports your position?
-- Where do they have a point? (Concede honestly)
-- What's the crux that would resolve this?"""
-)
-```
+## Consensus
+[What 3+ agents agree on, with the evidence that convinced them]
 
-**Step 2: Challenger** (after Step 1 completes)
-```
-Task(
-  description="Dialogue: [Agent Y] responds",
-  prompt="""You claimed: [Y's position]
-[Agent X] responded: [PASTE RESPONSE]
+## Structured Disagreements
+### [Tension 1 Title]
+| Position A | Position B |
+|------------|------------|
+| **Agent**: [who] | **Agent**: [who] |
+| **Claim**: [what] | **Claim**: [what] |
+| **Evidence**: [findings] | **Evidence**: [findings] |
 
-- Did they address your strongest point?
-- Where did they change your mind?
-- Final verdict: agreement, partial, or persistent disagreement?"""
-)
+**The crux**: [single question that would resolve this]
+
+## Practical Guidance
+[What to do given the current state of knowledge, including uncertainty]
+
+## Follow-Up Questions
+[What research or experiments would sharpen the analysis]
 ```
 
-**Synthesize dialogue**: Convergence, persistent disagreement, new insights.
+#### IMPLEMENTATION MODE
+
+```markdown
+## Recommended Approach
+[The strategy that emerged — not a compromise, the BEST approach given all evidence]
+
+## Why This Approach
+[What evidence from which agents drove this recommendation]
+
+## Implementation Tradeoffs
+### [Decision Point 1]
+| Option A | Option B |
+|----------|----------|
+| **Approach**: [desc] | **Approach**: [desc] |
+| **Evidence for**: [findings] | **Evidence for**: [findings] |
+| **Risk**: [what could go wrong] | **Risk**: [what could go wrong] |
+
+**Recommendation**: [which and why, with crux if unresolved]
+
+## Technical Details
+[Specific files, patterns, APIs — actionable, not abstract]
+
+## Risks & Mitigations
+[Honest assessment, not boilerplate]
+
+## Next Steps
+[Concrete actions in order, with the first step being immediately executable]
+```
 
 ---
 
-## Output Structure
+## Phase 4: Quality Gate
 
-### EVALUATION MODE
+Before presenting output, self-check:
 
-```
-## Executive Synthesis
-[Coherent narrative merging perspectives]
+| Check | Pass Condition |
+|-------|---------------|
+| **Information diversity** | Agents discovered DIFFERENT facts, not just opined differently on the same facts |
+| **Evidence grounding** | Every claim traces to codebase evidence or cited external source |
+| **Preserved disagreements** | At least one genuine tension is explicitly structured (unless true consensus) |
+| **Surprise test** | Output contains at least one insight the questioner didn't already have |
+| **Actionability** | Reader knows what to DO next, not just what to THINK |
 
-## Consensus
-[What 3+ agents agree on]
-
-## Structured Disagreements
-### Disagreement 1: [Topic]
-| Position A | Position B |
-|------------|------------|
-| **Claimed by**: [Agent] | **Claimed by**: [Agent] |
-| **Argument**: [Claim] | **Argument**: [Claim] |
-| **Evidence**: [Findings] | **Evidence**: [Findings] |
-
-**The crux**: [Key question]
-**Resolution**: [If any]
-
-## Practical Guidance
-[Actionable recommendations]
-
-## Follow-Up Questions
-[What would sharpen understanding]
-```
-
-### IMPLEMENTATION MODE
-
-```
-## Executive Summary
-[How to implement the goal]
-
-## Recommended Approach
-[Strategy that emerged from analysis]
-
-## Implementation Tradeoffs
-### Tradeoff 1: [Decision]
-| Option A | Option B |
-|----------|----------|
-| **Approach**: [Desc] | **Approach**: [Desc] |
-| **Pros**: [Benefits] | **Pros**: [Benefits] |
-| **Cons**: [Costs] | **Cons**: [Costs] |
-
-**Recommendation**: [Which and why]
-
-## Technical Details
-[Specific files, patterns, guidance]
-
-## Risks & Mitigations
-[What could go wrong]
-
-## Next Steps
-[Concrete actions in order]
-```
+If any check fails:
+- Missing information diversity → Note it honestly: "All agents converged; this may not warrant heavy analysis"
+- Missing evidence → Flag ungrounded claims as speculation
+- No surprises → The question may have been too simple for heavy; acknowledge this
 
 ---
 
 ## Guardrails
 
-**Research before opinion**:
-- Agents must use tools (Glob, Grep, Read, WebSearch/Exa) before forming views
-- Opinion without evidence is speculation
+**Research before opinion**: Agents must use tools (Glob, Grep, Read, Exa) before forming views. Opinion without evidence is speculation.
 
-**Source quality**:
-- Prefer Tier 1: GitHub repos (anthropics/*, pydantic/*, openai/*), official docs, practitioner blogs
-- Avoid: Business press, SEO farms, academic papers >6 months old
+**Source quality**: Prefer Tier 1 (GitHub repos: anthropics/*, pydantic/*, openai/*), official docs, practitioner blogs. Avoid business press, SEO farms, academic papers >6 months old.
 
-**Disagreement IS the insight**:
-- Don't force consensus
-- Explicit "A claims X, B claims Y, crux is Z" beats vague "there are tradeoffs"
-- Unresolved tensions are valid outputs
+**Disagreement IS the insight**: Don't force consensus. "A claims X because [evidence], B claims Y because [evidence], crux is Z" beats "there are tradeoffs."
 
-**Trust model intelligence**:
-- Agents don't need detailed rubrics - they're smart
-- Principles over prescriptions
-- Let agents determine depth organically
+**Trust model intelligence**: Agents don't need rubrics. Principles over prescriptions. Let agents determine depth organically.
+
+**Minimum viable context transfer**: When passing Agent A's output to Agent B (cross-pollination), pass claims + evidence, not the full analysis.
 
 ---
 
-## Why This Works (Cognitive Science)
+## Agent Template Quick Reference
 
-Multi-agent analysis works because it exploits **implementation intentions** (Gollwitzer research, d=.65 effect across 94 studies).
+For other skills that reference heavy templates (e.g., /burndown, /melt):
+
+| Template | When to Use | Key Prompt Fragment |
+|----------|-------------|-------------------|
+| **Reductive Analyst** | Simplification, deletion, debt | "Question every requirement. Delete what doesn't need to exist." |
+| **Capability Maximizer** | AI-first design, removing constraints | "Assume maximally capable AI. Trust the model." |
+| **Adversarial Reviewer** | Risk assessment, PR review | "What would make you mass-revert this at 2am?" |
+| **Domain Expert** | Specialized knowledge needed | "From YOUR expertise, what do others miss?" |
+| **Internal Archaeologist** | Codebase-focused discovery | "What does the code actually do today?" |
+| **External Scout** | Industry patterns, SOTA research | "How have others solved this? Where did it fail?" |
+
+---
+
+## Why This Works
+
+Multi-agent analysis exploits **information asymmetry**, not just opinion diversity.
 
 **The mechanism:**
-1. Each agent prompt is an "if-then" plan: "If analyzing X, then apply Y perspective"
-2. This bypasses the model's tendency to optimize for fluency over verification
-3. Parallel execution forces genuine perspective diversity (not serial drift toward consensus)
+1. Research territories force agents to discover different facts
+2. Parallel execution prevents serial drift toward consensus
+3. Cross-pollination produces insights at the intersection of discoveries
+4. Crux identification transforms vague "tradeoffs" into testable questions
 
-**Key insight from research:**
-- Models don't "forget" - they have **positional attention bias** (lost-in-the-middle phenomenon)
-- Agent prompts work because they inject perspective at the moment of analysis
-- Synthesis works because agent outputs land at the END of context (recency advantage)
-
-**The 4-layer production stack:**
+**The 4-layer stack:**
 ```
-Layer 4: Persistent Memory (cross-session learnings)
-Layer 3: Session State (agent outputs, synthesis)
-Layer 2: Deterministic Scaffolding (parallel launch, synthesis template)
-Layer 1: Model Intelligence (each agent's reasoning)
+Layer 4: Persistent Memory (cross-session learnings via memory system)
+Layer 3: Session State (agent outputs, synthesis, quality gate)
+Layer 2: Deterministic Scaffolding (triage, parallel launch, synthesis template)
+Layer 1: Model Intelligence (each agent's reasoning within its territory)
 ```
 
-Heavy operates at Layers 1-3. Layer 4 is handled by the memory system that captures `/heavy` insights for future sessions.
+Heavy operates at Layers 1-3. Layer 4 is handled by the memory system that captures insights for future sessions.
