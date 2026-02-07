@@ -232,6 +232,8 @@ chmod +x ~/.claude/hooks/my-hook.py
 
 ### Register Hook in settings.json
 
+> **Important**: Toolkit hooks are registered globally in `~/.claude/settings.json`. Do NOT re-register them in project-level `.claude/settings.json` — Claude Code runs hooks from both files, and path variations defeat dedup, causing double execution. See [Hooks: Global vs Project Settings](../concepts/hooks.md#global-vs-project-settings--the-settings-contract).
+
 Add to `~/.claude/settings.json`:
 
 ```json

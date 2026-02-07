@@ -68,28 +68,46 @@ def log_debug(message: str) -> None:
 
 
 def get_toolkit_repo_path() -> Path | None:
-    """Get the toolkit repository path by resolving the hooks symlink."""
+    """Get the toolkit repository path by resolving the hooks symlink.
+
+    Supports two layouts:
+    1. Directory symlink: ~/.claude/hooks -> config/hooks/ (standard install)
+    2. Per-file symlinks: ~/.claude/hooks/ is a real dir with symlinked files
+       (user overlay install where directory symlink was dissolved)
+    """
     hooks_path = Path.home() / ".claude" / "hooks"
 
     if not hooks_path.exists():
         log_debug("hooks path does not exist")
         return None
 
-    if not hooks_path.is_symlink():
-        log_debug("hooks path is not a symlink (manual install?)")
-        return None
+    # Case 1: Directory symlink (standard install)
+    if hooks_path.is_symlink():
+        try:
+            resolved = hooks_path.resolve()
+            repo_path = resolved.parent.parent
+            if (repo_path / ".git").exists():
+                log_debug(f"found toolkit repo at {repo_path} (directory symlink)")
+                return repo_path
+        except Exception as e:
+            log_debug(f"error resolving directory symlink: {e}")
 
-    try:
-        resolved = hooks_path.resolve()
-        repo_path = resolved.parent.parent
-        if not (repo_path / ".git").exists():
-            log_debug(f"resolved path {repo_path} is not a git repo")
-            return None
-        log_debug(f"found toolkit repo at {repo_path}")
-        return repo_path
-    except Exception as e:
-        log_debug(f"error resolving toolkit path: {e}")
-        return None
+    # Case 2: Real directory with per-file symlinks (user overlay install)
+    if hooks_path.is_dir() and not hooks_path.is_symlink():
+        for child in hooks_path.iterdir():
+            if child.is_symlink() and child.suffix == ".py":
+                try:
+                    resolved = child.resolve()
+                    # resolved is config/hooks/somefile.py -> parent.parent = repo
+                    repo_path = resolved.parent.parent
+                    if (repo_path / ".git").exists():
+                        log_debug(f"found toolkit repo at {repo_path} (per-file symlink)")
+                        return repo_path
+                except Exception:
+                    continue
+
+    log_debug("could not resolve toolkit repo path")
+    return None
 
 
 # ============================================================================

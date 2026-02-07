@@ -286,18 +286,7 @@ def has_uncommitted_changes(cwd: str) -> bool:
 def block_uncommitted_changes(cwd: str) -> None:
     """Block stop - uncommitted changes in autonomous mode."""
     print(
-        """
-╔═══════════════════════════════════════════════════════════════╗
-║  UNCOMMITTED CHANGES — COMMIT BEFORE STOPPING                 ║
-╚═══════════════════════════════════════════════════════════════╝
-
-You have uncommitted code changes. In autonomous mode, commit your work
-before stopping:
-
-  git add <files> && git commit -m "feat/fix/refactor: [description]"
-
-Then try stopping again.
-""",
+        "BLOCKED: Uncommitted changes detected. Commit your work before stopping.",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -309,28 +298,8 @@ def block_no_checkpoint(cwd: str) -> None:
         Path(cwd) / ".claude" / "completion-checkpoint.json"
         if cwd else ".claude/completion-checkpoint.json"
     )
-    categories = ", ".join(sorted(VALID_CATEGORIES))
     print(
-        f"""
-╔═══════════════════════════════════════════════════════════════╗
-║  COMPLETION CHECKPOINT REQUIRED                               ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Create {checkpoint_path} before stopping:
-
-{CHECKPOINT_SCHEMA}
-
-RULES:
-- is_job_complete must be true
-- what_was_done must be >20 chars
-- what_remains must be "none"
-- linters_pass required only if code_changes_made is true
-- key_insight: >50 chars, what you LEARNED (not what you did)
-- search_terms: 2-7 concept keywords
-- category: {categories}
-
-Create this file, answer honestly, then stop again.
-""",
+        f"BLOCKED: Create {checkpoint_path} (schema in your skill prompt) and stop again.",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -340,15 +309,7 @@ def block_with_failures(failures: list[str]) -> None:
     """Block stop - checkpoint validation failed."""
     failure_list = "\n".join(f"  * {f}" for f in failures)
     print(
-        f"""
-╔═══════════════════════════════════════════════════════════════╗
-║  CHECKPOINT FAILED - CONTINUE WORKING                         ║
-╚═══════════════════════════════════════════════════════════════╝
-
-{failure_list}
-
-Fix these issues, update .claude/completion-checkpoint.json, then stop again.
-""",
+        f"BLOCKED: Checkpoint failed:\n{failure_list}\nFix and stop again.",
         file=sys.stderr,
     )
     sys.exit(2)

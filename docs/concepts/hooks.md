@@ -17,6 +17,26 @@ Claude Code supports a hooks system that executes shell commands in response to 
 
 ## Key Concepts
 
+### Global vs Project Settings — The Settings Contract
+
+Claude Code loads hooks from **all** settings files and runs them all (additive merge). Identical command strings are deduplicated, but path variations (`$HOME` vs `~` vs absolute) defeat the dedup and cause double execution.
+
+**The rule**: Toolkit hooks belong in `~/.claude/settings.json` only. Project-level `.claude/settings.json` files should contain only project-specific config.
+
+| Belongs in project `.claude/settings.json` | Does NOT belong |
+|---|---|
+| `env` vars specific to this project | Hooks already registered globally |
+| `disabledMcpjsonServers` | `alwaysThinkingEnabled` (already global) |
+| Project-specific hooks (scripts in the project repo) | Copy-paste of global hook blocks |
+| `permissions` overrides | Toolkit hooks (`~/.claude/hooks/*`) |
+
+**Path format rule**: Hook commands MUST use `"$HOME/.claude/hooks/..."` (not `~` or absolute paths) to enable Claude Code's built-in command-string dedup.
+
+**Automatic detection**: `session-init.py` checks for hook overlap at session start and warns:
+```
+[session-init] Warning: .claude/settings.json duplicates 3 global hook(s): read-docs-reminder.py, read-docs-trigger.py, stop-validator.py. Remove from project settings to prevent double execution.
+```
+
 ### Two-Phase Stop Flow
 
 The Stop hook implements a two-phase blocking pattern to prevent infinite loops:

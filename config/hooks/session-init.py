@@ -138,9 +138,9 @@ def main():
             hook_name="session-init",
             parsed_data={"deleted": deleted},
         )
-        print(
-            f"[session-init] Cleaned up {len(deleted)} expired state file(s) "
-            f"from previous session."
+        log_debug(
+            f"Cleaned up {len(deleted)} expired state file(s) from previous session",
+            hook_name="session-init",
         )
 
     # Write health cleanup metrics sidecar (read by _health.py)
@@ -163,7 +163,10 @@ def main():
                 hook_name="session-init",
                 parsed_data={"cleaned": gc_cleaned},
             )
-            print(f"[session-init] Cleaned up {len(gc_cleaned)} stale worktree(s).")
+            log_debug(
+                f"Cleaned up {len(gc_cleaned)} stale worktree(s)",
+                hook_name="session-init",
+            )
     except ImportError:
         pass
 
@@ -187,7 +190,10 @@ def main():
                 hook_name="session-init",
                 parsed_data={"cleaned": len(cleaned_tasks)},
             )
-            print(f"[session-init] Cleaned up {len(cleaned_tasks)} stale async-task(s).")
+            log_debug(
+                f"Cleaned up {len(cleaned_tasks)} stale async-task(s)",
+                hook_name="session-init",
+            )
 
     # 7. Clean up old session transcript files (prevents ~/.claude bloat)
     _cleanup_old_sessions()
@@ -210,6 +216,9 @@ def main():
 
     # 12. Clean up old doc-debt entries
     _cleanup_doc_debt(cwd)
+
+    # 13. Warn if project settings.json duplicates global hooks
+    _check_hook_overlap(cwd)
 
     sys.exit(0)
 
@@ -268,9 +277,9 @@ def _cleanup_old_sessions(max_per_project: int = 10, max_age_days: int = 21) -> 
                 "mb_freed": round(mb_freed, 1),
             },
         )
-        print(
-            f"[session-cleanup] Removed {total_deleted_files} old session(s), "
-            f"freed {mb_freed:.1f} MB"
+        log_debug(
+            f"Removed {total_deleted_files} old session(s), freed {mb_freed:.1f} MB",
+            hook_name="session-init",
         )
 
 
@@ -308,7 +317,10 @@ def _cleanup_debug_files(max_age_days: int = 7) -> None:
             hook_name="session-init",
             parsed_data={"deleted": deleted_count, "mb_freed": round(mb_freed, 1)},
         )
-        print(f"[session-cleanup] Removed {deleted_count} old debug file(s), freed {mb_freed:.1f} MB")
+        log_debug(
+            f"Removed {deleted_count} old debug file(s), freed {mb_freed:.1f} MB",
+            hook_name="session-init",
+        )
 
 
 def _cleanup_session_env() -> None:
@@ -332,7 +344,71 @@ def _cleanup_session_env() -> None:
             hook_name="session-init",
             parsed_data={"deleted": deleted_count},
         )
-        print(f"[session-cleanup] Removed {deleted_count} empty session-env dir(s)")
+        log_debug(
+            f"Removed {deleted_count} empty session-env dir(s)",
+            hook_name="session-init",
+        )
+
+
+def _normalize_hook_cmd(cmd: str) -> str:
+    """Normalize hook command paths for comparison (resolve ~, $HOME, quotes)."""
+    home = str(Path.home())
+    c = cmd.replace('"', "").replace("'", "")
+    c = c.replace("$HOME", home).replace("~", home)
+    # Extract just the script basename for fuzzy matching
+    parts = c.split()
+    for p in parts:
+        if p.endswith(".py") or p.endswith(".sh"):
+            return Path(p).name
+    return c
+
+
+def _extract_hook_commands(settings: dict) -> set[str]:
+    """Extract all normalized hook script names from a settings dict."""
+    commands: set[str] = set()
+    hooks = settings.get("hooks", {})
+    for _event, entries in hooks.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            for hook in entry.get("hooks", []):
+                cmd = hook.get("command", "")
+                if cmd:
+                    commands.add(_normalize_hook_cmd(cmd))
+    return commands
+
+
+def _check_hook_overlap(cwd: str) -> None:
+    """Warn if project .claude/settings.json duplicates global hooks."""
+    if not cwd:
+        return
+    project_settings = Path(cwd) / ".claude" / "settings.json"
+    global_settings = Path.home() / ".claude" / "settings.json"
+    if not project_settings.exists() or not global_settings.exists():
+        return
+    # Don't warn if project settings is a symlink (intentional)
+    if project_settings.is_symlink():
+        return
+    try:
+        proj = json.loads(project_settings.read_text())
+        glob = json.loads(global_settings.resolve().read_text())
+    except (json.JSONDecodeError, IOError):
+        return
+    proj_cmds = _extract_hook_commands(proj)
+    glob_cmds = _extract_hook_commands(glob)
+    overlap = proj_cmds & glob_cmds
+    if overlap:
+        names = ", ".join(sorted(overlap))
+        print(
+            f"[session-init] Warning: .claude/settings.json duplicates {len(overlap)} "
+            f"global hook(s): {names}. Remove from project settings to prevent "
+            f"double execution."
+        )
+        log_debug(
+            f"Hook overlap detected: {names}",
+            hook_name="session-init",
+            parsed_data={"overlap": sorted(overlap)},
+        )
 
 
 def _cleanup_doc_debt(cwd: str, max_age_days: int = 7) -> None:
