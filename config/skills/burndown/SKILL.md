@@ -62,6 +62,25 @@ Before stopping, create `.claude/completion-checkpoint.json`:
     "key_insight": "Reusable lesson about debt patterns found (>50 chars)",
     "search_terms": ["tech-debt", "refactor", "code-slop"]
   },
+  "verification": {
+    "tests_executed_at_version": "abc1234",
+    "tests": [
+      {
+        "id": "linter_clean",
+        "type": "command_output",
+        "expected": "EXIT_CODE=0",
+        "actual": "EXIT_CODE=0, no errors",
+        "passed": true
+      },
+      {
+        "id": "no_regressions",
+        "type": "command_output",
+        "expected": "EXIT_CODE=0, all tests pass",
+        "actual": "EXIT_CODE=0, 42 tests passed",
+        "passed": true
+      }
+    ]
+  },
   "burndown_metrics": {
     "issues_at_start": 47,
     "issues_at_end": 6,
@@ -72,7 +91,7 @@ Before stopping, create `.claude/completion-checkpoint.json`:
 }
 ```
 
-Extra fields (burndown_metrics, evidence, etc.) are allowed — the stop-validator ignores unknown keys. If validation fails, the blocking message shows exact requirements.
+The stop-validator enforces `verification.tests` with at least 1 test proving changes work. Linters are checked independently by the harness. Extra fields (burndown_metrics, etc.) are allowed.
 
 ## Workflow
 

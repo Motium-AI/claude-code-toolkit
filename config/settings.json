@@ -137,6 +137,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/autonomous-health-monitor.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/verification-monitor.py\"",
+            "timeout": 5
           }
         ]
       },

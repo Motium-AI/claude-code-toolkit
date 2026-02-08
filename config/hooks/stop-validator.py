@@ -8,13 +8,15 @@ stop distinction.
 
 Rules:
 1. If session made no code changes -> allow stop (still capture memory)
-2. If session made code changes -> require lightweight checkpoint:
+2. If session made code changes -> require checkpoint with:
    - is_job_complete: true
    - what_was_done: >20 chars
    - what_remains: "none"
    - key_insight: >50 chars (for cross-session memory)
    - search_terms: 2-7 keywords (for memory retrieval)
-3. No mode-specific paths - one schema fits all
+   - verification.tests: at least 1 test proving the goal was achieved
+3. Deterministic linter verification (independent, not self-reported)
+4. No mode-specific paths - one schema fits all
 
 Exit codes:
   0 - Allow stop
@@ -52,6 +54,18 @@ CHECKPOINT_SCHEMA = """\
     "what_remains": "none",
     "key_insight": "...",
     "search_terms": []
+  },
+  "verification": {
+    "tests_executed_at_version": "git-short-hash",
+    "tests": [
+      {
+        "id": "descriptive_test_name",
+        "type": "command_output|file_content|api_response",
+        "expected": "what should happen",
+        "actual": "what actually happened",
+        "passed": true
+      }
+    ]
   }
 }"""
 
@@ -160,6 +174,159 @@ def _check_verification_artifacts(cwd: str) -> list[str]:
     return failures
 
 
+def _run_deterministic_linters(cwd: str) -> list[str]:
+    """Actually run linters instead of trusting self-reported booleans.
+
+    Detects project toolchain and runs the appropriate linter.
+    Returns list of failure messages (empty = all passed).
+    Only runs linters that are detectable in the project.
+    """
+    failures = []
+    if not cwd:
+        return failures
+
+    cwd_path = Path(cwd)
+
+    # Python: ruff check (fast, <5s on most projects)
+    if (cwd_path / "pyproject.toml").exists() or (cwd_path / "setup.py").exists():
+        try:
+            result = subprocess.run(
+                ["ruff", "check", "."],
+                capture_output=True, text=True, timeout=30, cwd=cwd,
+            )
+            if result.returncode != 0:
+                # Extract first 3 errors for the message
+                error_lines = [l for l in result.stdout.split("\n") if l.strip()][:3]
+                failures.append(
+                    f"LINTER FAILED (ruff): {len(error_lines)} error(s). "
+                    f"First: {error_lines[0] if error_lines else 'unknown'}. "
+                    "Run: ruff check --fix ."
+                )
+            else:
+                log_debug("Deterministic linter passed: ruff", hook_name="stop-validator")
+        except FileNotFoundError:
+            # ruff not installed — skip, don't penalize
+            log_debug("ruff not found, skipping Python lint", hook_name="stop-validator")
+        except subprocess.TimeoutExpired:
+            log_debug("ruff timed out (30s)", hook_name="stop-validator")
+
+    # JavaScript/TypeScript: check for lint script in package.json
+    pkg_json = cwd_path / "package.json"
+    if pkg_json.exists():
+        try:
+            pkg = json.loads(pkg_json.read_text())
+            scripts = pkg.get("scripts", {})
+            if "lint" in scripts:
+                result = subprocess.run(
+                    ["npm", "run", "lint", "--", "--quiet"],
+                    capture_output=True, text=True, timeout=60, cwd=cwd,
+                )
+                if result.returncode != 0:
+                    stderr_head = result.stderr[:200] if result.stderr else result.stdout[:200]
+                    failures.append(
+                        f"LINTER FAILED (npm run lint): {stderr_head}. "
+                        "Run: npm run lint -- --fix"
+                    )
+                else:
+                    log_debug("Deterministic linter passed: npm run lint", hook_name="stop-validator")
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+        except subprocess.TimeoutExpired:
+            log_debug("npm run lint timed out (60s)", hook_name="stop-validator")
+
+    # TypeScript: tsc --noEmit (type checking)
+    if (cwd_path / "tsconfig.json").exists():
+        try:
+            result = subprocess.run(
+                ["npx", "tsc", "--noEmit"],
+                capture_output=True, text=True, timeout=60, cwd=cwd,
+            )
+            if result.returncode != 0:
+                error_lines = [l for l in result.stdout.split("\n") if "error TS" in l][:3]
+                if error_lines:
+                    failures.append(
+                        f"TYPE CHECK FAILED (tsc): {len(error_lines)} error(s). "
+                        f"First: {error_lines[0][:100]}. "
+                        "Run: npx tsc --noEmit"
+                    )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    return failures
+
+
+def _validate_verification_tests(checkpoint: dict, cwd: str) -> list[str]:
+    """Validate that the checkpoint includes real verification tests.
+
+    When code changes were made, requires at least 1 verification test
+    that proves the goal was achieved (not just "it compiles").
+
+    Returns list of failure messages (empty = valid).
+    """
+    failures = []
+    report = checkpoint.get("self_report", {})
+
+    # Only require verification tests when code was actually changed
+    if not report.get("code_changes_made", False):
+        return failures
+
+    verification = checkpoint.get("verification", {})
+    tests = verification.get("tests", [])
+
+    if not tests:
+        failures.append(
+            "verification.tests is missing or empty — you must define at least 1 test "
+            "that PROVES your changes work (not just 'it compiles'). Use test types: "
+            "command_output, file_content, api_response, page_content, database_query. "
+            "See config/references/validation-tests-contract.md for schema."
+        )
+        return failures
+
+    # Validate each test has required fields
+    valid_test_count = 0
+    for i, test in enumerate(tests):
+        if not isinstance(test, dict):
+            continue
+        test_id = test.get("id", f"test_{i}")
+        missing = []
+        for field in ("id", "type", "expected", "actual", "passed"):
+            if field not in test:
+                missing.append(field)
+        if missing:
+            failures.append(
+                f"verification.tests[{test_id}] missing fields: {', '.join(missing)}"
+            )
+        elif test.get("actual") is not None:
+            valid_test_count += 1
+
+    if valid_test_count == 0 and not failures:
+        failures.append(
+            "verification.tests has entries but none have 'actual' results — "
+            "you defined tests but didn't run them. Execute each test and record results."
+        )
+
+    # Check for staleness: were tests run against current code version?
+    tested_version = verification.get("tests_executed_at_version", "")
+    if tested_version and cwd:
+        current_version = get_code_version(cwd)
+        if current_version and tested_version != current_version:
+            failures.append(
+                f"verification tests are stale (tested at {tested_version}, "
+                f"current is {current_version}). Re-run tests against current code."
+            )
+
+    # Check that all tests passed
+    failed_tests = [t for t in tests if isinstance(t, dict) and t.get("passed") is False]
+    if failed_tests:
+        for t in failed_tests[:3]:
+            failures.append(
+                f"verification test '{t.get('id', '?')}' FAILED: "
+                f"expected {t.get('expected', '?')}, got {t.get('actual', '?')}"
+            )
+
+    return failures
+
+
 def validate_checkpoint(checkpoint: dict) -> tuple[bool, list[str]]:
     """Validate checkpoint - ONE universal path, no mode branching."""
     failures = []
@@ -179,18 +346,31 @@ def validate_checkpoint(checkpoint: dict) -> tuple[bool, list[str]]:
     if not what_done or len(what_done.strip()) < 20:
         failures.append("what_was_done is missing or too brief (need >20 chars)")
 
-    # 3. Linters (only when code was changed)
+    # 3. Deterministic linter verification (replace self-reported boolean)
+    cwd = checkpoint.get("_cwd", "")
     if report.get("code_changes_made", False):
-        if not report.get("linters_pass", False):
-            failures.append("linters_pass required - you changed code, run the linter")
+        linter_failures = _run_deterministic_linters(cwd)
+        if linter_failures:
+            failures.extend(linter_failures)
+        elif not report.get("linters_pass", False):
+            # Linters passed deterministically but agent forgot to set the boolean
+            # — don't penalize, the real check passed
+            log_debug(
+                "linters_pass=false but deterministic check passed — accepting",
+                hook_name="stop-validator",
+            )
 
     # 3b. Cross-check verification artifacts (close the self-report trust gap)
     if report.get("is_job_complete", False) and report.get("code_changes_made", False):
-        verification_failures = _check_verification_artifacts(
-            checkpoint.get("_cwd", "")
-        )
+        verification_failures = _check_verification_artifacts(cwd)
         if verification_failures:
             failures.extend(verification_failures)
+
+    # 3c. Require verification tests that prove the goal was achieved
+    if report.get("is_job_complete", False) and report.get("code_changes_made", False):
+        test_failures = _validate_verification_tests(checkpoint, cwd)
+        if test_failures:
+            failures.extend(test_failures)
 
     # 4. Memory quality fields
     key_insight = reflection.get("key_insight", "")
@@ -378,7 +558,8 @@ def block_no_checkpoint(cwd: str) -> None:
         f"{CHECKPOINT_SCHEMA}\n\n"
         "RULES: is_job_complete=true, what_was_done >20 chars, what_remains=\"none\",\n"
         "key_insight >50 chars (LESSON, not what you did), search_terms 2-7 keywords.\n"
-        "linters_pass required only if code_changes_made is true.",
+        "verification.tests required if code_changes_made — at least 1 test proving\n"
+        "your changes WORK (not just compile). Linters are checked independently.",
         file=sys.stderr,
     )
     sys.exit(2)

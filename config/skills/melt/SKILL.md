@@ -103,28 +103,43 @@ git push
 gh workflow run deploy.yml -f environment=staging && gh run watch --exit-status
 ```
 
-## Verification (MANDATORY — Platform-Aware)
+## Goal Verification (MANDATORY — Prove It Works)
 
-| Platform | Detection | Verification Method |
-|----------|-----------|---------------------|
-| Web | `package.json` with frontend deps | Surf CLI first, Chrome MCP fallback |
+Before claiming completion, define and execute tests that PROVE your changes achieved the goal. "It compiles" is not verification. "It works" is.
+
+### Step 1: Define Tests BEFORE or DURING Implementation
+
+Ask: "If a skeptical reviewer could only run commands, what 2-3 tests would prove this works?"
+
+| Platform | Primary Test Types | Minimum Tests |
+|----------|-------------------|---------------|
+| Web | page_content, api_response, command_output | 2 |
+| Mobile | command_output, api_response | 2 |
+| Backend/API | command_output, api_response, file_content | 2 |
+| Config/hooks | command_output, file_content | 2 |
+| Docs only | file_content | 1 |
+
+Test types: `command_output`, `file_content`, `api_response`, `page_content`, `database_query`, `page_element`, `log_absence`, `count_check`. See `config/references/validation-tests-contract.md` for full schema.
+
+### Step 2: Execute Tests and Record Results
+
+Run each test. Record what actually happened. Do NOT fabricate results.
+
+### Step 3: Platform-Specific Verification
+
+| Platform | Detection | Additional Verification |
+|----------|-----------|------------------------|
+| Web | `package.json` with frontend deps | Surf CLI or Chrome MCP |
 | Mobile | `app.json`, `eas.json`, `ios/`, `android/` | Maestro MCP tools |
-| Backend only | No frontend files | Linters + API tests |
-| Config/docs | No code changes | Re-read changed files |
+| Backend only | No frontend files | Linters + API endpoint tests |
+| Config/hooks | Hook Python files | Syntax check + functional test |
 
-### Web Projects
+### Anti-Gaming Rules
 
-```bash
-python3 ~/.claude/hooks/surf-verify.py --urls "https://staging.example.com/feature"
-cat .claude/web-smoke/summary.json
-```
-
-### Mobile Projects
-
-```
-ToolSearch(query: "maestro")
-# Use Maestro MCP tools (NOT bash maestro commands)
-```
+- Do NOT weaken expected values to make tests pass
+- Do NOT remove failing tests
+- Do NOT fabricate "actual" results — run the test and record what happens
+- The stop-validator runs linters INDEPENDENTLY — it does not trust `linters_pass`
 
 ## Completion Checkpoint
 
@@ -143,11 +158,30 @@ Before stopping, create `.claude/completion-checkpoint.json`:
     "what_remains": "none",
     "key_insight": "Reusable lesson for future sessions (>50 chars)",
     "search_terms": ["keyword1", "keyword2"]
+  },
+  "verification": {
+    "tests_executed_at_version": "abc1234",
+    "tests": [
+      {
+        "id": "feature_works",
+        "type": "command_output",
+        "expected": "EXIT_CODE=0, output contains 'success'",
+        "actual": "EXIT_CODE=0, output: 'test passed: success'",
+        "passed": true
+      },
+      {
+        "id": "no_regressions",
+        "type": "command_output",
+        "expected": "EXIT_CODE=0",
+        "actual": "EXIT_CODE=0, all 42 tests passed",
+        "passed": true
+      }
+    ]
   }
 }
 ```
 
-Extra fields are allowed — the stop-validator ignores unknown keys. If validation fails, the blocking message shows exact requirements.
+The stop-validator enforces: `verification.tests` must have at least 1 test with `actual` results when `code_changes_made` is true. Linters are checked independently by the harness.
 
 ## Exit Conditions
 

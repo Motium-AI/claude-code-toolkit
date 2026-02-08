@@ -186,6 +186,18 @@ Write `.claude/completion-checkpoint.json` with lightweight 3+1 schema:
     "what_remains": "none",
     "key_insight": "[reusable lesson from this session]",
     "search_terms": ["improve", "design", "typography", "shadows"]
+  },
+  "verification": {
+    "tests_executed_at_version": "abc1234",
+    "tests": [
+      {
+        "id": "visual_improvement",
+        "type": "page_content",
+        "expected": "Score >= 9.0 on target dimension",
+        "actual": "Score 9.1 on design dimension",
+        "passed": true
+      }
+    ]
   }
 }
 ```
