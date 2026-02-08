@@ -91,7 +91,7 @@ DEPLOY_FAILURE_PATTERNS = [
      "For k8s: kubectl rollout undo deployment/<name>."),
     (r"(?:error|failed).*(?:apply|rollout|deploy)",
      "Deployment operation failed. Rollback: kubectl rollout undo, or git revert HEAD && git push."),
-    (r"deployment.*(?:unhealthy|crash|CrashLoopBackOff|ImagePullBackOff)",
+    (r"(?:deployment.*(?:unhealthy|crash)|CrashLoopBackOff|ImagePullBackOff)",
      "Deployment health check failed. Rollback: kubectl rollout undo, "
      "or revert the commit and redeploy."),
     (r"(?:502 Bad Gateway|503 Service Unavailable).*(?:after|deploy|push)",
@@ -123,7 +123,7 @@ def _match_deploy_failures(output: str, command: str) -> list[str]:
     """Check for deploy-specific failures and suggest rollback commands."""
     advisories = []
     # Only check if the command looks deploy-related
-    deploy_keywords = ["deploy", "push", "eas", "workflow", "kubectl", "az webapp", "gh run"]
+    deploy_keywords = ["deploy", "push", "eas", "workflow", "kubectl", "az webapp", "gh run", "docker"]
     if not any(kw in command.lower() for kw in deploy_keywords):
         return advisories
     for pattern, message_template in DEPLOY_FAILURE_PATTERNS:
