@@ -499,6 +499,73 @@ def get_events_by_entities(
 
 
 # ============================================================================
+# Utility Tracking (citation feedback loop)
+# ============================================================================
+
+
+def record_injection(cwd: str, event_ids: list[str]) -> None:
+    """Record that events were injected into a session (for citation rate tracking)."""
+    _update_utility(cwd, event_ids, field="injected")
+
+
+def record_citation(cwd: str, event_ids: list[str]) -> None:
+    """Record that events were cited as helpful (memory_that_helped feedback)."""
+    _update_utility(cwd, event_ids, field="cited")
+
+
+def get_utility_data(cwd: str) -> dict:
+    """Get utility tracking data: {event_id: {injected: N, cited: N}}."""
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    try:
+        if not manifest_path.exists():
+            return {}
+        manifest = json.loads(manifest_path.read_text())
+        return manifest.get("utility", {})
+    except (json.JSONDecodeError, IOError, OSError):
+        return {}
+
+
+def _update_utility(cwd: str, event_ids: list[str], field: str) -> None:
+    """Increment utility counters for events in the manifest."""
+    if not event_ids:
+        return
+    event_dir = get_memory_dir(cwd)
+    manifest_path = event_dir.parent / MANIFEST_NAME
+    lock_path = event_dir.parent / ".manifest.lock"
+
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "w") as lock_file:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (IOError, OSError):
+                return
+
+            try:
+                manifest = {}
+                if manifest_path.exists():
+                    raw = manifest_path.read_text()
+                    if raw.strip():
+                        manifest = json.loads(raw)
+
+                utility = manifest.get("utility", {})
+                for eid in event_ids:
+                    if not eid:
+                        continue
+                    if eid not in utility:
+                        utility[eid] = {"injected": 0, "cited": 0}
+                    utility[eid][field] = utility[eid].get(field, 0) + 1
+                manifest["utility"] = utility
+
+                atomic_write_json(manifest_path, manifest)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    except (json.JSONDecodeError, IOError, OSError):
+        pass
+
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 

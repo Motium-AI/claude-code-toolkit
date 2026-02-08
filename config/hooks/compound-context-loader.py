@@ -411,7 +411,14 @@ def main():
         )
         sys.exit(0)
 
-    # 2-signal scoring with time-bound entity gate
+    # Load utility data for citation-rate bonus
+    try:
+        from _memory import get_utility_data
+        utility_data = get_utility_data(cwd)
+    except (ImportError, Exception):
+        utility_data = None
+
+    # 2-signal scoring with time-bound entity gate + utility bonus
 
     scored = []
     gated_count = 0
@@ -427,7 +434,7 @@ def main():
         if memory_tokens and _event_overlaps_memory(event, memory_tokens):
             dedup_count += 1
             continue
-        score = score_event(event, basenames, stems, dirs)
+        score = score_event(event, basenames, stems, dirs, utility_data)
         if score >= MIN_SCORE_SESSION_START:
             scored.append((event, score))
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -471,9 +478,17 @@ def main():
 
     print(output)
 
+    # Record injections for utility tracking (citation feedback loop)
+    try:
+        from _memory import record_injection, get_utility_data, atomic_write_json
+        injected_ids = [e.get("id", "") for e, _ in top_events if e.get("id")]
+        if injected_ids:
+            record_injection(cwd, injected_ids)
+    except Exception:
+        pass
+
     # Write injection log for mid-session recall (read by memory-recall.py)
     try:
-        from _memory import atomic_write_json
         session_id = ""
         snap_path = Path(cwd) / ".claude" / "session-snapshot.json"
         if snap_path.exists():

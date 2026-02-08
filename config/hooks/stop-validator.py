@@ -115,6 +115,51 @@ def requires_checkpoint(cwd: str) -> bool:
 # ============================================================================
 
 
+def _check_verification_artifacts(cwd: str) -> list[str]:
+    """Cross-check verification artifact files against self-reported success.
+
+    Reads .claude/web-smoke/summary.json and .claude/validation-tests/summary.json.
+    If either exists and reports failure, overrides the agent's self-report.
+    Only flags failures — missing artifacts are not an error (agent may not
+    have run browser verification for backend-only changes).
+    """
+    failures = []
+    if not cwd:
+        return failures
+
+    claude_dir = Path(cwd) / ".claude"
+
+    # Check surf-verify results
+    smoke_path = claude_dir / "web-smoke" / "summary.json"
+    if smoke_path.exists():
+        try:
+            smoke = json.loads(smoke_path.read_text())
+            if smoke.get("passed") is False:
+                error_count = smoke.get("error_count", "?")
+                failures.append(
+                    f"web-smoke verification FAILED ({error_count} errors) — "
+                    "fix the issues or re-run surf-verify before claiming completion"
+                )
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Check validation-test results
+    tests_path = claude_dir / "validation-tests" / "summary.json"
+    if tests_path.exists():
+        try:
+            tests = json.loads(tests_path.read_text())
+            if tests.get("passed") is False:
+                failed_count = tests.get("failed_count", "?")
+                failures.append(
+                    f"validation-tests FAILED ({failed_count} failures) — "
+                    "fix the tests before claiming completion"
+                )
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return failures
+
+
 def validate_checkpoint(checkpoint: dict) -> tuple[bool, list[str]]:
     """Validate checkpoint - ONE universal path, no mode branching."""
     failures = []
@@ -138,6 +183,14 @@ def validate_checkpoint(checkpoint: dict) -> tuple[bool, list[str]]:
     if report.get("code_changes_made", False):
         if not report.get("linters_pass", False):
             failures.append("linters_pass required - you changed code, run the linter")
+
+    # 3b. Cross-check verification artifacts (close the self-report trust gap)
+    if report.get("is_job_complete", False) and report.get("code_changes_made", False):
+        verification_failures = _check_verification_artifacts(
+            checkpoint.get("_cwd", "")
+        )
+        if verification_failures:
+            failures.extend(verification_failures)
 
     # 4. Memory quality fields
     key_insight = reflection.get("key_insight", "")
@@ -249,6 +302,36 @@ def auto_capture_memory(cwd: str, checkpoint: dict) -> None:
     except Exception as e:
         log_debug(f"Auto-capture failed: {e}", hook_name="stop-validator")
 
+    # Record memory_that_helped citations (closes the feedback loop)
+    try:
+        memory_refs = reflection.get("memory_that_helped", [])
+        if isinstance(memory_refs, list) and memory_refs:
+            from _memory import record_citation
+            # Resolve m1/m2/m3 refs to event IDs via injection log
+            injection_log = Path(cwd) / ".claude" / "injection-log.json"
+            if injection_log.exists():
+                log_data = json.loads(injection_log.read_text())
+                ref_to_id = {
+                    e.get("ref", ""): e.get("id", "")
+                    for e in log_data.get("events", [])
+                }
+                cited_ids = []
+                for ref in memory_refs:
+                    if isinstance(ref, str):
+                        # Accept both "m1" refs and raw event IDs
+                        eid = ref_to_id.get(ref, ref if ref.startswith("evt_") else "")
+                        if eid:
+                            cited_ids.append(eid)
+                if cited_ids:
+                    record_citation(cwd, cited_ids)
+                    log_debug(
+                        f"Recorded {len(cited_ids)} memory citations",
+                        hook_name="stop-validator",
+                        parsed_data={"cited": cited_ids},
+                    )
+    except Exception:
+        pass
+
     # Core assertions
     try:
         core_assertions = reflection.get("core_assertions", [])
@@ -354,6 +437,8 @@ def main():
     if checkpoint is None:
         block_no_checkpoint(cwd)
 
+    # Attach cwd for verification artifact cross-check (not persisted)
+    checkpoint["_cwd"] = cwd
     is_valid, failures = validate_checkpoint(checkpoint)
     if not is_valid:
         block_with_failures(failures)

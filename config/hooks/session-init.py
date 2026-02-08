@@ -220,6 +220,9 @@ def main():
     # 13. Warn if project settings.json duplicates global hooks
     _check_hook_overlap(cwd)
 
+    # 14. Validate hook health (all referenced scripts exist and parse)
+    _validate_hook_health()
+
     sys.exit(0)
 
 
@@ -457,6 +460,88 @@ def _rotate_hook_metrics(max_entries: int = 100) -> None:
         )
     except (IOError, OSError):
         pass
+
+
+def _validate_hook_health() -> None:
+    """Validate that all hooks referenced in settings.json exist and parse.
+
+    Catches _common.py breakage (single point of failure for 11+ hooks)
+    and missing hook files before they cause cascading failures during
+    the session.
+    """
+    import ast
+
+    global_settings = Path.home() / ".claude" / "settings.json"
+    if not global_settings.exists():
+        return
+
+    try:
+        settings = json.loads(global_settings.resolve().read_text())
+    except (json.JSONDecodeError, IOError):
+        return
+
+    hooks_dir = Path.home() / ".claude" / "hooks"
+    broken = []
+    checked = 0
+
+    hooks_config = settings.get("hooks", {})
+    for _event, entries in hooks_config.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            for hook in entry.get("hooks", []):
+                if hook.get("type") != "command":
+                    continue
+                cmd = hook.get("command", "")
+                if not cmd:
+                    continue
+                # Extract Python script path from command
+                parts = cmd.replace('"', "").replace("'", "").split()
+                script_path = None
+                for p in parts:
+                    if p.endswith(".py"):
+                        expanded = p.replace("$HOME", str(Path.home())).replace(
+                            "~", str(Path.home())
+                        )
+                        script_path = Path(expanded)
+                        break
+                if not script_path:
+                    continue
+
+                checked += 1
+                if not script_path.exists():
+                    broken.append(f"{script_path.name} (missing)")
+                    continue
+
+                # Syntax check (catches _common.py import-chain failures)
+                try:
+                    ast.parse(script_path.read_text())
+                except SyntaxError as e:
+                    broken.append(f"{script_path.name} (syntax error: {e.msg} line {e.lineno})")
+
+    if broken:
+        names = "; ".join(broken[:5])
+        print(
+            f"[hook-health] WARNING: {len(broken)} hook(s) have problems: {names}. "
+            "Fix before they cause silent failures during the session."
+        )
+        log_debug(
+            f"Hook health check found {len(broken)} problems",
+            hook_name="session-init",
+            parsed_data={"broken": broken, "total_checked": checked},
+        )
+
+    # Also validate shared modules (single point of failure)
+    for module_name in ("_common.py", "_session.py", "_memory.py", "_scoring.py"):
+        module_path = hooks_dir / module_name
+        if module_path.exists():
+            try:
+                ast.parse(module_path.read_text())
+            except SyntaxError as e:
+                print(
+                    f"[hook-health] CRITICAL: {module_name} has syntax error "
+                    f"(line {e.lineno}: {e.msg}). ALL hooks will fail."
+                )
 
 
 if __name__ == "__main__":

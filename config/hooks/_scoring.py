@@ -195,17 +195,45 @@ def build_file_components(changed_files: set[str]) -> tuple[set, set, set]:
 # ============================================================================
 
 
+def utility_bonus(event: dict, utility_data: dict | None = None) -> float:
+    """Citation-rate bonus for events that have proven helpful.
+
+    Events with citation rate >= 30% (min 3 injections) get +0.05.
+    This closes the feedback loop: memory_that_helped refs are tracked
+    in the manifest's utility field, and events that consistently help
+    get boosted in future scoring.
+
+    Returns 0.0 if no utility data or insufficient evidence.
+    """
+    if not utility_data:
+        return 0.0
+    eid = event.get("id", "")
+    if not eid:
+        return 0.0
+    stats = utility_data.get(eid)
+    if not stats:
+        return 0.0
+    injected = stats.get("injected", 0)
+    cited = stats.get("cited", 0)
+    if injected >= 3 and cited / injected >= 0.30:
+        return 0.05
+    return 0.0
+
+
 def score_event(
     event: dict,
     basenames: set,
     stems: set,
     dirs: set,
+    utility_data: dict | None = None,
 ) -> float:
-    """2-signal scoring: entity overlap (60%) + recency (40%).
+    """2-signal scoring + utility bonus: entity overlap (60%) + recency (40%) + citation bonus.
 
     Wider dynamic range than 3-signal — entity overlap provides the
     relevance gate, recency provides the freshness tiebreaker.
+    Utility bonus rewards events that have been cited as helpful.
     """
     entity = entity_overlap_score(event, basenames, stems, dirs)
     recency = recency_score(event)
-    return 0.60 * entity + 0.40 * recency
+    bonus = utility_bonus(event, utility_data)
+    return 0.60 * entity + 0.40 * recency + bonus
