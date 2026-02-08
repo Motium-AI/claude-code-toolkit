@@ -132,6 +132,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tool-usage-logger.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/autonomous-health-monitor.py\"",
+            "timeout": 5
           }
         ]
       },
@@ -171,6 +176,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/bash-version-tracker.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/bash-error-advisor.py\"",
             "timeout": 5
           },
           {
