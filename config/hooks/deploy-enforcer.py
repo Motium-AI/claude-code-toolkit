@@ -27,11 +27,12 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Add hooks directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import log_debug
+from _common import log_debug, get_code_version
 from _session import (
     is_autonomous_mode_active,
     get_autonomous_state,
@@ -39,6 +40,8 @@ from _session import (
 
 # Patterns that indicate deployment commands
 DEPLOY_COMMAND_PATTERNS = [
+    r"eas\s+build",
+    r"eas\s+submit",
     r"gh\s+workflow\s+run",
     r"gh\s+run\s+watch",
     r"git\s+push",  # Push triggers CI/CD in most repos
@@ -72,6 +75,10 @@ PRODUCTION_PERMISSION_PATTERNS = [
     r"deploy.*prod",
     r"push.*prod",
 ]
+
+# OAuth goal-verification marker (project-agnostic)
+OAUTH_MARKER_RELATIVE_PATH = Path(".claude/oauth-goal-validation.json")
+OAUTH_MARKER_MAX_AGE_MS = 2 * 60 * 60 * 1000  # 2 hours
 
 
 def is_deploy_command(command: str) -> bool:
@@ -111,6 +118,123 @@ def has_production_permission(state: dict) -> bool:
                 return True
 
     return False
+
+
+def is_ios_eas_build_command(command: str) -> bool:
+    """Check whether command is an iOS EAS build invocation."""
+    if not re.search(r"\beas\s+build\b", command, re.IGNORECASE):
+        return False
+
+    if re.search(r"(--platform|-p)\s+android\b", command, re.IGNORECASE):
+        return False
+
+    return bool(re.search(r"(--platform|-p)\s+ios\b", command, re.IGNORECASE))
+
+
+def _has_oauth_verification_script(app_dir: Path) -> bool:
+    """Check if an app directory has an OAuth goal verification script.
+
+    Dynamic detection replaces the hardcoded CLAUDE_MOBILE_BUNDLE_ID constant.
+    Any Expo app that ships a verify-oauth-user-goal.sh script needs the
+    OAuth gate — this is project-agnostic.
+    """
+    if not app_dir.is_dir():
+        return False
+    # Check for the verification script in standard locations
+    for script_path in [
+        app_dir / "scripts" / "verify-oauth-user-goal.sh",
+        app_dir / "verify-oauth-user-goal.sh",
+    ]:
+        if script_path.exists():
+            return True
+    # Also check if the OAuth marker directory exists (created by a previous verification)
+    if (app_dir / OAUTH_MARKER_RELATIVE_PATH).parent.exists():
+        marker = app_dir / OAUTH_MARKER_RELATIVE_PATH
+        if marker.exists():
+            return True
+    return False
+
+
+def find_oauth_gated_app_dir(cwd: str) -> Path | None:
+    """Find an Expo app directory that requires OAuth goal verification.
+
+    Walks up the directory tree and checks standard monorepo locations.
+    Returns the app directory if it has OAuth verification scripts, else None.
+    Project-agnostic: works for any Expo app with the verification pattern.
+    """
+    start = Path(cwd).resolve()
+    candidates = []
+
+    # Direct: running from the app directory
+    candidates.append(start)
+
+    # Monorepo: running from repo root, app is in packages/mobile
+    candidates.append(start / "packages" / "mobile")
+
+    # Walk up parents for nested working directories
+    for parent in start.parents:
+        candidates.append(parent)
+        candidates.append(parent / "packages" / "mobile")
+
+    seen = set()
+    for candidate in candidates:
+        resolved = str(candidate)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _has_oauth_verification_script(candidate):
+            return candidate
+
+    return None
+
+
+def validate_oauth_goal_marker(mobile_dir: Path) -> tuple[bool, str]:
+    """Validate OAuth user-goal marker for current code version."""
+    marker_path = mobile_dir / OAUTH_MARKER_RELATIVE_PATH
+    if not marker_path.exists():
+        return (
+            False,
+            (
+                "Missing OAuth goal verification marker. "
+                "Run: bash packages/mobile/scripts/verify-oauth-user-goal.sh"
+            ),
+        )
+
+    try:
+        marker = json.loads(marker_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False, f"Invalid marker JSON at {marker_path}"
+
+    if marker.get("status") != "passed":
+        return False, f"OAuth marker status is not passed: {marker.get('status')!r}"
+
+    current_code_version = get_code_version(str(mobile_dir))
+    marker_code_version = marker.get("code_version")
+    if marker_code_version != current_code_version:
+        return (
+            False,
+            (
+                "OAuth marker is stale for current code version "
+                f"(marker={marker_code_version!r}, current={current_code_version!r}). "
+                "Re-run: bash packages/mobile/scripts/verify-oauth-user-goal.sh"
+            ),
+        )
+
+    verified_epoch_ms = marker.get("verified_epoch_ms")
+    if not isinstance(verified_epoch_ms, int):
+        return False, "OAuth marker missing integer verified_epoch_ms"
+
+    age_ms = int(time.time() * 1000) - verified_epoch_ms
+    if age_ms > OAUTH_MARKER_MAX_AGE_MS:
+        return (
+            False,
+            (
+                "OAuth marker is older than 2 hours. "
+                "Re-run: bash packages/mobile/scripts/verify-oauth-user-goal.sh"
+            ),
+        )
+
+    return True, ""
 
 
 def check_running_workflows(cwd: str) -> list[dict]:
@@ -194,6 +318,35 @@ def main():
         sys.exit(0)  # Not a deploy command, pass through
 
     log_debug(f"Deploy command detected: {command[:100]}")
+
+    # Global goal-closure gate for Claude Mobile iOS builds:
+    # block deploy until OAuth user-goal verification has passed on current code.
+    if is_ios_eas_build_command(command):
+        mobile_dir = find_oauth_gated_app_dir(cwd)
+        if mobile_dir:
+            ok, reason = validate_oauth_goal_marker(mobile_dir)
+            if not ok:
+                cwd_path = Path(cwd).resolve()
+                verify_cmd = "bash packages/mobile/scripts/verify-oauth-user-goal.sh"
+                if cwd_path == mobile_dir or mobile_dir in cwd_path.parents:
+                    verify_cmd = "bash scripts/verify-oauth-user-goal.sh"
+                pnpm_cmd = "pnpm --filter claude-mobile verify:oauth-goal"
+                if cwd_path == mobile_dir or mobile_dir in cwd_path.parents:
+                    pnpm_cmd = "pnpm verify:oauth-goal"
+                log_debug(f"Blocking iOS build (OAuth marker gate): {reason}")
+                block_with_message(
+                    message=(
+                        "⛔ BUILD BLOCKED: OAuth user-goal verification required before iOS deploy.\n\n"
+                        "This app has a known failure mode where Anthropic OAuth appears to load but "
+                        "silently falls back to Settings. You must prove the real user goal still works.\n\n"
+                        "Run this first:\n"
+                        f"  {pnpm_cmd}\n"
+                        "or\n"
+                        f"  {verify_cmd}\n\n"
+                        f"Reason: {reason}"
+                    ),
+                    reason="Missing/stale OAuth user-goal verification marker",
+                )
 
     # Check if autonomous mode is active
     # Pass session_id to enable cross-directory trust for same session

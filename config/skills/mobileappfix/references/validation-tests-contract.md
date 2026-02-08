@@ -7,9 +7,9 @@ Defines the artifact schema for fix-specific validation tests. The stop hook val
 Web smoke tests prove "the app loads" but NOT "the fix worked." Validation tests prove the specific fix achieved its goal.
 
 **Example:**
-- Fix: Notes summarization pipeline
+- Fix: Data processing pipeline for field X
 - Web smoke: Dashboard loads ✓
-- Validation test: Werner Iwens' `bullhorn_notes_summary_json` is NOT NULL ✗
+- Validation test: Record Y's `field_x` is NOT NULL ✗
 - Result: Fix DIDN'T WORK - caught by validation test
 
 ## Required Artifacts
@@ -30,17 +30,17 @@ After fix verification, the following must exist:
   "passed": true,
   "tested_at": "2026-01-27T10:00:00Z",
   "tested_at_version": "abc1234",
-  "fix_description": "Notes summarization should populate bullhorn_notes_summary_json",
+  "fix_description": "Data processing should populate the target field",
   "total_tests": 2,
   "passed_tests": 2,
   "failed_tests": 0,
   "tests": [
     {
-      "id": "notes_summary_populated",
-      "description": "Werner Iwens bullhorn_notes_summary_json NOT NULL",
+      "id": "processed_field_populated",
+      "description": "Target record's processed_field is NOT NULL",
       "type": "database_query",
       "expected": "NOT NULL",
-      "actual": "{\"summary\": \"Werner is a senior consultant...\"}",
+      "actual": "{\"processed\": \"computed value...\"}",
       "passed": true,
       "tested_at": "2026-01-27T10:30:00Z"
     },
@@ -146,8 +146,8 @@ cat > .claude/completion-checkpoint.json << 'EOF'
 {
   "validation_tests": {
     "tests": [{
-      "id": "notes_populated",
-      "description": "Werner Iwens has notes summary",
+      "id": "field_populated",
+      "description": "Target record has processed data",
       "type": "database_query",
       "expected": "NOT NULL"
     }]
@@ -156,7 +156,7 @@ cat > .claude/completion-checkpoint.json << 'EOF'
 EOF
 
 # Execute the test
-RESULT=$(psql $DATABASE_URL -t -c "SELECT bullhorn_notes_summary_json FROM persons WHERE person_id = 123")
+RESULT=$(psql $DATABASE_URL -t -c "SELECT target_field FROM your_table WHERE id = 123")
 
 # Check result
 if [ -n "$RESULT" ] && [ "$RESULT" != "null" ]; then
@@ -174,13 +174,13 @@ cat > .claude/validation-tests/summary.json << EOF
   "passed": true,
   "tested_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "tested_at_version": "$(git rev-parse --short HEAD)",
-  "fix_description": "Notes summarization pipeline",
+  "fix_description": "Data processing should populate the target field",
   "total_tests": 1,
   "passed_tests": 1,
   "failed_tests": 0,
   "tests": [{
-    "id": "notes_populated",
-    "description": "Werner Iwens has notes summary",
+    "id": "field_populated",
+    "description": "Target record has processed data",
     "type": "database_query",
     "expected": "NOT NULL",
     "actual": "$RESULT",

@@ -499,6 +499,92 @@ def get_events_by_entities(
 
 
 # ============================================================================
+# Federated Cross-Project Query (opt-in)
+# ============================================================================
+
+
+def query_all_projects(
+    query_entities: set[str],
+    exclude_hash: str = "",
+    min_overlap: float = 0.5,
+    limit: int = 3,
+) -> list[dict]:
+    """Query concept entities across ALL project memory stores.
+
+    Opt-in feature: only called when cross_project_recall is enabled.
+    Searches every project's inverted index for matching concept entities.
+    Uses a high overlap threshold to prevent noise from unrelated projects.
+
+    Args:
+        query_entities: concept keywords to search for (not file paths)
+        exclude_hash: project hash to skip (the current project)
+        min_overlap: minimum fraction of query entities that must match
+        limit: max events to return
+
+    Returns events sorted by match count, from other projects only.
+    """
+    results = []
+
+    if not MEMORY_ROOT.exists():
+        return results
+
+    for project_dir in MEMORY_ROOT.iterdir():
+        if not project_dir.is_dir():
+            continue
+        if project_dir.name == exclude_hash:
+            continue
+
+        manifest_path = project_dir / MANIFEST_NAME
+        if not manifest_path.exists():
+            continue
+
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, IOError):
+            continue
+
+        entity_index = manifest.get("entity_index", {})
+        if not entity_index:
+            continue
+
+        # Query this project's index
+        match_counts: dict[str, int] = {}
+        matched_entities = 0
+        for entity in query_entities:
+            key = entity.lower().strip()
+            matched = False
+            for eid in entity_index.get(key, []):
+                match_counts[eid] = match_counts.get(eid, 0) + 1
+                matched = True
+            # Also check stem
+            if "." in key:
+                stem = key.rsplit(".", 1)[0]
+                for eid in entity_index.get(stem, []):
+                    match_counts[eid] = match_counts.get(eid, 0) + 1
+                    matched = True
+            if matched:
+                matched_entities += 1
+
+        # Apply overlap gate: require min_overlap of query entities to match
+        if not query_entities or matched_entities / len(query_entities) < min_overlap:
+            continue
+
+        # Load top-matching events from this project
+        event_dir = project_dir / "events"
+        sorted_matches = sorted(match_counts.items(), key=lambda x: x[1], reverse=True)
+        for eid, count in sorted_matches[:limit]:
+            event = safe_read_event(event_dir / f"{eid}.json")
+            if event:
+                event["_source_project"] = project_dir.name
+                event["_match_count"] = count
+                results.append(event)
+
+    # Sort by match count across all projects, take top N
+    results.sort(key=lambda e: e.get("_match_count", 0), reverse=True)
+    return results[:limit]
+
+
+# ============================================================================
 # Utility Tracking (citation feedback loop)
 # ============================================================================
 

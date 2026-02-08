@@ -78,6 +78,57 @@ def _build_summary(cwd: str, session_id: str) -> str:
     return "\n".join(parts)
 
 
+def _emergency_memory_capture(cwd: str, summary: str) -> None:
+    """Write a lightweight memory event as crash-recovery insurance.
+
+    PreCompact fires before context compression, which often precedes
+    session death (context exhaustion). This captures whatever work
+    was done before the clean stop hook can fire.
+
+    Only writes if no checkpoint exists (the stop hook hasn't fired yet)
+    and changes were actually made.
+    """
+    try:
+        from _session import load_checkpoint
+        # Don't duplicate if stop hook already captured
+        if load_checkpoint(cwd) is not None:
+            return
+
+        from _memory import append_event
+        from _common import get_diff_hash
+
+        # Only capture if there are actual code changes
+        snapshot_path = Path(cwd) / ".claude" / "session-snapshot.json"
+        if snapshot_path.exists():
+            snapshot = json.loads(snapshot_path.read_text())
+            start_hash = snapshot.get("diff_hash_at_start", "")
+            current_hash = get_diff_hash(cwd)
+            if start_hash == current_hash:
+                return  # No changes, nothing to capture
+
+        # Extract entities from changed files
+        changed = _get_changed_files(cwd)
+        entities = []
+        for f in changed[:5]:
+            parts = f.split("/")
+            entities.append(parts[-1])
+
+        if not entities:
+            return
+
+        content = f"LESSON: (crash-recovery) {summary[:300]}"
+        append_event(
+            cwd=cwd,
+            content=content,
+            entities=entities,
+            event_type="precompact_capture",
+            source="crash-recovery",
+            category="session",
+        )
+    except Exception:
+        pass  # Best-effort — never fail the precompact hook
+
+
 def main():
     input_data = json.loads(sys.stdin.read() or "{}")
     cwd = input_data.get("cwd", "")
@@ -90,6 +141,9 @@ def main():
     summary = _build_summary(cwd, session_id)
 
     if summary.strip():
+        # Emergency memory capture (insurance against crash/context exhaustion)
+        _emergency_memory_capture(cwd, summary)
+
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreCompact",

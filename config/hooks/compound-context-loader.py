@@ -439,8 +439,47 @@ def main():
             scored.append((event, score))
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # Take top N
+    # Federated cross-project recall (opt-in via MEMORIES.md flag)
+    cross_project_events = []
+    if has_native_memory and "cross_project_recall: true" in native_content:
+        try:
+            from _memory import query_all_projects, get_project_hash
+            # Only use concept entities (not file paths) for cross-project search
+            concept_queries = {
+                e for e in query_entities
+                if "/" not in e and "." not in e and len(e) > 2
+            }
+            if concept_queries:
+                current_hash = get_project_hash(cwd)
+                cross_events = query_all_projects(
+                    concept_queries, exclude_hash=current_hash, min_overlap=0.5, limit=2,
+                )
+                for evt in cross_events:
+                    # Score cross-project events but with a penalty (no file entity matches possible)
+                    score = score_event(evt, basenames, stems, dirs, utility_data)
+                    if score >= MIN_SCORE_SESSION_START:
+                        cross_project_events.append((evt, score))
+                if cross_project_events:
+                    log_debug(
+                        f"Cross-project recall found {len(cross_project_events)} events",
+                        hook_name="compound-context-loader",
+                        parsed_data={
+                            "sources": [e.get("_source_project", "?") for e, _ in cross_project_events],
+                        },
+                    )
+        except (ImportError, Exception) as e:
+            log_debug(f"Cross-project recall failed: {e}", hook_name="compound-context-loader")
+
+    # Take top N (local first, then cross-project fills remaining slots)
     top_events = scored[:MAX_EVENTS]
+    remaining_slots = MAX_EVENTS - len(top_events)
+    if remaining_slots > 0 and cross_project_events:
+        # Avoid duplicating events already selected
+        selected_ids = {e.get("id", "") for e, _ in top_events}
+        for evt, score in cross_project_events:
+            if evt.get("id", "") not in selected_ids and remaining_slots > 0:
+                top_events.append((evt, score))
+                remaining_slots -= 1
 
     # Format as structured XML
     output = _format_injection(top_events)

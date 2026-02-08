@@ -141,6 +141,15 @@ def main():
     except (json.JSONDecodeError, IOError):
         pass
 
+    # Check if in debugging mode (repair/appfix) for debugging-aware scoring
+    debugging_mode = False
+    try:
+        from _session import get_mode
+        mode = get_mode(cwd)
+        debugging_mode = mode in ("repair", "appfix", "mobileappfix")
+    except (ImportError, Exception):
+        pass
+
     # Score and filter
     try:
         from _scoring import build_file_components, score_event, MIN_SCORE_RECALL
@@ -159,6 +168,12 @@ def main():
         if event.get("meta", {}).get("archived_by"):
             continue
         score = score_event(event, basenames, stems, dirs)
+        # In debugging mode, boost bugfix/config events (past debugging lessons)
+        if debugging_mode and event.get("category") in ("bugfix", "config"):
+            score += 0.10
+        # Also boost events with debugging problem_types
+        if debugging_mode and event.get("problem_type"):
+            score += 0.05
         if score >= MIN_SCORE_RECALL:
             scored.append((event, score))
 

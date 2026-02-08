@@ -135,6 +135,15 @@ def main():
     # Get already-injected IDs
     injected_ids = _get_injected_ids(cwd)
 
+    # Check if in debugging mode for debugging-aware scoring
+    debugging_mode = False
+    try:
+        from _session import get_mode
+        mode = get_mode(cwd)
+        debugging_mode = mode in ("repair", "appfix", "mobileappfix")
+    except (ImportError, Exception):
+        pass
+
     # Score events against new entities using unified scoring
     scored = []
     for event in events:
@@ -147,6 +156,11 @@ def main():
             continue
 
         score = score_event(event, basenames, stems, dirs)
+        # In debugging mode, boost past debugging lessons
+        if debugging_mode and event.get("category") in ("bugfix", "config"):
+            score += 0.10
+        if debugging_mode and event.get("problem_type"):
+            score += 0.05
         if score >= MIN_SCORE_RECALL:
             scored.append((event, score))
 
